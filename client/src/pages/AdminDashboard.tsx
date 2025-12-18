@@ -126,11 +126,18 @@ export default function AdminDashboard() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage participants, coaches, and nutrition targets</p>
         </div>
-        <Link href="/admin/prompts">
-          <Button variant="outline" data-testid="link-prompts-admin">
-            Manage Prompts
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/participants">
+            <Button variant="outline" data-testid="link-participants-admin">
+              Manage Participants
+            </Button>
+          </Link>
+          <Link href="/admin/prompts">
+            <Button variant="outline" data-testid="link-prompts-admin">
+              Manage Prompts
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Tabs defaultValue="participants" className="w-full">
