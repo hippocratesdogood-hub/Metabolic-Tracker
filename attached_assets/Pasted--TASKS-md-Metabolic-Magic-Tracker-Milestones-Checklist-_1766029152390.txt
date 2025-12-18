@@ -1,0 +1,273 @@
+# TASKS.md — Metabolic Magic Tracker (Milestones + Checklist)
+
+> Goal: Ship an MVP web app (mobile-responsive) with daily metric logging, trends, weekly reports, automated prompts, coach messaging, and AI food logging (text + photo).
+
+---
+
+## Milestone 0 — Project Setup (Day 0)
+### Repo / Tooling
+- [ ] Initialize Next.js + TypeScript project
+- [ ] Add Tailwind CSS
+- [ ] Add ESLint + Prettier
+- [ ] Add env management (.env.example + validation)
+
+### Decisions (lock these in early)
+- [ ] Choose DB provider: Postgres (Neon or Supabase Postgres)
+- [ ] Choose Auth: NextAuth OR Supabase Auth
+- [ ] Choose file storage: S3-compatible (AWS S3 / Cloudflare R2)
+- [ ] Choose realtime messaging: Supabase Realtime OR Pusher OR Socket.io
+- [ ] Choose background jobs: Trigger.dev OR cron job worker
+
+Deliverables:
+- Running app on Replit with a landing page
+- CI not required for MVP
+
+---
+
+## Milestone 1 — Database + Schema (Day 1)
+### DB
+- [ ] Provision Postgres instance
+- [ ] Add ORM (Prisma recommended)
+- [ ] Create Prisma schema for:
+  - [ ] users
+  - [ ] metric_entries
+  - [ ] food_entries
+  - [ ] conversations
+  - [ ] messages
+  - [ ] prompts
+  - [ ] prompt_rules
+  - [ ] prompt_deliveries
+  - [ ] reports
+- [ ] Run migrations
+- [ ] Add seed script:
+  - [ ] create admin user
+  - [ ] create coach user
+  - [ ] create participant user assigned to coach
+
+Deliverables:
+- Ability to query and insert basic records locally/dev
+
+---
+
+## Milestone 2 — Auth + RBAC + Onboarding (Day 2)
+### Auth
+- [ ] Implement login/signup
+- [ ] Implement session middleware for protected routes
+- [ ] Implement role-based guards (participant/coach/admin)
+
+### Onboarding flow
+- [ ] Consent screen (user must accept)
+- [ ] Profile setup:
+  - [ ] timezone
+  - [ ] units preference
+  - [ ] program_start_date
+- [ ] Admin: assign coach to participant (simple UI)
+
+Deliverables:
+- Participant can sign up, onboard, and land on “Today”
+- Coach/Admin can log in and see their dashboards
+
+---
+
+## Milestone 3 — Metrics MVP (Day 3–4)
+### UI — Today Dashboard
+- [ ] Today page with metric tiles:
+  - [ ] BP (systolic/diastolic + optional HR)
+  - [ ] Waist (in/cm)
+  - [ ] Glucose (mg/dL or mmol/L + context)
+  - [ ] Ketones (mmol/L)
+  - [ ] Weight (lb/kg)
+- [ ] “Quick add” modals per metric type
+- [ ] “Submit check-in” (optional; can be implicit)
+
+### API
+- [ ] POST /api/metrics
+- [ ] GET /api/metrics?type=&from=&to=
+- [ ] PUT /api/metrics/:id
+- [ ] DELETE /api/metrics/:id
+
+### Logic
+- [ ] Unit normalization functions:
+  - [ ] glucose mmol/L → mg/dL (×18)
+  - [ ] store raw + normalized
+- [ ] Soft validation warnings (range checks)
+
+Deliverables:
+- Participant can log all metrics, view history list
+
+---
+
+## Milestone 4 — Trends + Adherence (Day 5)
+### UI — Trends
+- [ ] Trends page with tabs per metric + range selector (7/30/90)
+- [ ] Charts (Recharts recommended)
+- [ ] Stats cards:
+  - [ ] rolling 7-day avg
+  - [ ] delta over range
+  - [ ] outlier indicators
+
+### Backend
+- [ ] GET /api/trends?type=&range=7|30|90
+- [ ] Compute adherence:
+  - [ ] daily adherence
+  - [ ] weekly adherence
+  - [ ] streak
+
+Deliverables:
+- Participant sees meaningful trend visuals and adherence %
+
+---
+
+## Milestone 5 — Messaging (Day 6–7)
+### Data + API
+- [ ] Create conversation automatically on coach assignment OR first message
+- [ ] POST /api/conversations
+- [ ] GET /api/conversations
+- [ ] POST /api/messages
+- [ ] GET /api/messages?conversation_id=
+
+### UI
+Participant:
+- [ ] Messages page (single thread with coach)
+Coach:
+- [ ] Inbox list (participants + unread count)
+- [ ] Thread view per participant
+
+### Realtime
+- [ ] Choose:
+  - [ ] Supabase Realtime OR
+  - [ ] Pusher OR
+  - [ ] Socket.io
+- [ ] If realtime not ready: implement polling every 5–10s (MVP acceptable)
+
+Deliverables:
+- Secure 1:1 messaging works with RBAC
+
+---
+
+## Milestone 6 — AI Food Log (Day 8–10)
+### Storage
+- [ ] Photo upload pipeline:
+  - [ ] UI upload
+  - [ ] server uploads to S3/R2
+  - [ ] return photo_url
+
+### AI Analysis (MVP)
+- [ ] POST /api/food (text)
+- [ ] POST /api/food/upload (photo)
+- [ ] POST /api/food/analyze (text/photo_url → returns ai_output_json)
+
+### Fixed JSON output schema (required)
+- [ ] foods_detected: [{ name, estimated_portion, confidence }]
+- [ ] macros_estimate: { calories, protein_g, carbs_g, fat_g, fiber_g? }
+- [ ] macros_range (optional but recommended)
+- [ ] quality_score_0_100
+- [ ] flags: string[]
+- [ ] coaching_note
+- [ ] overall_confidence_0_1
+
+### UI
+- [ ] Food Log list (by date)
+- [ ] Add entry (text + photo in MVP)
+- [ ] Detail view shows AI output + confidence
+- [ ] “Edit” button → user_corrections_json saved
+- [ ] Show “AI estimate” vs “Your edit”
+
+Deliverables:
+- Participant can add food entries and see AI analysis + edit it
+
+---
+
+## Milestone 7 — Prompts Engine (Day 11–12)
+### Admin UI
+- [ ] Prompt templates CRUD
+- [ ] Prompt rules CRUD (conditions_json, schedule_json, cooldown, active)
+
+### Scheduler / Worker
+- [ ] Implement job runner (Trigger.dev or cron):
+  - [ ] nightly missed-check-in scan
+  - [ ] scheduled reminders (e.g., 7pm local)
+  - [ ] event-based trigger handler (on metric insert)
+
+### Logging
+- [ ] prompt_deliveries record created for every attempt
+- [ ] cooldown logic enforced
+- [ ] RBAC: only admin edits rules
+
+### Prompt Examples (implement these 3)
+- [ ] Daily reminder: 7pm local if no metrics logged today
+- [ ] High fasting glucose: fasting >= 110 for 3 consecutive days
+- [ ] Elevated BP: >= 140/90 twice in last 7 days
+
+Deliverables:
+- Prompts reliably fire and appear in-app (email optional)
+
+---
+
+## Milestone 8 — Weekly Reports (Day 13–14)
+### Generator
+- [ ] Cron job every night:
+  - [ ] find users whose weekly cycle ended today (based on program_start_date)
+  - [ ] compute summary_json
+  - [ ] store in reports table
+
+### UI
+- [ ] Reports page:
+  - [ ] list reports
+  - [ ] report detail view
+
+### Content (MVP: rule-based insights)
+- [ ] adherence summary + streak
+- [ ] 7-day averages + deltas
+- [ ] 1–3 suggested focus actions based on thresholds
+
+Deliverables:
+- Reports appear without manual intervention
+
+---
+
+## Milestone 9 — Polish + Hardening (Day 15+)
+### UX polish
+- [ ] “Today” entry friction reduction (keyboard-first, sane defaults)
+- [ ] empty states + loading skeletons
+- [ ] timezone correctness (critical)
+
+### Security & privacy
+- [ ] RBAC tests: coach can only access assigned participants
+- [ ] audit view (admin): prompt deliveries + basic access logs
+- [ ] export/delete account endpoints (optional MVP)
+
+### Performance
+- [ ] Index time-series tables (user_id + timestamp)
+- [ ] paginate message history
+- [ ] cache trend calculations (optional)
+
+Deliverables:
+- MVP stable for a cohort pilot
+
+---
+
+## Milestone 10 — Pilot Launch Checklist
+- [ ] Create 10 test participant accounts
+- [ ] Verify daily prompts do not spam
+- [ ] Verify chart accuracy vs raw data
+- [ ] Verify AI food analysis handles:
+  - [ ] mixed meals
+  - [ ] restaurant foods
+  - [ ] “keto” vs “not keto” patterns
+- [ ] Prepare admin guide:
+  - [ ] how to assign coaches
+  - [ ] how to adjust prompt thresholds
+  - [ ] how to read reports
+
+---
+
+## Definition of Done (MVP)
+- [ ] Participant can log metrics in <60 seconds/day
+- [ ] Trend charts work for 7/30/90 days
+- [ ] Weekly report auto-generates
+- [ ] Prompt engine fires, respects cooldowns, logs deliveries
+- [ ] Messaging works securely (RBAC enforced)
+- [ ] AI food logging returns structured JSON + user can correct
+- [ ] Coach can view only assigned participants
+- [ ] Admin can manage users/coaches and prompts/rules

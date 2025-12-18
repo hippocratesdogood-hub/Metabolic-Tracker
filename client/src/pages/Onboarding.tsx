@@ -1,0 +1,171 @@
+import React, { useState } from 'react';
+import { useLocation } from 'wouter';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ArrowRight, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+type Step = 'consent' | 'profile' | 'complete';
+
+export default function Onboarding() {
+  const [, setLocation] = useLocation();
+  const [step, setStep] = useState<Step>('consent');
+  
+  // Form State
+  const [agreed, setAgreed] = useState(false);
+  const [name, setName] = useState('');
+  const [units, setUnits] = useState('US');
+  const [coach, setCoach] = useState('');
+
+  const handleNext = () => {
+    if (step === 'consent' && agreed) setStep('profile');
+    else if (step === 'profile' && name) setStep('complete');
+    else if (step === 'complete') setLocation('/');
+  };
+
+  const handleBack = () => {
+    if (step === 'profile') setStep('consent');
+    if (step === 'complete') setStep('profile');
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
+       {/* Progress Dots */}
+       <div className="flex gap-2 mb-8">
+        {['consent', 'profile', 'complete'].map((s, i) => (
+          <div 
+            key={s}
+            className={cn(
+              "w-3 h-3 rounded-full transition-colors duration-300",
+              ['consent', 'profile', 'complete'].indexOf(step) >= i 
+                ? "bg-primary" 
+                : "bg-muted"
+            )}
+          />
+        ))}
+      </div>
+
+      <Card className="w-full max-w-lg border-none shadow-xl bg-card">
+        {/* Step 1: Consent */}
+        {step === 'consent' && (
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+            <CardHeader>
+              <CardTitle>First, a few agreements</CardTitle>
+              <CardDescription>Please review our privacy and safety policy.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-2 h-48 overflow-y-auto border border-border">
+                <p><strong>1. Not Medical Advice:</strong> This application is for tracking purposes only. It does not replace professional medical advice.</p>
+                <p><strong>2. Data Privacy:</strong> Your data is encrypted and shared only with your assigned coach.</p>
+                <p><strong>3. Emergency:</strong> If you are experiencing a medical emergency, call 911 immediately.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+              </div>
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id="terms" checked={agreed} onCheckedChange={(c) => setAgreed(c as boolean)} />
+                <Label htmlFor="terms" className="font-medium cursor-pointer">I have read and agree to the terms above.</Label>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-end">
+              <Button onClick={handleNext} disabled={!agreed} className="w-full sm:w-auto">
+                Next <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </CardFooter>
+          </div>
+        )}
+
+        {/* Step 2: Profile */}
+        {step === 'profile' && (
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+            <CardHeader>
+              <CardTitle>Tell us about you</CardTitle>
+              <CardDescription>Set up your profile to personalize your experience.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input 
+                  id="name" 
+                  placeholder="e.g. Alex Rivera" 
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)} 
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Unit Preference</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div 
+                    onClick={() => setUnits('US')}
+                    className={cn(
+                      "cursor-pointer border rounded-lg p-4 text-center transition-all hover:border-primary",
+                      units === 'US' ? "border-primary bg-primary/5 text-primary" : "border-border"
+                    )}
+                  >
+                    <div className="font-bold">US</div>
+                    <div className="text-xs text-muted-foreground mt-1">lbs, in, mg/dL</div>
+                  </div>
+                  <div 
+                    onClick={() => setUnits('Metric')}
+                    className={cn(
+                      "cursor-pointer border rounded-lg p-4 text-center transition-all hover:border-primary",
+                      units === 'Metric' ? "border-primary bg-primary/5 text-primary" : "border-border"
+                    )}
+                  >
+                    <div className="font-bold">Metric</div>
+                    <div className="text-xs text-muted-foreground mt-1">kg, cm, mmol/L</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Select Your Coach (Optional)</Label>
+                <Select value={coach} onValueChange={setCoach}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Auto-assign me a coach" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sarah">Dr. Sarah (Metabolic Specialist)</SelectItem>
+                    <SelectItem value="mike">Coach Mike (Performance)</SelectItem>
+                    <SelectItem value="auto">Auto-assign</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <Button variant="ghost" onClick={handleBack}>
+                <ArrowLeft className="w-4 h-4 mr-2" /> Back
+              </Button>
+              <Button onClick={handleNext} disabled={!name}>
+                Next <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </CardFooter>
+          </div>
+        )}
+
+        {/* Step 3: Complete */}
+        {step === 'complete' && (
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300 text-center py-8">
+            <CardContent className="flex flex-col items-center gap-4">
+              <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-2">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-heading font-bold">You're All Set!</h2>
+              <p className="text-muted-foreground max-w-xs mx-auto">
+                Your profile is ready. Your program starts today. Let's make some magic happen.
+              </p>
+            </CardContent>
+            <CardFooter className="justify-center">
+              <Button onClick={handleNext} className="w-full max-w-xs bg-primary hover:bg-primary/90 text-lg py-6">
+                Go to Dashboard
+              </Button>
+            </CardFooter>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
