@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MetricType, useData } from '@/lib/mockData';
+import { MetricType, useData } from '@/lib/dataAdapter';
 import { format } from 'date-fns';
 
 interface MetricEntryModalProps {
@@ -38,39 +38,33 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
   // Simple state-based form for prototype speed instead of complex Zod generic switching
   // In a real app, I'd use RHF with a discriminated union schema
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!type) return;
 
-    if (type === 'BP') {
-      addMetric({
-        type,
-        value: 0, // Placeholder, we store raw
-        valueRaw: { systolic: Number(systolic), diastolic: Number(diastolic) },
-        unit: 'mmHg',
-        timestamp: new Date(),
-      });
-    } else {
-      let unit = '';
-      if (type === 'WEIGHT') unit = 'lbs';
-      if (type === 'GLUCOSE') unit = 'mg/dL';
-      if (type === 'KETONES') unit = 'mmol/L';
-      if (type === 'WAIST') unit = 'in';
-
-      addMetric({
-        type,
-        value: Number(value),
-        unit,
-        timestamp: new Date(),
-        context: type === 'GLUCOSE' ? context : undefined,
-      });
+    try {
+      if (type === 'BP') {
+        await addMetric({
+          type,
+          valueJson: { systolic: Number(systolic), diastolic: Number(diastolic) },
+          timestamp: new Date(),
+        });
+      } else {
+        await addMetric({
+          type,
+          valueJson: { value: Number(value), context: type === 'GLUCOSE' ? context : undefined },
+          timestamp: new Date(),
+        });
+      }
+      
+      // Reset and close
+      setSystolic('');
+      setDiastolic('');
+      setValue('');
+      onClose();
+    } catch (error) {
+      console.error('Failed to add metric:', error);
     }
-    
-    // Reset and close
-    setSystolic('');
-    setDiastolic('');
-    setValue('');
-    onClose();
   };
 
   if (!type) return null;

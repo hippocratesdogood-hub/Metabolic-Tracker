@@ -5,21 +5,32 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { ArrowRight, Sparkles } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import { toast } from 'sonner';
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Mock login delay
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+    
+    try {
+      await login(email, password);
+      toast.success('Welcome back!');
       setLocation('/');
-    }, 1000);
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+      toast.error(err.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

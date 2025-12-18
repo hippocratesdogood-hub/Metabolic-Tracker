@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MetricType } from '@/lib/mockData';
+import { MetricType } from '@/lib/dataAdapter';
 
 interface MetricCardProps {
   title: string;

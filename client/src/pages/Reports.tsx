@@ -1,5 +1,5 @@
 import React from 'react';
-import { useData } from '@/lib/mockData';
+import { useData } from '@/lib/dataAdapter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Calendar, Trophy, TrendingUp, AlertCircle, CheckCircle2, Download } from 'lucide-react';

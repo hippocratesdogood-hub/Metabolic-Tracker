@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useData, MetricType } from '@/lib/mockData';
+import { useData, MetricType } from '@/lib/dataAdapter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

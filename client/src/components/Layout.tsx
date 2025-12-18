@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User } from 'lucide-react';
-import { useData } from '@/lib/mockData';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { user } = useData();
+  const { user, logout } = useAuth();
 
   // Fullscreen pages (no layout)
   if (location === '/login' || location === '/onboarding') {
@@ -70,17 +70,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 border-t border-sidebar-border">
-          <Link href="/login">
-            <div className="flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-sidebar-accent rounded-lg transition-colors">
-              <div className="w-8 h-8 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold text-xs">
-                {user.name.charAt(0)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">Log out</p>
-              </div>
+          <div 
+            onClick={logout}
+            className="flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-sidebar-accent rounded-lg transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold text-xs">
+              {user?.name?.charAt(0) || 'U'}
             </div>
-          </Link>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+              <p className="text-xs text-muted-foreground truncate">Log out</p>
+            </div>
+          </div>
         </div>
       </aside>
 

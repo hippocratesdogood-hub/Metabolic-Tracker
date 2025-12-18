@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useData, Prompt, PromptRule } from '@/lib/mockData';
+import { useData, Prompt, PromptRule } from '@/lib/dataAdapter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';

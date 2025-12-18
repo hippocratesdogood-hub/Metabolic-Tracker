@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useData, MetricType } from '@/lib/mockData';
+import { useData, MetricType } from '@/lib/dataAdapter';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
 import { Scale, Activity, Droplet, Heart, Ruler } from 'lucide-react';
@@ -46,7 +46,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <MetricCard
           title="Weight"
-          value={weight?.value.toFixed(1) || '--'}
+          value={weight?.valueJson?.value?.toFixed(1) || '--'}
           unit="lbs"
           type="WEIGHT"
           trend="down"
@@ -54,11 +54,11 @@ export default function Dashboard() {
           color="bg-blue-500"
           icon={Scale}
           onAdd={() => handleAddMetric('WEIGHT')}
-          lastUpdated={weight ? format(weight.timestamp, 'h:mm a') : undefined}
+          lastUpdated={weight ? format(new Date(weight.timestamp), 'h:mm a') : undefined}
         />
         <MetricCard
           title="Glucose (Fasting)"
-          value={glucose?.value.toFixed(0) || '--'}
+          value={glucose?.valueJson?.value?.toFixed(0) || '--'}
           unit="mg/dL"
           type="GLUCOSE"
           trend="neutral"
@@ -66,11 +66,11 @@ export default function Dashboard() {
           color="bg-teal-500"
           icon={Droplet}
           onAdd={() => handleAddMetric('GLUCOSE')}
-          lastUpdated={glucose ? format(glucose.timestamp, 'h:mm a') : undefined}
+          lastUpdated={glucose ? format(new Date(glucose.timestamp), 'h:mm a') : undefined}
         />
         <MetricCard
           title="Ketones"
-          value={ketones?.value.toFixed(1) || '--'}
+          value={ketones?.valueJson?.value?.toFixed(1) || '--'}
           unit="mmol/L"
           type="KETONES"
           trend="up"
@@ -78,22 +78,22 @@ export default function Dashboard() {
           color="bg-purple-500"
           icon={Activity}
           onAdd={() => handleAddMetric('KETONES')}
-          lastUpdated={ketones ? format(ketones.timestamp, 'h:mm a') : undefined}
+          lastUpdated={ketones ? format(new Date(ketones.timestamp), 'h:mm a') : undefined}
         />
         <MetricCard
           title="Blood Pressure"
-          value={bp ? `${bp.valueRaw.systolic}/${bp.valueRaw.diastolic}` : '--/--'}
+          value={bp?.valueJson ? `${bp.valueJson.systolic}/${bp.valueJson.diastolic}` : '--/--'}
           unit="mmHg"
           type="BP"
           trend="neutral"
           color="bg-red-500"
           icon={Heart}
           onAdd={() => handleAddMetric('BP')}
-          lastUpdated={bp ? format(bp.timestamp, 'h:mm a') : undefined}
+          lastUpdated={bp ? format(new Date(bp.timestamp), 'h:mm a') : undefined}
         />
         <MetricCard
           title="Waist"
-          value={waist?.value.toFixed(1) || '--'}
+          value={waist?.valueJson?.value?.toFixed(1) || '--'}
           unit="in"
           type="WAIST"
           trend="down"
@@ -101,7 +101,7 @@ export default function Dashboard() {
           color="bg-indigo-500"
           icon={Ruler}
           onAdd={() => handleAddMetric('WAIST')}
-          lastUpdated={waist ? format(waist.timestamp, 'h:mm a') : undefined}
+          lastUpdated={waist ? format(new Date(waist.timestamp), 'h:mm a') : undefined}
         />
       </div>
 

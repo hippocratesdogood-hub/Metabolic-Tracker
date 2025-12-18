@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useData } from '@/lib/mockData';
+import { useData } from '@/lib/dataAdapter';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
