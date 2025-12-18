@@ -2,6 +2,18 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
+
+/**
+ * Determines if an entry is backfilled by comparing timestamp to createdAt.
+ * An entry is considered backfilled if its timestamp is more than 1 hour before createdAt.
+ * 
+ * IMPORTANT: Backfilled entries should NOT trigger prompts or be included in real-time
+ * report calculations to avoid retroactive notifications.
+ */
+export function isBackfilledEntry(entry: { timestamp: Date; createdAt: Date }): boolean {
+  const hourMs = 60 * 60 * 1000;
+  return entry.createdAt.getTime() - entry.timestamp.getTime() > hourMs;
+}
 import type {
   User,
   InsertUser,

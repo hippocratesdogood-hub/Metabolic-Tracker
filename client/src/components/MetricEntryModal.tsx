@@ -7,8 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { MetricType, useData } from '@/lib/dataAdapter';
-import { format } from 'date-fns';
+import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
+import { CalendarIcon, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface MetricEntryModalProps {
   isOpen: boolean;
@@ -34,9 +38,11 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
   const [diastolic, setDiastolic] = React.useState('');
   const [value, setValue] = React.useState('');
   const [context, setContext] = React.useState('fasting');
-
-  // Simple state-based form for prototype speed instead of complex Zod generic switching
-  // In a real app, I'd use RHF with a discriminated union schema
+  const [entryDate, setEntryDate] = React.useState<Date>(new Date());
+  
+  const minDate = subDays(startOfDay(new Date()), 7);
+  const maxDate = new Date();
+  const isBackfill = !isToday(entryDate);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,13 +53,13 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
         await addMetric({
           type,
           valueJson: { systolic: Number(systolic), diastolic: Number(diastolic) },
-          timestamp: new Date(),
+          timestamp: entryDate,
         });
       } else {
         await addMetric({
           type,
           valueJson: { value: Number(value), context: type === 'GLUCOSE' ? context : undefined },
-          timestamp: new Date(),
+          timestamp: entryDate,
         });
       }
       
@@ -61,6 +67,7 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
       setSystolic('');
       setDiastolic('');
       setValue('');
+      setEntryDate(new Date());
       onClose();
     } catch (error) {
       console.error('Failed to add metric:', error);
@@ -91,11 +98,38 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
         <DialogHeader>
           <DialogTitle>{titles[type]}</DialogTitle>
           <DialogDescription>
-            Enter your reading for today, {format(new Date(), 'MMM d, yyyy')}.
+            Enter your reading{isBackfill ? ` for ${format(entryDate, 'MMM d, yyyy')}` : ' for today'}.
           </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+          <div className="space-y-2">
+            <Label>Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className={cn("w-full justify-start gap-2", isBackfill && "border-amber-500 text-amber-600")} data-testid="button-metric-date">
+                  <CalendarIcon className="w-4 h-4" />
+                  {isToday(entryDate) ? `Today, ${format(entryDate, 'MMM d')}` : format(entryDate, 'MMM d, yyyy')}
+                  {isBackfill && <Clock className="w-3 h-3 ml-auto" />}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={entryDate}
+                  onSelect={(date) => date && setEntryDate(date)}
+                  disabled={(date) => isBefore(date, minDate) || isAfter(date, maxDate)}
+                  initialFocus
+                />
+                <div className="p-2 border-t text-xs text-muted-foreground text-center">
+                  Backfill entries up to 7 days
+                </div>
+              </PopoverContent>
+            </Popover>
+            {isBackfill && (
+              <p className="text-xs text-amber-600">Backfilling for a past date</p>
+            )}
+          </div>
           {type === 'BP' ? (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

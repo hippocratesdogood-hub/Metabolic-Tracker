@@ -41,6 +41,13 @@ Preferred communication style: Simple, everyday language.
 - **Data Adapter**: Context provider in `client/src/lib/dataAdapter.tsx` manages data fetching and caching
 - **Form Validation**: Zod schemas generated from Drizzle tables via drizzle-zod
 
+### Backfill Support
+- Users can backfill food and metric entries for up to 7 days in the past
+- Date selector in entry forms (defaults to today)
+- Backfilled entries are identified by comparing `timestamp` to `createdAt` (>1 hour difference = backfilled)
+- Use `isBackfilledEntry()` helper from `server/storage.ts` to check
+- **IMPORTANT**: Backfilled entries should NOT trigger prompts or retroactive report notifications
+
 ## External Dependencies
 
 ### Database

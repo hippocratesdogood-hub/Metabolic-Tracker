@@ -5,8 +5,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Camera, Mic, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie } from 'lucide-react';
-import { format } from 'date-fns';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Camera, Mic, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock } from 'lucide-react';
+import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -31,8 +33,12 @@ export default function FoodLog() {
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
   const [mealType, setMealType] = useState<MealType>(suggestMealType());
+  const [entryDate, setEntryDate] = useState<Date>(new Date());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  
+  const minDate = subDays(startOfDay(new Date()), 7);
+  const maxDate = new Date();
 
   const { data: foodEntries = [], isLoading } = useQuery({
     queryKey: ['food'],
@@ -83,7 +89,7 @@ export default function FoodLog() {
       inputType: 'text',
       mealType,
       rawText: input,
-      timestamp: new Date(),
+      timestamp: entryDate,
       aiOutputJson: {
         foods_detected: analysisResult.foods_detected,
         macros: analysisResult.macros,
@@ -95,7 +101,10 @@ export default function FoodLog() {
     setInput('');
     setAnalysisResult(null);
     setMealType(suggestMealType());
+    setEntryDate(new Date());
   };
+  
+  const isBackfill = !isToday(entryDate);
 
   const MealIcon = mealIcons[mealType];
 
@@ -142,7 +151,7 @@ export default function FoodLog() {
       <Card className="border-none shadow-md overflow-hidden">
         <CardContent className="p-0">
           <div className="p-4 space-y-4">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Select value={mealType} onValueChange={(v) => setMealType(v as MealType)}>
                 <SelectTrigger className="w-[140px]" data-testid="select-meal-type">
                   <div className="flex items-center gap-2">
@@ -177,7 +186,32 @@ export default function FoodLog() {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">Auto-suggested based on time of day</span>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className={cn("gap-2", isBackfill && "border-amber-500 text-amber-600")} data-testid="button-date-picker">
+                    <CalendarIcon className="w-4 h-4" />
+                    {isToday(entryDate) ? 'Today' : format(entryDate, 'MMM d')}
+                    {isBackfill && <Clock className="w-3 h-3" />}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={entryDate}
+                    onSelect={(date) => date && setEntryDate(date)}
+                    disabled={(date) => isBefore(date, minDate) || isAfter(date, maxDate)}
+                    initialFocus
+                  />
+                  <div className="p-2 border-t text-xs text-muted-foreground text-center">
+                    Backfill entries up to 7 days
+                  </div>
+                </PopoverContent>
+              </Popover>
+              
+              {isBackfill && (
+                <span className="text-xs text-amber-600 font-medium">Backfilling for {format(entryDate, 'MMM d')}</span>
+              )}
             </div>
 
             <Textarea 
