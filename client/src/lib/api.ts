@@ -145,6 +145,19 @@ class ApiClient {
     return this.request<any>(`/admin/participants/${userId}/macro-targets`);
   }
 
+  async setParticipantMacroTargets(userId: string, data: {
+    calories?: number;
+    proteinG?: number;
+    carbsG?: number;
+    fatG?: number;
+    fiberG?: number;
+  }) {
+    return this.request<any>(`/admin/participants/${userId}/macro-targets`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   async getAllUsers() {
     return this.request<any[]>("/admin/users");
   }

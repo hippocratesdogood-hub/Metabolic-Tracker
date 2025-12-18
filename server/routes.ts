@@ -294,6 +294,28 @@ export async function registerRoutes(
     }
   });
 
+  // Set macro targets for a specific user (admin/coach only)
+  app.put("/api/admin/participants/:userId/macro-targets", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin" && req.user!.role !== "coach") {
+        return res.status(403).json({ message: "Admin or coach access required" });
+      }
+      const result = insertMacroTargetSchema.safeParse({
+        ...req.body,
+        userId: req.params.userId,
+      });
+      
+      if (!result.success) {
+        return res.status(400).json({ message: fromZodError(result.error).message });
+      }
+
+      const target = await storage.upsertMacroTarget(req.params.userId, result.data);
+      res.json(target);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Admin - Get all users (admin only)
   app.get("/api/admin/users", requireAuth, async (req, res) => {
     try {

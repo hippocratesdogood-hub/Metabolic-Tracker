@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar } from 'lucide-react';
+import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ export default function Participants() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showMacroModal, setShowMacroModal] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<any>(null);
   const [createdParticipant, setCreatedParticipant] = useState<any>(null);
   const [tempPassword, setTempPassword] = useState('');
@@ -85,6 +86,19 @@ export default function Participants() {
       queryClient.invalidateQueries({ queryKey: ['participants'] });
       toast.success('Temporary password updated. Participant will reset it at next login.');
       setShowResetModal(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.message);
+    },
+  });
+
+  const macroTargetsMutation = useMutation({
+    mutationFn: ({ userId, data }: { userId: string; data: any }) =>
+      api.setParticipantMacroTargets(userId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['participant-targets'] });
+      toast.success('Macro targets saved successfully');
+      setShowMacroModal(false);
     },
     onError: (error: any) => {
       toast.error(error.message);
@@ -216,6 +230,15 @@ export default function Participants() {
                       >
                         <KeyRound className="w-4 h-4" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setSelectedParticipant(p); setShowMacroModal(true); }}
+                        data-testid={`button-macros-${p.id}`}
+                        title="Set macro targets"
+                      >
+                        <Target className="w-4 h-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -268,6 +291,14 @@ export default function Participants() {
         showPassword={showPassword}
         onToggleShow={() => setShowPassword(!showPassword)}
         onCopy={handleCopy}
+      />
+
+      <MacroTargetsModal
+        open={showMacroModal}
+        onClose={() => setShowMacroModal(false)}
+        participant={selectedParticipant}
+        onSubmit={(data: any) => macroTargetsMutation.mutate({ userId: selectedParticipant?.id, data })}
+        isLoading={macroTargetsMutation.isPending}
       />
     </div>
   );
@@ -664,6 +695,141 @@ function SuccessModal({ open, onClose, participant, tempPassword, copied, showPa
           </Button>
           <Button onClick={onClose}>Done</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MacroTargetsModal({ open, onClose, participant, onSubmit, isLoading }: any) {
+  const [calories, setCalories] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+  const [fiber, setFiber] = useState('');
+
+  const { data: existingTargets, isLoading: loadingTargets } = useQuery({
+    queryKey: ['participant-targets', participant?.id],
+    queryFn: () => api.getParticipantMacroTargets(participant.id),
+    enabled: open && !!participant?.id,
+  });
+
+  React.useEffect(() => {
+    if (existingTargets) {
+      setCalories(existingTargets.calories?.toString() || '');
+      setProtein(existingTargets.proteinG?.toString() || '');
+      setCarbs(existingTargets.carbsG?.toString() || '');
+      setFat(existingTargets.fatG?.toString() || '');
+      setFiber(existingTargets.fiberG?.toString() || '');
+    } else if (open) {
+      setCalories(''); setProtein(''); setCarbs(''); setFat(''); setFiber('');
+    }
+  }, [existingTargets, open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      calories: calories ? parseInt(calories) : undefined,
+      proteinG: protein ? parseInt(protein) : undefined,
+      carbsG: carbs ? parseInt(carbs) : undefined,
+      fatG: fat ? parseInt(fat) : undefined,
+      fiberG: fiber ? parseInt(fiber) : undefined,
+    });
+  };
+
+  const handleClose = () => {
+    setCalories(''); setProtein(''); setCarbs(''); setFat(''); setFiber('');
+    onClose();
+  };
+
+  if (!participant) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Target className="w-5 h-5 text-primary" />
+            Macro Targets for {participant.name}
+          </DialogTitle>
+          <DialogDescription>
+            Set daily macronutrient targets for this participant. These targets will be used to track their nutrition adherence.
+          </DialogDescription>
+        </DialogHeader>
+        {loadingTargets ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="calories">Calories</Label>
+                <Input
+                  id="calories"
+                  type="number"
+                  placeholder="e.g. 1800"
+                  value={calories}
+                  onChange={(e) => setCalories(e.target.value)}
+                  data-testid="input-calories"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="protein">Protein (g)</Label>
+                <Input
+                  id="protein"
+                  type="number"
+                  placeholder="e.g. 120"
+                  value={protein}
+                  onChange={(e) => setProtein(e.target.value)}
+                  data-testid="input-protein"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="carbs">Carbs (g)</Label>
+                <Input
+                  id="carbs"
+                  type="number"
+                  placeholder="e.g. 100"
+                  value={carbs}
+                  onChange={(e) => setCarbs(e.target.value)}
+                  data-testid="input-carbs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fat">Fat (g)</Label>
+                <Input
+                  id="fat"
+                  type="number"
+                  placeholder="e.g. 80"
+                  value={fat}
+                  onChange={(e) => setFat(e.target.value)}
+                  data-testid="input-fat"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fiber">Fiber (g)</Label>
+              <Input
+                id="fiber"
+                type="number"
+                placeholder="e.g. 30"
+                value={fiber}
+                onChange={(e) => setFiber(e.target.value)}
+                className="w-1/2"
+                data-testid="input-fiber"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Leave fields empty to skip those targets.
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
+              <Button type="submit" disabled={isLoading} data-testid="button-save-macros">
+                {isLoading ? 'Saving...' : 'Save Targets'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
