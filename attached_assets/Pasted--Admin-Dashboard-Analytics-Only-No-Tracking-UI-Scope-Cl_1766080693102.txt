@@ -1,0 +1,92 @@
+## Admin Dashboard — Analytics Only (No Tracking UI)
+
+### Scope Clarification (Important)
+- The Admin dashboard should **NOT** include participant food logging or metric entry screens.
+- Admin’s purpose is **oversight + analytics + configuration** (users/coaches/prompts), not daily tracking.
+
+---
+
+## Admin Dashboard: Analytics (MVP)
+
+### Goal
+Provide a single place for Admin to see:
+- total participant counts
+- engagement/adherence
+- risk flags and trends
+- program-wide outcomes (aggregate only)
+
+### Required Admin Analytics Widgets (MVP)
+1) **Participants Overview**
+- Total participants
+- Active participants (logged at least 1 metric OR 1 food entry in last 7 days)
+- New participants (last 7 / 30 days)
+
+2) **Engagement / Adherence**
+- Average daily adherence (last 7 days)
+- % participants with 3+ day logging streak
+- % participants who logged at least 4 of 5 metrics today (or last available day)
+- “Inactive” list: participants with no logs in last 7 days (top 20)
+
+3) **Alerts / Flags (program-wide)**
+- Count of participants currently flagged for:
+  - High fasting glucose pattern (3-day rule)
+  - Elevated BP repeat (2 in 7 days)
+  - Low ketones during keto phase (if enabled)
+  - Missed logging > 3 days
+- Click-through list for each flag (participant name + coach + last log date)
+
+4) **Macro Adherence (aggregate)**
+- % participants meeting protein target (within ±10%) over last 7 days
+- % participants over carb target (over +10%) over last 7 days
+- Average protein intake vs target (aggregate)
+- Note: Use user-corrected macros if present; otherwise AI estimates.
+
+5) **Outcome Signals (aggregate trends)**
+For last 30 days (aggregate):
+- Average weight change (among participants with >=2 entries)
+- Average waist change (among participants with >=2 entries)
+- Average fasting glucose change (among participants with >=2 fasting entries)
+Show these as:
+- mean change
+- number of participants included (“n=”)
+- a simple sparkline/trend
+
+6) **Coach Workload Snapshot**
+- Participants per coach
+- Unread messages per coach
+- # flagged participants per coach
+
+---
+
+## Filters (MVP)
+Admin analytics must support filters:
+- Date range: 7 / 30 / 90 days
+- Coach filter: All coaches or one coach
+- Cohort filter (optional MVP): by program_start_date month or cohort tag
+
+---
+
+## Data Rules / Integrity (Important)
+- Analytics are **aggregate only** (no individual biomarker details on the main dashboard)
+- Every metric must show “n=” so averages aren’t misleading
+- Exclude outliers if data is clearly invalid (basic sanity checks) OR show a warning
+- Backfilled entries should be allowed, but analytics should be computed from the stored timestamps (not createdAt)
+
+---
+
+## API Requirements (Admin-only)
+Create Admin-only endpoints to power analytics:
+- GET /api/admin/analytics/overview?range=7|30|90&coachId=
+- GET /api/admin/analytics/flags?range=7|30|90&coachId=
+- GET /api/admin/analytics/macros?range=7|30|90&coachId=
+- GET /api/admin/analytics/outcomes?range=30|90&coachId=
+- GET /api/admin/analytics/coaches?range=7|30|90
+
+RBAC: only admin role can access /api/admin/analytics/*
+
+---
+
+## Admin UI Requirements (MVP)
+- Admin Dashboard page = analytics cards + tables + filters
+- Clicking a flag opens a filtered participant list (read-only summary is fine)
+- Admin can navigate to Participants management for edits/assignments

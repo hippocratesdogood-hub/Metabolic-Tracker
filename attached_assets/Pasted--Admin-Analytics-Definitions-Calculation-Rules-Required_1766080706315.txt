@@ -1,0 +1,196 @@
+## Admin Analytics — Definitions & Calculation Rules (Required)
+
+This section defines exactly how analytics metrics must be calculated so results are consistent, defensible, and clinically meaningful.
+
+---
+
+## Core Definitions
+
+### Participant
+A user with `role = participant`.
+
+---
+
+### Active Participant
+A participant is considered **Active** if they have logged **at least one** of the following within the selected date range:
+- any metric entry (BP, weight, glucose, ketones, waist), OR
+- any food entry
+
+Default ranges:
+- Active (7 days): ≥1 log in last 7 days
+- Active (30 days): ≥1 log in last 30 days
+
+---
+
+### Inactive Participant
+A participant with **no logs of any kind** (metrics or food) within the selected date range.
+
+---
+
+## Adherence Definitions
+
+### Daily Adherence (per participant)
+Daily adherence is calculated as:
+
+(number of required metrics logged on that day)  
+÷  
+(total required metrics for that day)
+
+Required metrics (MVP):
+- BP
+- Weight
+- Glucose
+- Ketones
+- Waist
+
+Example:
+- 4 of 5 metrics logged = 80% daily adherence
+
+---
+
+### Weekly Adherence (per participant)
+Weekly adherence is the **average of daily adherence** across the last 7 days.
+
+---
+
+### Program-Level Adherence (Admin dashboard)
+Displayed as:
+- Average weekly adherence across all active participants
+- % of participants with ≥80% weekly adherence
+
+---
+
+### Logging Streak
+A participant has a streak if they log **at least one metric OR one food entry** on consecutive days.
+
+Admin dashboard should display:
+- % of participants with ≥3-day streak
+- % of participants with ≥7-day streak (optional)
+
+---
+
+## Flag / Alert Definitions
+
+### High Fasting Glucose Flag
+Triggered when:
+- Metric type = glucose
+- Context tag = fasting
+- Value ≥ 110 mg/dL
+- Occurs on **3 separate days within a rolling 3-day window**
+
+Flag remains active until:
+- A fasting glucose <110 mg/dL is logged on 2 separate days
+
+---
+
+### Elevated Blood Pressure Flag
+Triggered when:
+- BP ≥ 140 systolic OR ≥ 90 diastolic
+- Occurs **2 times within a rolling 7-day window**
+
+Flag remains active until:
+- BP <140/90 is logged twice on separate days
+
+---
+
+### Missed Logging Flag
+Triggered when:
+- No metric entries AND no food entries
+- For ≥3 consecutive days
+
+Clears when:
+- Any metric or food entry is logged
+
+---
+
+### Low Ketones (Keto Phase Only)
+Triggered when:
+- User preference `keto_phase_enabled = true`
+- Ketones < 0.3 mmol/L
+- Occurs on 2 days within a rolling 2-day window
+
+---
+
+## Macro Target Definitions
+
+### Macro Targets
+Each participant may have:
+- Daily macro targets
+- Optional per-meal macro targets
+
+Macros tracked:
+- Calories
+- Protein (g)
+- Carbs (g)
+- Fat (g)
+- Fiber (optional)
+
+---
+
+### Macro Intake Source of Truth
+When calculating macro intake:
+1. Use **user-corrected macros** if present
+2. Otherwise, use **AI-estimated macros**
+
+Never mix both for the same entry.
+
+---
+
+### “Meeting Macro Target” (Admin analytics)
+A participant is considered to have **met a macro target** if:
+
+- Protein intake is within ±10% of target
+- Carbs intake is within ±10% of target
+- Fat intake is within ±10% of target
+- Calories (if used) within ±10% of target
+
+Admin dashboard should show:
+- % meeting protein target
+- % exceeding carb target
+- Average protein vs target (aggregate)
+
+---
+
+## Outcome Metrics (Aggregate Only)
+
+### Weight Change
+Include only participants with:
+- ≥2 weight entries within the selected date range
+
+Calculation:
+- Latest value − earliest value in range
+
+Display:
+- Mean change
+- n = number of participants included
+
+---
+
+### Waist Circumference Change
+Same inclusion and calculation rules as weight.
+
+---
+
+### Fasting Glucose Change
+Include only participants with:
+- ≥2 fasting glucose entries within range
+
+Calculation:
+- Latest fasting value − earliest fasting value
+
+---
+
+## Data Integrity Rules
+
+- Analytics must be computed using the **stored timestamps**, not `createdAt`
+- Backfilled entries are allowed but must follow the same timestamp logic
+- All averages must display sample size (n)
+- If n < 5, display a warning:
+  “Limited data — interpret cautiously”
+
+---
+
+## Privacy & Scope
+- Admin analytics are **aggregate only**
+- No individual lab values or meal details shown on main Admin dashboard
+- Individual participant data accessible only via Participant detail views
