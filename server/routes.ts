@@ -132,10 +132,13 @@ export async function registerRoutes(
   // Metrics routes
   app.post("/api/metrics", requireAuth, async (req, res) => {
     try {
-      const result = insertMetricEntrySchema.safeParse({
+      const data = {
         ...req.body,
         userId: req.user!.id,
-      });
+        timestamp: req.body.timestamp ? new Date(req.body.timestamp) : new Date(),
+      };
+      
+      const result = insertMetricEntrySchema.safeParse(data);
       
       if (!result.success) {
         return res.status(400).json({ message: fromZodError(result.error).message });
@@ -190,10 +193,13 @@ export async function registerRoutes(
   // Food routes
   app.post("/api/food", requireAuth, async (req, res) => {
     try {
-      const result = insertFoodEntrySchema.safeParse({
+      const data = {
         ...req.body,
         userId: req.user!.id,
-      });
+        timestamp: req.body.timestamp ? new Date(req.body.timestamp) : new Date(),
+      };
+      
+      const result = insertFoodEntrySchema.safeParse(data);
       
       if (!result.success) {
         return res.status(400).json({ message: fromZodError(result.error).message });
