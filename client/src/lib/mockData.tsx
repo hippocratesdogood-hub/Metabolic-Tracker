@@ -2,13 +2,18 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { addDays, format, subDays, isSameDay } from 'date-fns';
 
 // Types
+export type Role = 'participant' | 'coach' | 'admin';
+export type UnitsPreference = 'US' | 'Metric';
+
 export type User = {
   id: string;
+  role: Role;
   name: string;
   email: string;
   coachName: string;
   programStartDate: Date;
-  units: 'US' | 'Metric';
+  timezone: string;
+  units: UnitsPreference;
 };
 
 export type MetricType = 'BP' | 'WAIST' | 'GLUCOSE' | 'KETONES' | 'WEIGHT';
@@ -71,10 +76,12 @@ export type PromptRule = {
 // Mock Data
 const MOCK_USER: User = {
   id: 'u1',
+  role: 'participant',
   name: 'Alex Rivera',
   email: 'alex@example.com',
   coachName: 'Dr. Sarah',
   programStartDate: subDays(new Date(), 14),
+  timezone: 'America/Los_Angeles',
   units: 'US',
 };
 
