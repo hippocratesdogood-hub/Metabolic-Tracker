@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, crypto } from "./auth";
+import { analyticsService } from "./analytics";
 import passport from "passport";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
@@ -690,6 +691,76 @@ export async function registerRoutes(
         byMeal,
         entriesCount: entries.length
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin Analytics routes (admin only)
+  app.get("/api/admin/analytics/overview", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const range = parseInt(req.query.range as string) || 7;
+      const coachId = req.query.coachId as string | undefined;
+      const data = await analyticsService.getOverview(range, coachId);
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/analytics/flags", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const range = parseInt(req.query.range as string) || 7;
+      const coachId = req.query.coachId as string | undefined;
+      const data = await analyticsService.getFlags(range, coachId);
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/analytics/macros", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const range = parseInt(req.query.range as string) || 7;
+      const coachId = req.query.coachId as string | undefined;
+      const data = await analyticsService.getMacros(range, coachId);
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/analytics/outcomes", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const range = parseInt(req.query.range as string) || 30;
+      const coachId = req.query.coachId as string | undefined;
+      const data = await analyticsService.getOutcomes(range, coachId);
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/analytics/coaches", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const range = parseInt(req.query.range as string) || 7;
+      const data = await analyticsService.getCoachWorkload(range);
+      res.json(data);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

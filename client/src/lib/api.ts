@@ -248,6 +248,35 @@ class ApiClient {
     return this.request<any[]>(`/admin/deliveries${query}`);
   }
 
+  // Admin - Analytics
+  async getAnalyticsOverview(range: number = 7, coachId?: string) {
+    const params = new URLSearchParams({ range: range.toString() });
+    if (coachId) params.append("coachId", coachId);
+    return this.request<any>(`/admin/analytics/overview?${params}`);
+  }
+
+  async getAnalyticsFlags(range: number = 7, coachId?: string) {
+    const params = new URLSearchParams({ range: range.toString() });
+    if (coachId) params.append("coachId", coachId);
+    return this.request<any>(`/admin/analytics/flags?${params}`);
+  }
+
+  async getAnalyticsMacros(range: number = 7, coachId?: string) {
+    const params = new URLSearchParams({ range: range.toString() });
+    if (coachId) params.append("coachId", coachId);
+    return this.request<any>(`/admin/analytics/macros?${params}`);
+  }
+
+  async getAnalyticsOutcomes(range: number = 30, coachId?: string) {
+    const params = new URLSearchParams({ range: range.toString() });
+    if (coachId) params.append("coachId", coachId);
+    return this.request<any>(`/admin/analytics/outcomes?${params}`);
+  }
+
+  async getAnalyticsCoaches(range: number = 7) {
+    return this.request<any[]>(`/admin/analytics/coaches?range=${range}`);
+  }
+
   // Messaging
   async getConversations() {
     return this.request<Conversation[]>("/conversations");

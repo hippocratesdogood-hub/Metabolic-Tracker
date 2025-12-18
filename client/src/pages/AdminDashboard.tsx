@@ -1,435 +1,405 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Users, Target, ChevronRight, Save, Shield, UserCog } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { 
+  Shield, Users, Activity, AlertTriangle, TrendingUp, TrendingDown, 
+  UserCheck, UserX, Calendar, Target, MessageSquare, Flame, Heart,
+  Droplet, Scale, Ruler, ChevronRight
+} from 'lucide-react';
 import { Link } from 'wouter';
-
-interface MacroTargets {
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-  fiberG: number;
-}
+import { format } from 'date-fns';
 
 export default function AdminDashboard() {
   const { user: currentUser } = useAuth();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [selectedParticipant, setSelectedParticipant] = useState<any>(null);
-  const [editingTargets, setEditingTargets] = useState<MacroTargets | null>(null);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [range, setRange] = useState(7);
+  const [coachFilter, setCoachFilter] = useState<string | undefined>();
 
   const isAdmin = currentUser?.role === 'admin';
 
-  const { data: participants, isLoading } = useQuery({
-    queryKey: ['participants'],
-    queryFn: () => api.getParticipants(),
-  });
-
-  const { data: allUsers } = useQuery({
-    queryKey: ['all-users'],
-    queryFn: () => api.getAllUsers(),
-    enabled: isAdmin,
-  });
-
-  const { data: coaches } = useQuery({
+  const { data: coaches = [] } = useQuery({
     queryKey: ['coaches'],
     queryFn: () => api.getCoaches(),
   });
 
-  const { data: participantTargets, isLoading: loadingTargets } = useQuery({
-    queryKey: ['participant-targets', selectedParticipant?.id],
-    queryFn: () => api.getParticipantMacroTargets(selectedParticipant.id),
-    enabled: !!selectedParticipant,
+  const { data: overview, isLoading: loadingOverview } = useQuery({
+    queryKey: ['analytics-overview', range, coachFilter],
+    queryFn: () => api.getAnalyticsOverview(range, coachFilter),
+    enabled: isAdmin,
   });
 
-  const updateTargetsMutation = useMutation({
-    mutationFn: (data: MacroTargets) => api.updateMacroTargets(data, selectedParticipant?.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['participant-targets', selectedParticipant?.id] });
-      toast({ title: 'Success', description: 'Macro targets updated successfully' });
-      setEditingTargets(null);
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+  const { data: flags, isLoading: loadingFlags } = useQuery({
+    queryKey: ['analytics-flags', range, coachFilter],
+    queryFn: () => api.getAnalyticsFlags(range, coachFilter),
+    enabled: isAdmin,
   });
 
-  const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) => api.updateUserRole(userId, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-users'] });
-      queryClient.invalidateQueries({ queryKey: ['participants'] });
-      queryClient.invalidateQueries({ queryKey: ['coaches'] });
-      toast({ title: 'Success', description: 'User role updated successfully' });
-      setEditingUser(null);
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+  const { data: macros, isLoading: loadingMacros } = useQuery({
+    queryKey: ['analytics-macros', range, coachFilter],
+    queryFn: () => api.getAnalyticsMacros(range, coachFilter),
+    enabled: isAdmin,
   });
 
-  const assignCoachMutation = useMutation({
-    mutationFn: ({ participantId, coachId }: { participantId: string; coachId: string }) => 
-      api.assignCoach(participantId, coachId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['participants'] });
-      toast({ title: 'Success', description: 'Coach assigned successfully' });
-    },
-    onError: (error: any) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+  const { data: outcomes, isLoading: loadingOutcomes } = useQuery({
+    queryKey: ['analytics-outcomes', 30, coachFilter],
+    queryFn: () => api.getAnalyticsOutcomes(30, coachFilter),
+    enabled: isAdmin,
   });
 
-  const handleEditTargets = () => {
-    setEditingTargets(participantTargets || {
-      calories: 1800,
-      proteinG: 120,
-      carbsG: 100,
-      fatG: 80,
-      fiberG: 30,
-    });
-  };
+  const { data: coachWorkload = [] } = useQuery({
+    queryKey: ['analytics-coaches', range],
+    queryFn: () => api.getAnalyticsCoaches(range),
+    enabled: isAdmin,
+  });
 
-  const handleSaveTargets = () => {
-    if (editingTargets) {
-      updateTargetsMutation.mutate(editingTargets);
+  if (!isAdmin) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        Admin access required
+      </div>
+    );
+  }
+
+  const getFlagIcon = (type: string) => {
+    switch (type) {
+      case 'high_glucose': return <Droplet className="w-4 h-4 text-red-500" />;
+      case 'elevated_bp': return <Heart className="w-4 h-4 text-red-500" />;
+      case 'missed_logging': return <Calendar className="w-4 h-4 text-yellow-500" />;
+      case 'low_ketones': return <Flame className="w-4 h-4 text-orange-500" />;
+      default: return <AlertTriangle className="w-4 h-4" />;
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'admin': return 'bg-red-100 text-red-700 border-red-200';
-      case 'coach': return 'bg-blue-100 text-blue-700 border-blue-200';
-      default: return 'bg-green-100 text-green-700 border-green-200';
+  const getFlagLabel = (type: string) => {
+    switch (type) {
+      case 'high_glucose': return 'High Glucose';
+      case 'elevated_bp': return 'Elevated BP';
+      case 'missed_logging': return 'Missed Logging';
+      case 'low_ketones': return 'Low Ketones';
+      default: return type;
     }
   };
 
   return (
-    <div className="space-y-8 pb-20">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-20">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-heading font-bold text-foreground flex items-center gap-2">
-            <Shield className="w-8 h-8 text-primary" />
-            Admin Dashboard
+          <h1 className="text-2xl font-heading font-bold flex items-center gap-2" data-testid="text-page-title">
+            <Shield className="w-6 h-6 text-primary" />
+            Admin Analytics
           </h1>
-          <p className="text-muted-foreground mt-1">Manage participants, coaches, and nutrition targets</p>
+          <p className="text-muted-foreground mt-1">Program oversight and analytics</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Select value={range.toString()} onValueChange={(v) => setRange(parseInt(v))}>
+            <SelectTrigger className="w-32" data-testid="select-range">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={coachFilter || "all"} onValueChange={(v) => setCoachFilter(v === "all" ? undefined : v)}>
+            <SelectTrigger className="w-40" data-testid="select-coach">
+              <SelectValue placeholder="All Coaches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Coaches</SelectItem>
+              {coaches.map((c: any) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Link href="/admin/participants">
-            <Button variant="outline" data-testid="link-participants-admin">
+            <Button variant="outline" data-testid="link-participants">
               Manage Participants
             </Button>
           </Link>
           <Link href="/admin/prompts">
-            <Button variant="outline" data-testid="link-prompts-admin">
+            <Button variant="outline" data-testid="link-prompts">
               Manage Prompts
             </Button>
           </Link>
         </div>
       </div>
 
-      <Tabs defaultValue="participants" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-          <TabsTrigger value="participants">Participants</TabsTrigger>
-          {isAdmin && <TabsTrigger value="users">All Users</TabsTrigger>}
-        </TabsList>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card data-testid="card-total-participants">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Users className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overview?.totalParticipants ?? '-'}</p>
+                <p className="text-sm text-muted-foreground">Total Participants</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="participants" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card data-testid="card-participants">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" />
-                  Participants ({participants?.length || 0})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <p className="text-muted-foreground">Loading participants...</p>
-                ) : participants?.length === 0 ? (
-                  <p className="text-muted-foreground">No participants found</p>
-                ) : (
-                  <div className="space-y-2">
-                    {participants?.map((p: any) => (
-                      <div
-                        key={p.id}
-                        onClick={() => setSelectedParticipant(p)}
-                        className={`flex items-center justify-between p-4 rounded-lg cursor-pointer transition-colors ${
-                          selectedParticipant?.id === p.id
-                            ? 'bg-primary/10 border border-primary/20'
-                            : 'bg-muted/50 hover:bg-muted'
-                        }`}
-                        data-testid={`participant-row-${p.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold">
-                            {p.name?.charAt(0) || 'U'}
-                          </div>
-                          <div>
-                            <p className="font-medium">{p.name}</p>
-                            <p className="text-sm text-muted-foreground">{p.email}</p>
-                            {p.coachId && coaches && (
-                              <p className="text-xs text-primary">
-                                Coach: {coaches.find((c: any) => c.id === p.coachId)?.name || 'Assigned'}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        <Card data-testid="card-active-participants">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <UserCheck className="w-5 h-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overview?.activeParticipants ?? '-'}</p>
+                <p className="text-sm text-muted-foreground">Active (last {range}d)</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-            {selectedParticipant && (
-              <Card data-testid="card-participant-details">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="w-5 h-5 text-primary" />
-                    {selectedParticipant.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {isAdmin && (
-                    <div className="space-y-3">
-                      <Label>Assign Coach</Label>
-                      <Select
-                        value={selectedParticipant.coachId || ''}
-                        onValueChange={(coachId) => {
-                          assignCoachMutation.mutate({
-                            participantId: selectedParticipant.id,
-                            coachId,
-                          });
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-coach">
-                          <SelectValue placeholder="Select a coach" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {coaches?.map((coach: any) => (
-                            <SelectItem key={coach.id} value={coach.id}>
-                              {coach.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+        <Card data-testid="card-inactive-participants">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <UserX className="w-5 h-5 text-yellow-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overview?.inactiveParticipants ?? '-'}</p>
+                <p className="text-sm text-muted-foreground">Inactive</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-3">Macro Targets</h4>
-                    {loadingTargets ? (
-                      <p className="text-muted-foreground">Loading targets...</p>
-                    ) : participantTargets ? (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3 bg-muted/50 rounded-lg">
-                            <p className="text-xs text-muted-foreground">Calories</p>
-                            <p className="text-xl font-bold">{participantTargets.calories || '--'}</p>
-                          </div>
-                          <div className="p-3 bg-muted/50 rounded-lg">
-                            <p className="text-xs text-muted-foreground">Protein</p>
-                            <p className="text-xl font-bold">{participantTargets.proteinG || '--'}g</p>
-                          </div>
-                          <div className="p-3 bg-muted/50 rounded-lg">
-                            <p className="text-xs text-muted-foreground">Carbs</p>
-                            <p className="text-xl font-bold">{participantTargets.carbsG || '--'}g</p>
-                          </div>
-                          <div className="p-3 bg-muted/50 rounded-lg">
-                            <p className="text-xs text-muted-foreground">Fat</p>
-                            <p className="text-xl font-bold">{participantTargets.fatG || '--'}g</p>
-                          </div>
-                        </div>
-                        <Button onClick={handleEditTargets} className="w-full" data-testid="button-edit-targets">
-                          Edit Macro Targets
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <p className="text-muted-foreground">No macro targets set.</p>
-                        <Button onClick={handleEditTargets} className="w-full" data-testid="button-set-targets">
-                          Set Macro Targets
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
+        <Card data-testid="card-new-participants">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Calendar className="w-5 h-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overview?.newParticipants7Days ?? '-'}</p>
+                <p className="text-sm text-muted-foreground">New (7 days)</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        {isAdmin && (
-          <TabsContent value="users" className="mt-6">
-            <Card data-testid="card-all-users">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserCog className="w-5 h-5 text-primary" />
-                  User Management
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {allUsers?.map((u: any) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
-                      data-testid={`user-row-${u.id}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold">
-                          {u.name?.charAt(0) || 'U'}
-                        </div>
-                        <div>
-                          <p className="font-medium">{u.name}</p>
-                          <p className="text-sm text-muted-foreground">{u.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline" className={getRoleBadgeColor(u.role)}>
-                          {u.role}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingUser(u)}
-                          data-testid={`button-edit-user-${u.id}`}
-                        >
-                          Edit
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card data-testid="card-adherence">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-primary" />
+              Engagement & Adherence
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm">Average Weekly Adherence</span>
+              <span className="text-lg font-bold">{overview?.averageWeeklyAdherence ?? 0}%</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm">Participants with 3+ Day Streak</span>
+              <div className="text-right">
+                <span className="text-lg font-bold">{overview?.participantsWithStreak3Days ?? 0}</span>
+                <span className="text-muted-foreground ml-1">({overview?.participantsWithStreak3DaysPercent ?? 0}%)</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-flags">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              Health Alerts ({flags?.flags?.length ?? 0})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                <Droplet className="w-4 h-4 text-red-500" />
+                <div>
+                  <p className="text-sm font-medium">{flags?.highGlucoseCount ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">High Glucose</p>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-      </Tabs>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                <Heart className="w-4 h-4 text-red-500" />
+                <div>
+                  <p className="text-sm font-medium">{flags?.elevatedBpCount ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">Elevated BP</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
+                <Calendar className="w-4 h-4 text-yellow-500" />
+                <div>
+                  <p className="text-sm font-medium">{flags?.missedLoggingCount ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">Missed Logging</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
+                <Flame className="w-4 h-4 text-orange-500" />
+                <div>
+                  <p className="text-sm font-medium">{flags?.lowKetonesCount ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">Low Ketones</p>
+                </div>
+              </div>
+            </div>
+            {flags?.flags?.length > 0 && (
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {flags.flags.slice(0, 10).map((flag: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm">
+                    <div className="flex items-center gap-2">
+                      {getFlagIcon(flag.type)}
+                      <span className="font-medium">{flag.participantName}</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">{getFlagLabel(flag.type)}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      <Dialog open={!!editingTargets} onOpenChange={(open) => !open && setEditingTargets(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Macro Targets for {selectedParticipant?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="calories">Daily Calories</Label>
-                <Input
-                  id="calories"
-                  type="number"
-                  value={editingTargets?.calories || ''}
-                  onChange={(e) => setEditingTargets(prev => prev ? { ...prev, calories: parseInt(e.target.value) || 0 } : null)}
-                  data-testid="input-calories"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="protein">Protein (g)</Label>
-                <Input
-                  id="protein"
-                  type="number"
-                  value={editingTargets?.proteinG || ''}
-                  onChange={(e) => setEditingTargets(prev => prev ? { ...prev, proteinG: parseInt(e.target.value) || 0 } : null)}
-                  data-testid="input-protein"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="carbs">Carbs (g)</Label>
-                <Input
-                  id="carbs"
-                  type="number"
-                  value={editingTargets?.carbsG || ''}
-                  onChange={(e) => setEditingTargets(prev => prev ? { ...prev, carbsG: parseInt(e.target.value) || 0 } : null)}
-                  data-testid="input-carbs"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fat">Fat (g)</Label>
-                <Input
-                  id="fat"
-                  type="number"
-                  value={editingTargets?.fatG || ''}
-                  onChange={(e) => setEditingTargets(prev => prev ? { ...prev, fatG: parseInt(e.target.value) || 0 } : null)}
-                  data-testid="input-fat"
-                />
+        <Card data-testid="card-macros">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Macro Adherence
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm">Meeting Protein Target (±10%)</span>
+              <div className="text-right">
+                <span className="text-lg font-bold text-green-600">{macros?.participantsMeetingProtein ?? 0}</span>
+                <span className="text-muted-foreground ml-1">({macros?.participantsMeetingProteinPercent ?? 0}%)</span>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="fiber">Fiber (g)</Label>
-              <Input
-                id="fiber"
-                type="number"
-                value={editingTargets?.fiberG || ''}
-                onChange={(e) => setEditingTargets(prev => prev ? { ...prev, fiberG: parseInt(e.target.value) || 0 } : null)}
-                data-testid="input-fiber"
-              />
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm">Over Carb Target (+10%)</span>
+              <div className="text-right">
+                <span className="text-lg font-bold text-red-600">{macros?.participantsOverCarbs ?? 0}</span>
+                <span className="text-muted-foreground ml-1">({macros?.participantsOverCarbsPercent ?? 0}%)</span>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingTargets(null)}>Cancel</Button>
-            <Button onClick={handleSaveTargets} disabled={updateTargetsMutation.isPending} data-testid="button-save-targets">
-              <Save className="w-4 h-4 mr-2" />
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <span className="text-sm">Avg Protein vs Target</span>
+              <span className="text-lg font-bold">{macros?.averageProteinVsTarget ?? 0}%</span>
+            </div>
+            {macros?.totalWithTargets !== undefined && (
+              <p className="text-xs text-muted-foreground text-center">
+                n = {macros.totalWithTargets} participants with macro targets
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit User Role</DialogTitle>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div>
-              <p className="font-medium">{editingUser?.name}</p>
-              <p className="text-sm text-muted-foreground">{editingUser?.email}</p>
+        <Card data-testid="card-outcomes">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Outcome Trends (30 days)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">Weight Change</span>
+              </div>
+              <div className="text-right">
+                <span className={`text-lg font-bold ${(outcomes?.weight?.meanChange ?? 0) < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {outcomes?.weight?.meanChange > 0 ? '+' : ''}{outcomes?.weight?.meanChange ?? 0} lbs
+                </span>
+                <p className="text-xs text-muted-foreground">n = {outcomes?.weight?.participantCount ?? 0}</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select
-                value={editingUser?.role || ''}
-                onValueChange={(role) => setEditingUser((prev: any) => prev ? { ...prev, role } : null)}
-              >
-                <SelectTrigger data-testid="select-role">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="participant">Participant</SelectItem>
-                  <SelectItem value="coach">Coach</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Ruler className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">Waist Change</span>
+              </div>
+              <div className="text-right">
+                <span className={`text-lg font-bold ${(outcomes?.waist?.meanChange ?? 0) < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {outcomes?.waist?.meanChange > 0 ? '+' : ''}{outcomes?.waist?.meanChange ?? 0} in
+                </span>
+                <p className="text-xs text-muted-foreground">n = {outcomes?.waist?.participantCount ?? 0}</p>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button
-              onClick={() => updateRoleMutation.mutate({ userId: editingUser.id, role: editingUser.role })}
-              disabled={updateRoleMutation.isPending}
-              data-testid="button-save-role"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save Role
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Droplet className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm">Fasting Glucose Change</span>
+              </div>
+              <div className="text-right">
+                <span className={`text-lg font-bold ${(outcomes?.fastingGlucose?.meanChange ?? 0) < 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {outcomes?.fastingGlucose?.meanChange > 0 ? '+' : ''}{outcomes?.fastingGlucose?.meanChange ?? 0} mg/dL
+                </span>
+                <p className="text-xs text-muted-foreground">n = {outcomes?.fastingGlucose?.participantCount ?? 0}</p>
+              </div>
+            </div>
+            {(outcomes?.weight?.limitedData || outcomes?.waist?.limitedData || outcomes?.fastingGlucose?.limitedData) && (
+              <p className="text-xs text-yellow-600 dark:text-yellow-500 text-center">
+                Limited data — interpret cautiously
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card data-testid="card-coach-workload">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-primary" />
+            Coach Workload
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {coachWorkload.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No coaches assigned</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Coach</TableHead>
+                  <TableHead className="text-center">Participants</TableHead>
+                  <TableHead className="text-center">Unread Messages</TableHead>
+                  <TableHead className="text-center">Flagged</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {coachWorkload.map((coach: any) => (
+                  <TableRow key={coach.coachId} data-testid={`row-coach-${coach.coachId}`}>
+                    <TableCell className="font-medium">{coach.coachName}</TableCell>
+                    <TableCell className="text-center">{coach.participantCount}</TableCell>
+                    <TableCell className="text-center">
+                      {coach.unreadMessages > 0 ? (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                          {coach.unreadMessages}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {coach.flaggedParticipants > 0 ? (
+                        <Badge variant="destructive">{coach.flaggedParticipants}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
