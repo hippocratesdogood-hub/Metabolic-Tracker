@@ -129,6 +129,15 @@ class ApiClient {
     return this.request<any>(`/macro-progress${query}`);
   }
 
+  // Admin
+  async getParticipants() {
+    return this.request<any[]>("/admin/participants");
+  }
+
+  async getParticipantMacroTargets(userId: string) {
+    return this.request<any>(`/admin/participants/${userId}/macro-targets`);
+  }
+
   // Messaging
   async getConversations() {
     return this.request<Conversation[]>("/conversations");

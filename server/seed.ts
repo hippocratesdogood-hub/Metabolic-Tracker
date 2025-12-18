@@ -8,7 +8,7 @@ async function seed() {
 
   const password = await crypto.hash("password123");
   
-  // Create or get test user
+  // Create participant user
   await db.insert(users).values({
     email: "alex@example.com",
     name: "Alex Rivera",
@@ -16,11 +16,34 @@ async function seed() {
     role: "participant",
   }).onConflictDoNothing();
 
-  // Get the user
+  // Create a second participant
+  await db.insert(users).values({
+    email: "jordan@example.com",
+    name: "Jordan Smith",
+    passwordHash: password,
+    role: "participant",
+  }).onConflictDoNothing();
+
+  // Create coach user
+  await db.insert(users).values({
+    email: "coach@example.com",
+    name: "Coach Sarah",
+    passwordHash: password,
+    role: "coach",
+  }).onConflictDoNothing();
+
+  // Create admin user
+  await db.insert(users).values({
+    email: "admin@example.com",
+    name: "Admin User",
+    passwordHash: password,
+    role: "admin",
+  }).onConflictDoNothing();
+
+  // Get the participant user for macro targets
   const [user] = await db.select().from(users).where(eq(users.email, "alex@example.com"));
   
   if (user) {
-    // Add macro targets
     await db.insert(macroTargets).values({
       userId: user.id,
       calories: 1800,
@@ -40,6 +63,22 @@ async function seed() {
     console.log("✅ Macro targets seeded for", user.email);
   }
 
+  // Add macro targets for Jordan
+  const [jordan] = await db.select().from(users).where(eq(users.email, "jordan@example.com"));
+  if (jordan) {
+    await db.insert(macroTargets).values({
+      userId: jordan.id,
+      calories: 2000,
+      proteinG: 150,
+      carbsG: 120,
+      fatG: 70,
+      fiberG: 35,
+    }).onConflictDoNothing();
+    console.log("✅ Macro targets seeded for", jordan.email);
+  }
+
+  console.log("✅ Users created: alex@example.com, jordan@example.com (participants), coach@example.com (coach), admin@example.com (admin)");
+  console.log("✅ Password for all: password123");
   console.log("✅ Seed complete!");
   process.exit(0);
 }

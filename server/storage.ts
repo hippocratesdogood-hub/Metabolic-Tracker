@@ -28,6 +28,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  getAllParticipants(): Promise<User[]>;
 
   // Metrics
   createMetricEntry(entry: InsertMetricEntry): Promise<MetricEntry>;
@@ -78,6 +79,10 @@ export class PostgresStorage implements IStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return results[0];
+  }
+
+  async getAllParticipants(): Promise<User[]> {
+    return db.select().from(schema.users).where(eq(schema.users.role, "participant"));
   }
 
   // Metrics

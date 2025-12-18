@@ -15,6 +15,7 @@ import Reports from "@/pages/Reports";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import PromptsAdmin from "@/pages/PromptsAdmin";
+import AdminDashboard from "@/pages/AdminDashboard";
 
 function ProtectedRoute({ component: Component }: { component: () => React.JSX.Element }) {
   const { user, isLoading } = useAuth();
@@ -46,6 +47,7 @@ function Router() {
         <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
         <Route path="/reports">{() => <ProtectedRoute component={Reports} />}</Route>
         <Route path="/admin/prompts">{() => <ProtectedRoute component={PromptsAdmin} />}</Route>
+        <Route path="/admin">{() => <ProtectedRoute component={AdminDashboard} />}</Route>
         <Route component={NotFound} />
       </Switch>
     </Layout>

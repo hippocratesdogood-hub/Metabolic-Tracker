@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -14,12 +14,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen bg-background text-foreground font-sans">{children}</div>;
   }
 
+  const isAdminOrCoach = user?.role === 'admin' || user?.role === 'coach';
+
   const navItems = [
     { href: '/', label: 'Today', icon: LayoutDashboard },
     { href: '/trends', label: 'Trends', icon: TrendingUp },
     { href: '/food', label: 'Food', icon: Utensils },
     { href: '/messages', label: 'Coach', icon: MessageSquare },
     { href: '/reports', label: 'Reports', icon: FileText },
+    ...(isAdminOrCoach ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   return (

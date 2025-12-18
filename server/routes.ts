@@ -233,6 +233,33 @@ export async function registerRoutes(
     }
   });
 
+  // Admin routes - list all participants
+  app.get("/api/admin/participants", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin" && req.user!.role !== "coach") {
+        return res.status(403).json({ message: "Admin or coach access required" });
+      }
+      const participants = await storage.getAllParticipants();
+      const sanitized = participants.map(({ passwordHash, ...rest }) => rest);
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get macro targets for a specific user (admin/coach only)
+  app.get("/api/admin/participants/:userId/macro-targets", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin" && req.user!.role !== "coach") {
+        return res.status(403).json({ message: "Admin or coach access required" });
+      }
+      const target = await storage.getMacroTarget(req.params.userId);
+      res.json(target || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Macro Targets routes
   app.get("/api/macro-targets", requireAuth, async (req, res) => {
     try {
