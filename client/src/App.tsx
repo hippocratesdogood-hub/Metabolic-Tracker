@@ -13,6 +13,7 @@ import Messages from "@/pages/Messages";
 import Reports from "@/pages/Reports";
 import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
+import PromptsAdmin from "@/pages/PromptsAdmin";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/login" component={Login} />
         <Route path="/onboarding" component={Onboarding} />
+        <Route path="/admin/prompts" component={PromptsAdmin} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
