@@ -138,6 +138,80 @@ class ApiClient {
     return this.request<any>(`/admin/participants/${userId}/macro-targets`);
   }
 
+  async getAllUsers() {
+    return this.request<any[]>("/admin/users");
+  }
+
+  async updateUserRole(userId: string, role: string) {
+    return this.request<any>(`/admin/users/${userId}/role`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async getCoaches() {
+    return this.request<any[]>("/admin/coaches");
+  }
+
+  async assignCoach(participantId: string, coachId: string) {
+    return this.request<any>(`/admin/participants/${participantId}/assign-coach`, {
+      method: "POST",
+      body: JSON.stringify({ coachId }),
+    });
+  }
+
+  // Admin - Prompts
+  async getPrompts() {
+    return this.request<any[]>("/admin/prompts");
+  }
+
+  async createPrompt(data: any) {
+    return this.request<any>("/admin/prompts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePrompt(id: string, data: any) {
+    return this.request<any>(`/admin/prompts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePrompt(id: string) {
+    return this.request(`/admin/prompts/${id}`, { method: "DELETE" });
+  }
+
+  // Admin - Rules
+  async getRules() {
+    return this.request<any[]>("/admin/rules");
+  }
+
+  async createRule(data: any) {
+    return this.request<any>("/admin/rules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRule(id: string, data: any) {
+    return this.request<any>(`/admin/rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRule(id: string) {
+    return this.request(`/admin/rules/${id}`, { method: "DELETE" });
+  }
+
+  // Admin - Deliveries
+  async getDeliveries(limit?: number) {
+    const query = limit ? `?limit=${limit}` : "";
+    return this.request<any[]>(`/admin/deliveries${query}`);
+  }
+
   // Messaging
   async getConversations() {
     return this.request<Conversation[]>("/conversations");

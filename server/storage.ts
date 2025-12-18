@@ -14,6 +14,8 @@ import type {
   InsertMessage,
   MacroTarget,
   InsertMacroTarget,
+  Prompt,
+  PromptRule,
 } from "@shared/schema";
 
 const pool = new pg.Pool({
@@ -53,6 +55,27 @@ export interface IStorage {
   createMessage(message: InsertMessage): Promise<Message>;
   getMessages(conversationId: string): Promise<Message[]>;
   markMessageRead(messageId: string): Promise<void>;
+
+  // Admin - Users
+  getAllUsers(): Promise<User[]>;
+  getCoaches(): Promise<User[]>;
+  assignCoach(participantId: string, coachId: string): Promise<User | undefined>;
+
+  // Admin - Prompts
+  getPrompts(): Promise<Prompt[]>;
+  getPrompt(id: string): Promise<Prompt | undefined>;
+  createPrompt(data: Partial<Prompt>): Promise<Prompt>;
+  updatePrompt(id: string, data: Partial<Prompt>): Promise<Prompt | undefined>;
+  deletePrompt(id: string): Promise<boolean>;
+
+  // Admin - Prompt Rules
+  getPromptRules(): Promise<PromptRule[]>;
+  createPromptRule(data: Partial<PromptRule>): Promise<PromptRule>;
+  updatePromptRule(id: string, data: Partial<PromptRule>): Promise<PromptRule | undefined>;
+  deletePromptRule(id: string): Promise<boolean>;
+
+  // Admin - Prompt Deliveries
+  getPromptDeliveries(limit?: number): Promise<any[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -270,6 +293,86 @@ export class PostgresStorage implements IStorage {
       .update(schema.messages)
       .set({ readAt: new Date() })
       .where(eq(schema.messages.id, messageId));
+  }
+
+  // Admin - Users
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(schema.users).orderBy(schema.users.name);
+  }
+
+  async getCoaches(): Promise<User[]> {
+    return db.select().from(schema.users).where(eq(schema.users.role, "coach"));
+  }
+
+  async assignCoach(participantId: string, coachId: string): Promise<User | undefined> {
+    const results = await db
+      .update(schema.users)
+      .set({ coachId, updatedAt: new Date() })
+      .where(eq(schema.users.id, participantId))
+      .returning();
+    return results[0];
+  }
+
+  // Admin - Prompts
+  async getPrompts(): Promise<Prompt[]> {
+    return db.select().from(schema.prompts).orderBy(desc(schema.prompts.createdAt));
+  }
+
+  async getPrompt(id: string): Promise<Prompt | undefined> {
+    const results = await db.select().from(schema.prompts).where(eq(schema.prompts.id, id));
+    return results[0];
+  }
+
+  async createPrompt(data: Partial<Prompt>): Promise<Prompt> {
+    const results = await db.insert(schema.prompts).values(data as any).returning();
+    return results[0];
+  }
+
+  async updatePrompt(id: string, data: Partial<Prompt>): Promise<Prompt | undefined> {
+    const results = await db
+      .update(schema.prompts)
+      .set(data)
+      .where(eq(schema.prompts.id, id))
+      .returning();
+    return results[0];
+  }
+
+  async deletePrompt(id: string): Promise<boolean> {
+    const results = await db.delete(schema.prompts).where(eq(schema.prompts.id, id)).returning();
+    return results.length > 0;
+  }
+
+  // Admin - Prompt Rules
+  async getPromptRules(): Promise<PromptRule[]> {
+    return db.select().from(schema.promptRules).orderBy(desc(schema.promptRules.priority));
+  }
+
+  async createPromptRule(data: Partial<PromptRule>): Promise<PromptRule> {
+    const results = await db.insert(schema.promptRules).values(data as any).returning();
+    return results[0];
+  }
+
+  async updatePromptRule(id: string, data: Partial<PromptRule>): Promise<PromptRule | undefined> {
+    const results = await db
+      .update(schema.promptRules)
+      .set(data)
+      .where(eq(schema.promptRules.id, id))
+      .returning();
+    return results[0];
+  }
+
+  async deletePromptRule(id: string): Promise<boolean> {
+    const results = await db.delete(schema.promptRules).where(eq(schema.promptRules.id, id)).returning();
+    return results.length > 0;
+  }
+
+  // Admin - Prompt Deliveries
+  async getPromptDeliveries(limit: number = 100): Promise<any[]> {
+    return db
+      .select()
+      .from(schema.promptDeliveries)
+      .orderBy(desc(schema.promptDeliveries.firedAt))
+      .limit(limit);
   }
 }
 

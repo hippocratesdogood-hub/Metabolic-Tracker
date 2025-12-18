@@ -169,6 +169,22 @@ export const insertMacroTargetSchema = createInsertSchema(macroTargets).omit({ i
 
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
+export const insertPromptSchema = createInsertSchema(prompts, {
+  key: z.string().min(1),
+  name: z.string().min(1),
+  category: z.enum(["reminder", "intervention", "education"]),
+  messageTemplate: z.string().min(1),
+  channel: z.enum(["in_app", "email", "sms"]),
+}).omit({ id: true, createdAt: true });
+
+export const insertPromptRuleSchema = createInsertSchema(promptRules, {
+  key: z.string().min(1),
+  promptId: z.string().min(1),
+  triggerType: z.enum(["schedule", "event", "missed"]),
+  cooldownHours: z.number().int().min(0),
+  priority: z.number().int().min(0),
+}).omit({ id: true, createdAt: true });
+
 // Select/Insert Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

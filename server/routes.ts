@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, crypto } from "./auth";
 import passport from "passport";
-import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema } from "@shared/schema";
+import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -255,6 +255,217 @@ export async function registerRoutes(
       }
       const target = await storage.getMacroTarget(req.params.userId);
       res.json(target || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Get all users (admin only)
+  app.get("/api/admin/users", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const users = await storage.getAllUsers();
+      const sanitized = users.map(({ passwordHash, ...rest }) => rest);
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Update user role (admin only)
+  app.patch("/api/admin/users/:id/role", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { role } = req.body;
+      if (!["participant", "coach", "admin"].includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      const user = await storage.updateUser(req.params.id, { role });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { passwordHash, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Get coaches list
+  app.get("/api/admin/coaches", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin" && req.user!.role !== "coach") {
+        return res.status(403).json({ message: "Admin or coach access required" });
+      }
+      const coaches = await storage.getCoaches();
+      const sanitized = coaches.map(({ passwordHash, ...rest }) => rest);
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Assign coach to participant
+  app.post("/api/admin/participants/:id/assign-coach", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { coachId } = req.body;
+      const user = await storage.assignCoach(req.params.id, coachId);
+      if (!user) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      const { passwordHash, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Prompts CRUD
+  app.get("/api/admin/prompts", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const prompts = await storage.getPrompts();
+      res.json(prompts);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/prompts", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const result = insertPromptSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: fromZodError(result.error).message });
+      }
+      const prompt = await storage.createPrompt(result.data);
+      res.json(prompt);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/admin/prompts/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { id, createdAt, ...updateData } = req.body;
+      const prompt = await storage.updatePrompt(req.params.id, updateData);
+      if (!prompt) {
+        return res.status(404).json({ message: "Prompt not found" });
+      }
+      res.json(prompt);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/prompts/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const deleted = await storage.deletePrompt(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Prompt not found" });
+      }
+      res.json({ message: "Deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Prompt Rules CRUD
+  app.get("/api/admin/rules", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const rules = await storage.getPromptRules();
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/rules", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const result = insertPromptRuleSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: fromZodError(result.error).message });
+      }
+      const prompt = await storage.getPrompt(result.data.promptId);
+      if (!prompt) {
+        return res.status(400).json({ message: "Referenced prompt does not exist" });
+      }
+      const rule = await storage.createPromptRule(result.data);
+      res.json(rule);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/admin/rules/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { id, createdAt, ...updateData } = req.body;
+      if (updateData.promptId) {
+        const prompt = await storage.getPrompt(updateData.promptId);
+        if (!prompt) {
+          return res.status(400).json({ message: "Referenced prompt does not exist" });
+        }
+      }
+      const rule = await storage.updatePromptRule(req.params.id, updateData);
+      if (!rule) {
+        return res.status(404).json({ message: "Rule not found" });
+      }
+      res.json(rule);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/rules/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const deleted = await storage.deletePromptRule(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Rule not found" });
+      }
+      res.json({ message: "Deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Prompt Delivery Logs
+  app.get("/api/admin/deliveries", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const limit = parseInt(req.query.limit as string) || 100;
+      const deliveries = await storage.getPromptDeliveries(limit);
+      res.json(deliveries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
