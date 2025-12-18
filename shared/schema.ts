@@ -9,6 +9,7 @@ export const unitsPreferenceEnum = pgEnum("units_preference", ["US", "Metric"]);
 export const metricTypeEnum = pgEnum("metric_type", ["BP", "WAIST", "GLUCOSE", "KETONES", "WEIGHT"]);
 export const entrySourceEnum = pgEnum("entry_source", ["manual", "import"]);
 export const foodInputTypeEnum = pgEnum("food_input_type", ["text", "photo", "voice"]);
+export const mealTypeEnum = pgEnum("meal_type", ["Breakfast", "Lunch", "Dinner", "Snack"]);
 export const promptCategoryEnum = pgEnum("prompt_category", ["reminder", "intervention", "education"]);
 export const promptChannelEnum = pgEnum("prompt_channel", ["in_app", "email", "sms"]);
 export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "missed"]);
@@ -49,6 +50,7 @@ export const foodEntries = pgTable("food_entries", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   inputType: foodInputTypeEnum("input_type").notNull(),
+  mealType: mealTypeEnum("meal_type").default("Breakfast").notNull(),
   rawText: text("raw_text"),
   photoUrl: text("photo_url"),
   voiceUrl: text("voice_url"),
@@ -56,6 +58,34 @@ export const foodEntries = pgTable("food_entries", {
   userCorrectionsJson: jsonb("user_corrections_json"),
   tags: jsonb("tags"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const macroTargets = pgTable("macro_targets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+  calories: integer("calories"),
+  proteinG: integer("protein_g"),
+  carbsG: integer("carbs_g"),
+  fatG: integer("fat_g"),
+  fiberG: integer("fiber_g"),
+  breakfastCalories: integer("breakfast_calories"),
+  breakfastProteinG: integer("breakfast_protein_g"),
+  breakfastCarbsG: integer("breakfast_carbs_g"),
+  breakfastFatG: integer("breakfast_fat_g"),
+  lunchCalories: integer("lunch_calories"),
+  lunchProteinG: integer("lunch_protein_g"),
+  lunchCarbsG: integer("lunch_carbs_g"),
+  lunchFatG: integer("lunch_fat_g"),
+  dinnerCalories: integer("dinner_calories"),
+  dinnerProteinG: integer("dinner_protein_g"),
+  dinnerCarbsG: integer("dinner_carbs_g"),
+  dinnerFatG: integer("dinner_fat_g"),
+  snackCalories: integer("snack_calories"),
+  snackProteinG: integer("snack_protein_g"),
+  snackCarbsG: integer("snack_carbs_g"),
+  snackFatG: integer("snack_fat_g"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const conversations = pgTable("conversations", {
@@ -132,7 +162,10 @@ export const insertMetricEntrySchema = createInsertSchema(metricEntries, {
 
 export const insertFoodEntrySchema = createInsertSchema(foodEntries, {
   inputType: z.enum(["text", "photo", "voice"]),
+  mealType: z.enum(["Breakfast", "Lunch", "Dinner", "Snack"]),
 }).omit({ id: true, createdAt: true });
+
+export const insertMacroTargetSchema = createInsertSchema(macroTargets).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
@@ -153,3 +186,5 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Prompt = typeof prompts.$inferSelect;
 export type PromptRule = typeof promptRules.$inferSelect;
 export type Report = typeof reports.$inferSelect;
+export type MacroTarget = typeof macroTargets.$inferSelect;
+export type InsertMacroTarget = z.infer<typeof insertMacroTargetSchema>;
