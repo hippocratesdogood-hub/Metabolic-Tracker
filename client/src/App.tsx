@@ -16,9 +16,12 @@ import Login from "@/pages/Login";
 import Onboarding from "@/pages/Onboarding";
 import PromptsAdmin from "@/pages/PromptsAdmin";
 import AdminDashboard from "@/pages/AdminDashboard";
+import Participants from "@/pages/Participants";
+import ResetPassword from "@/pages/ResetPassword";
 
-function ProtectedRoute({ component: Component }: { component: () => React.JSX.Element }) {
+function ProtectedRoute({ component: Component, allowForceReset = false }: { component: () => React.JSX.Element; allowForceReset?: boolean }) {
   const { user, isLoading } = useAuth();
+  const [location] = useLocation();
 
   if (isLoading) {
     return (
@@ -32,6 +35,10 @@ function ProtectedRoute({ component: Component }: { component: () => React.JSX.E
     return <Redirect to="/login" />;
   }
 
+  if (user.forcePasswordReset && !allowForceReset && location !== '/reset-password') {
+    return <Redirect to="/reset-password" />;
+  }
+
   return <Component />;
 }
 
@@ -41,12 +48,14 @@ function Router() {
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/onboarding" component={Onboarding} />
+        <Route path="/reset-password">{() => <ProtectedRoute component={ResetPassword} allowForceReset />}</Route>
         <Route path="/">{() => <ProtectedRoute component={Dashboard} />}</Route>
         <Route path="/trends">{() => <ProtectedRoute component={Trends} />}</Route>
         <Route path="/food">{() => <ProtectedRoute component={FoodLog} />}</Route>
         <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
         <Route path="/reports">{() => <ProtectedRoute component={Reports} />}</Route>
         <Route path="/admin/prompts">{() => <ProtectedRoute component={PromptsAdmin} />}</Route>
+        <Route path="/admin/participants">{() => <ProtectedRoute component={Participants} />}</Route>
         <Route path="/admin">{() => <ProtectedRoute component={AdminDashboard} />}</Route>
         <Route component={NotFound} />
       </Switch>

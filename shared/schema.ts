@@ -16,18 +16,24 @@ export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "mis
 export const deliveryStatusEnum = pgEnum("delivery_status", ["sent", "failed", "opened"]);
 
 // Tables
+export const userStatusEnum = pgEnum("user_status", ["active", "inactive"]);
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   role: roleEnum("role").default("participant").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash"),
+  phone: text("phone"),
+  dateOfBirth: timestamp("date_of_birth"),
   timezone: text("timezone").default("America/Los_Angeles").notNull(),
   unitsPreference: unitsPreferenceEnum("units_preference").default("US").notNull(),
   programStartDate: timestamp("program_start_date"),
   height: integer("height"), // in cm
   coachId: varchar("coach_id").references((): any => users.id),
   notificationPreferencesJson: jsonb("notification_preferences_json"),
+  status: userStatusEnum("status").default("active").notNull(),
+  forcePasswordReset: boolean("force_password_reset").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

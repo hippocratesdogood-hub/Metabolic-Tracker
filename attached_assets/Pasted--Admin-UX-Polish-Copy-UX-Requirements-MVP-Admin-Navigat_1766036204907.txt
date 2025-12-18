@@ -1,0 +1,196 @@
+## Admin UX Polish — Copy + UX Requirements (MVP)
+
+### Admin Navigation (minimum)
+- Left nav items:
+  - Dashboard (optional)
+  - Participants
+  - Coaches (optional MVP)
+  - Prompts / Rules (if included in MVP)
+  - Deliveries Log (optional MVP)
+  - Settings (optional)
+
+---
+
+## Participants Page (Admin)
+
+### Page Title
+**Participants**
+
+### Primary CTA button (top-right)
+**+ Add Participant**
+
+### Search bar placeholder
+“Search by name, email, or phone…”
+
+### Table columns
+- Name
+- DOB
+- Email
+- Phone
+- Coach
+- Created
+- Status
+
+### Empty state (no participants)
+**No participants yet**
+Add your first participant to start tracking metrics and sending prompts.
+[+ Add Participant]
+
+### No results (search)
+**No matches found**
+Try a different name, email, or phone number.
+
+### Row actions (right side)
+- View
+- Edit
+- Reset Password (optional)
+- Deactivate (optional MVP)
+
+---
+
+## Add Participant (Modal or Page)
+
+### Title
+**Add Participant**
+
+### Subtitle
+Create a new participant account and set a temporary password. They’ll be required to set a new password at first login.
+
+### Field labels + helper text
+**Full name** (required)  
+Helper: “First and last name.”
+
+**Date of birth** (required)  
+Helper: “Used for identity confirmation and reporting.”
+
+**Email** (required)  
+Helper: “This will be their login username.”
+
+**Phone number** (optional/required)  
+Helper: “Used for account recovery and optional reminders.”
+
+**Assign coach** (optional)  
+Helper: “You can assign a coach now or later.”
+
+**Temporary password** (required)  
+Helper: “Participant will be forced to reset this password at first login.”
+
+**Confirm temporary password** (required)
+
+Checkbox (default ON):
+✅ **Force password reset at first login**  
+Helper: “Recommended for security.”
+
+### Password requirements text (keep simple)
+“Use at least 10 characters. Avoid common words.”
+
+### Buttons
+Primary: **Create Participant**  
+Secondary: Cancel
+
+### Inline validation messages
+- Email already exists:  
+  “That email is already in use. Try another email or search for the participant.”
+- Weak password:  
+  “Password is too weak. Use at least 10 characters.”
+
+---
+
+## Success State (after create)
+### Title
+✅ **Participant Created**
+
+### Body copy
+**{{Full Name}}** can now log in with:
+- Email: **{{Email}}**
+- Temporary password: **(shown below)**
+
+They will be required to set a new password on first login.
+
+### Temporary password display
+- Show in a copy box with a copy button:
+  [ ************ ]  [Copy]
+- Add a “Show” toggle:
+  (Show / Hide)
+
+### Security warning
+“Treat this password like sensitive information. Send it securely.”
+
+### Recommended actions
+- [Copy login details]
+- [Send login details via email] (optional if you have email set up)
+- [Go to participant profile]
+
+---
+
+## Participant Profile (Admin View)
+
+### Header
+**{{Full Name}}**
+Subheader line: “Participant • Created {{date}}”
+
+### Key fields section
+- DOB
+- Email
+- Phone
+- Assigned Coach (editable dropdown)
+- Timezone (editable)
+- Units preference (editable)
+
+### Admin actions (buttons)
+- **Reset Password**
+- **Deactivate Account** (optional MVP)
+
+---
+
+## Reset Password (Admin)
+
+### Modal Title
+**Reset Temporary Password**
+
+### Copy
+Set a new temporary password for this participant. They will be required to reset it on next login.
+
+### Fields
+- New temporary password
+- Confirm temporary password
+Checkbox (default ON):
+✅ Force password reset at next login
+
+### Buttons
+Primary: **Reset Password**
+Secondary: Cancel
+
+### Success toast
+“Temporary password updated. Participant will reset it at next login.”
+
+---
+
+## Participant First Login — Forced Password Reset (Participant UX)
+
+### Title
+**Create Your New Password**
+
+### Copy
+For security, please create a new password before continuing.
+
+### Fields
+- New password
+- Confirm new password
+
+### Button
+Primary: **Save and Continue**
+
+### Success message
+“Password updated. You’re all set.”
+
+---
+
+## Small UX Rules (important)
+- Always default the “Force password reset” checkbox to ON.
+- Never show or store plaintext passwords in logs.
+- If you display the temporary password once, do it only on the success screen.
+- Add a “copy” button wherever credentials appear.
+- Provide clear error messages (unique email, invalid DOB, weak password).
+- Confirm destructive actions (Deactivate).
+

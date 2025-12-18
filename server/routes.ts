@@ -56,9 +56,9 @@ export async function registerRoutes(
       });
 
       // Auto login
-      req.login({ id: user.id, email: user.email, role: user.role, name: user.name }, (err) => {
+      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset }, (err) => {
         if (err) return next(err);
-        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name } });
+        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset } });
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -81,6 +81,33 @@ export async function registerRoutes(
       res.json({ user: req.user });
     } else {
       res.status(401).json({ message: "Not authenticated" });
+    }
+  });
+
+  // User changes own password (for force reset flow)
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+    try {
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 10) {
+        return res.status(400).json({ message: "Password must be at least 10 characters" });
+      }
+      
+      const passwordHash = await crypto.hash(newPassword);
+      const user = await storage.updateUser(req.user!.id, { 
+        passwordHash,
+        forcePasswordReset: false,
+      });
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Update session user
+      req.user!.forcePasswordReset = false;
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
@@ -320,6 +347,104 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "Participant not found" });
       }
+      const { passwordHash, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Create participant
+  app.post("/api/admin/participants", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { name, email, password, phone, dateOfBirth, coachId, forcePasswordReset } = req.body;
+      
+      if (!name || !email || !password) {
+        return res.status(400).json({ message: "Name, email, and password are required" });
+      }
+      if (password.length < 10) {
+        return res.status(400).json({ message: "Password must be at least 10 characters" });
+      }
+      
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "That email is already in use. Try another email or search for the participant." });
+      }
+      
+      const passwordHash = await crypto.hash(password);
+      const user = await storage.createUser({
+        name,
+        email,
+        passwordHash,
+        phone: phone || null,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+        coachId: coachId || null,
+        forcePasswordReset: forcePasswordReset !== false,
+        role: "participant",
+      });
+      
+      const { passwordHash: _, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Reset participant password
+  app.post("/api/admin/participants/:id/reset-password", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { password, forcePasswordReset } = req.body;
+      
+      if (!password || password.length < 10) {
+        return res.status(400).json({ message: "Password must be at least 10 characters" });
+      }
+      
+      const passwordHash = await crypto.hash(password);
+      const user = await storage.updateUser(req.params.id, { 
+        passwordHash,
+        forcePasswordReset: forcePasswordReset !== false,
+      });
+      
+      if (!user) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      
+      const { passwordHash: _, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Update participant
+  app.patch("/api/admin/participants/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { name, email, phone, dateOfBirth, coachId, timezone, unitsPreference, status } = req.body;
+      
+      const user = await storage.updateUser(req.params.id, {
+        ...(name && { name }),
+        ...(email && { email }),
+        ...(phone !== undefined && { phone }),
+        ...(dateOfBirth !== undefined && { dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null }),
+        ...(coachId !== undefined && { coachId }),
+        ...(timezone && { timezone }),
+        ...(unitsPreference && { unitsPreference }),
+        ...(status && { status }),
+      });
+      
+      if (!user) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      
       const { passwordHash, ...sanitized } = user;
       res.json(sanitized);
     } catch (error: any) {

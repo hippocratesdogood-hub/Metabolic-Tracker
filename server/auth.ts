@@ -34,6 +34,7 @@ declare global {
       email: string;
       role: string;
       name: string;
+      forcePasswordReset: boolean;
     }
   }
 }
@@ -81,6 +82,7 @@ export function setupAuth(app: Express) {
             email: user.email,
             role: user.role,
             name: user.name,
+            forcePasswordReset: user.forcePasswordReset,
           });
         } catch (err) {
           return done(err);
@@ -104,6 +106,7 @@ export function setupAuth(app: Express) {
         email: user.email,
         role: user.role,
         name: user.name,
+        forcePasswordReset: user.forcePasswordReset,
       });
     } catch (err) {
       done(err);

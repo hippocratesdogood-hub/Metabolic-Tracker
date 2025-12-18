@@ -42,6 +42,13 @@ class ApiClient {
     return this.request<{ user: any }>("/auth/me");
   }
 
+  async changePassword(newPassword: string) {
+    return this.request<{ message: string }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ newPassword }),
+    });
+  }
+
   // Users
   async updateUser(id: string, data: Partial<User>) {
     return this.request<User>(`/users/${id}`, {
@@ -157,6 +164,35 @@ class ApiClient {
     return this.request<any>(`/admin/participants/${participantId}/assign-coach`, {
       method: "POST",
       body: JSON.stringify({ coachId }),
+    });
+  }
+
+  async createParticipant(data: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    dateOfBirth?: string;
+    coachId?: string;
+    forcePasswordReset?: boolean;
+  }) {
+    return this.request<any>("/admin/participants", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateParticipant(id: string, data: any) {
+    return this.request<any>(`/admin/participants/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async resetParticipantPassword(id: string, password: string, forcePasswordReset: boolean = true) {
+    return this.request<any>(`/admin/participants/${id}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ password, forcePasswordReset }),
     });
   }
 

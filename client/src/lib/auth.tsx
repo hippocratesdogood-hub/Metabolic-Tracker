@@ -6,6 +6,7 @@ type AuthUser = {
   email: string;
   role: string;
   name: string;
+  forcePasswordReset?: boolean;
 } | null;
 
 type AuthContextType = {
