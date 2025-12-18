@@ -1,0 +1,76 @@
+## Developer Notes — Food Logging & Macro Targets (Required)
+
+### Meal Assignment for Food Entries
+- Every food entry must be assigned a **meal type**:
+  - Breakfast
+  - Lunch
+  - Dinner
+  - Snack
+- The food logging UI must include a **meal selector**.
+- The app may **auto-suggest** the meal type based on time of day, but the user must always be able to change it.
+- Meal type must be stored and queryable for trend and macro calculations.
+
+---
+
+### Participant Macro Targets
+- Each participant must have **macronutrient targets** stored in the system.
+- Targets include:
+  - **Daily targets**: calories, protein (g), carbs (g), fat (g), fiber (optional)
+  - **Optional per-meal targets** for Breakfast, Lunch, Dinner, Snack
+- **Coach/Admin** can create and update macro targets.
+- **Participants** can view their macro targets (editing optional based on permissions).
+
+---
+
+### Required API Logic (Not Automatic from Schema)
+
+#### Food APIs
+- `POST /api/food`
+  - Must accept and store `mealType`.
+- `POST /api/food/analyze`
+  - Should optionally return a `suggestedMealType` based on timestamp/time-of-day.
+- Persist `mealType` on every `FoodEntry`.
+
+#### Macro Targets APIs
+- `GET /api/macro-targets`
+  - Returns the participant’s macro targets.
+- `PUT /api/macro-targets`
+  - Coach/Admin updates macro targets for a participant.
+  - Role-based access control required.
+
+#### Macro Progress API (Recommended)
+- `GET /api/macro-progress?date=YYYY-MM-DD`
+  - Sum macros for all food entries on that date.
+  - Calculate progress vs:
+    - daily macro targets
+    - optional per-meal targets
+  - Return totals and remaining amounts.
+
+---
+
+### Macro Calculation Rules
+- Macro progress calculations must use:
+  - **User-corrected values** if available
+  - Otherwise, **AI-estimated values**
+- AI estimates must expose confidence/ranges to the user.
+- Macro progress should clearly show:
+  - consumed
+  - target
+  - remaining (or excess)
+
+---
+
+### UI Requirements (Minimum)
+- Food logging screen:
+  - Meal selector required.
+- Participant dashboard:
+  - Show today’s macro progress (protein, carbs, fat; calories optional).
+- Coach view:
+  - Ability to view and update macro targets per participant.
+
+---
+
+### Important Notes
+- Prisma schema defines data structure only.
+- All calculations, enforcement, and role permissions must be implemented at the API/service layer.
+- Prioritize accuracy, transparency, and low daily user friction.

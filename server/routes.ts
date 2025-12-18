@@ -3,9 +3,17 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, crypto } from "./auth";
 import passport from "passport";
-import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema } from "@shared/schema";
+import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+
+function suggestMealType(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 10) return "Breakfast";
+  if (hour >= 10 && hour < 14) return "Lunch";
+  if (hour >= 17 && hour < 21) return "Dinner";
+  return "Snack";
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -191,6 +199,134 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Entry not found" });
       }
       res.json(entry);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/food/analyze", requireAuth, async (req, res) => {
+    try {
+      const { rawText, timestamp } = req.body;
+      const suggestedMealType = suggestMealType();
+      
+      // Mock AI analysis - in production, this would call an AI service
+      const mockAnalysis = {
+        foods_detected: [
+          { name: "Food item", portion: "1 serving", confidence: 0.85 }
+        ],
+        macros: {
+          calories: 350,
+          protein: 25,
+          carbs: 30,
+          fat: 15,
+          fiber: 5
+        },
+        qualityScore: 75,
+        notes: "Balanced meal with good protein content.",
+        suggestedMealType,
+        confidence: { low: 0.7, high: 0.9 }
+      };
+      
+      res.json(mockAnalysis);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Macro Targets routes
+  app.get("/api/macro-targets", requireAuth, async (req, res) => {
+    try {
+      const target = await storage.getMacroTarget(req.user!.id);
+      res.json(target || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/macro-targets", requireAuth, async (req, res) => {
+    try {
+      // Role-based: only coach/admin can update macro targets for others
+      const { userId, ...targetData } = req.body;
+      const targetUserId = userId || req.user!.id;
+      
+      if (targetUserId !== req.user!.id && req.user!.role === "participant") {
+        return res.status(403).json({ message: "Participants cannot update other users' targets" });
+      }
+
+      const target = await storage.upsertMacroTarget(targetUserId, targetData);
+      res.json(target);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Macro Progress API
+  app.get("/api/macro-progress", requireAuth, async (req, res) => {
+    try {
+      const dateStr = req.query.date as string;
+      const date = dateStr ? new Date(dateStr) : new Date();
+      
+      const entries = await storage.getFoodEntriesByDate(req.user!.id, date);
+      const target = await storage.getMacroTarget(req.user!.id);
+      
+      // Sum macros from all entries
+      const consumed = {
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        fiber: 0
+      };
+
+      const byMeal: Record<string, typeof consumed> = {
+        Breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+        Lunch: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+        Dinner: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+        Snack: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+      };
+
+      for (const entry of entries) {
+        const macros = (entry.userCorrectionsJson as any)?.macros || (entry.aiOutputJson as any)?.macros;
+        if (macros) {
+          consumed.calories += macros.calories || 0;
+          consumed.protein += macros.protein || 0;
+          consumed.carbs += macros.carbs || 0;
+          consumed.fat += macros.fat || 0;
+          consumed.fiber += macros.fiber || 0;
+
+          const meal = entry.mealType || "Snack";
+          if (byMeal[meal]) {
+            byMeal[meal].calories += macros.calories || 0;
+            byMeal[meal].protein += macros.protein || 0;
+            byMeal[meal].carbs += macros.carbs || 0;
+            byMeal[meal].fat += macros.fat || 0;
+            byMeal[meal].fiber += macros.fiber || 0;
+          }
+        }
+      }
+
+      const remaining = {
+        calories: (target?.calories || 0) - consumed.calories,
+        protein: (target?.proteinG || 0) - consumed.protein,
+        carbs: (target?.carbsG || 0) - consumed.carbs,
+        fat: (target?.fatG || 0) - consumed.fat,
+        fiber: (target?.fiberG || 0) - consumed.fiber
+      };
+
+      res.json({
+        date: date.toISOString().split('T')[0],
+        consumed,
+        target: target ? {
+          calories: target.calories,
+          protein: target.proteinG,
+          carbs: target.carbsG,
+          fat: target.fatG,
+          fiber: target.fiberG
+        } : null,
+        remaining,
+        byMeal,
+        entriesCount: entries.length
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

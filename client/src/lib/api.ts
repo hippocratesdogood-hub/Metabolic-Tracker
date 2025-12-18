@@ -82,6 +82,7 @@ class ApiClient {
   // Food
   async createFoodEntry(entry: {
     inputType: string;
+    mealType?: string;
     rawText?: string;
     timestamp?: Date;
     aiOutputJson?: any;
@@ -102,6 +103,30 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  async analyzeFoodEntry(rawText: string, timestamp?: Date) {
+    return this.request<any>("/food/analyze", {
+      method: "POST",
+      body: JSON.stringify({ rawText, timestamp }),
+    });
+  }
+
+  // Macro Targets
+  async getMacroTargets() {
+    return this.request<any>("/macro-targets");
+  }
+
+  async updateMacroTargets(data: any, userId?: string) {
+    return this.request<any>("/macro-targets", {
+      method: "PUT",
+      body: JSON.stringify({ ...data, userId }),
+    });
+  }
+
+  async getMacroProgress(date?: string) {
+    const query = date ? `?date=${date}` : "";
+    return this.request<any>(`/macro-progress${query}`);
   }
 
   // Messaging

@@ -12,6 +12,8 @@ import type {
   Conversation,
   Message,
   InsertMessage,
+  MacroTarget,
+  InsertMacroTarget,
 } from "@shared/schema";
 
 const pool = new pg.Pool({
@@ -36,7 +38,12 @@ export interface IStorage {
   // Food
   createFoodEntry(entry: InsertFoodEntry): Promise<FoodEntry>;
   getFoodEntries(userId: string, from?: Date, to?: Date): Promise<FoodEntry[]>;
+  getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]>;
   updateFoodEntry(id: string, data: Partial<InsertFoodEntry>): Promise<FoodEntry | undefined>;
+
+  // Macro Targets
+  getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
+  upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget>;
 
   // Messaging
   getOrCreateConversation(participantId: string, coachId: string): Promise<Conversation>;
@@ -151,6 +158,53 @@ export class PostgresStorage implements IStorage {
       .where(eq(schema.foodEntries.id, id))
       .returning();
     return results[0];
+  }
+
+  async getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return db
+      .select()
+      .from(schema.foodEntries)
+      .where(
+        and(
+          eq(schema.foodEntries.userId, userId),
+          gte(schema.foodEntries.timestamp, startOfDay),
+          lte(schema.foodEntries.timestamp, endOfDay)
+        )
+      )
+      .orderBy(schema.foodEntries.timestamp);
+  }
+
+  // Macro Targets
+  async getMacroTarget(userId: string): Promise<MacroTarget | undefined> {
+    const results = await db
+      .select()
+      .from(schema.macroTargets)
+      .where(eq(schema.macroTargets.userId, userId));
+    return results[0];
+  }
+
+  async upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget> {
+    const existing = await this.getMacroTarget(userId);
+    
+    if (existing) {
+      const results = await db
+        .update(schema.macroTargets)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.macroTargets.userId, userId))
+        .returning();
+      return results[0];
+    } else {
+      const results = await db
+        .insert(schema.macroTargets)
+        .values({ ...data, userId })
+        .returning();
+      return results[0];
+    }
   }
 
   // Messaging

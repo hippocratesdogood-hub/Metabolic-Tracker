@@ -1,14 +1,24 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useData, MetricType } from '@/lib/dataAdapter';
+import { api } from '@/lib/api';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
-import { Scale, Activity, Droplet, Heart, Ruler } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Scale, Activity, Droplet, Heart, Ruler, Utensils } from 'lucide-react';
 import { format } from 'date-fns';
+import { Link } from 'wouter';
 
 export default function Dashboard() {
   const { user, getMetricsByType } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<MetricType | null>(null);
+
+  const { data: macroProgress } = useQuery({
+    queryKey: ['macro-progress'],
+    queryFn: () => api.getMacroProgress(),
+  });
 
   const handleAddMetric = (type: MetricType) => {
     setSelectedType(type);
@@ -104,6 +114,52 @@ export default function Dashboard() {
           lastUpdated={waist ? format(new Date(waist.timestamp), 'h:mm a') : undefined}
         />
       </div>
+
+      {macroProgress?.target && (
+        <Card className="border-none shadow-md" data-testid="card-macro-progress">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Utensils className="w-5 h-5 text-primary" />
+                <h3 className="font-heading font-semibold">Today's Nutrition</h3>
+              </div>
+              <Link href="/food" className="text-xs text-primary hover:underline">
+                Log Food
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Protein</span>
+                  <span className="font-medium">{macroProgress.consumed.protein}g / {macroProgress.target.protein || 0}g</span>
+                </div>
+                <Progress value={macroProgress.target.protein ? (macroProgress.consumed.protein / macroProgress.target.protein) * 100 : 0} className="h-2" />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Carbs</span>
+                  <span className="font-medium">{macroProgress.consumed.carbs}g / {macroProgress.target.carbs || 0}g</span>
+                </div>
+                <Progress value={macroProgress.target.carbs ? (macroProgress.consumed.carbs / macroProgress.target.carbs) * 100 : 0} className="h-2" />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Fat</span>
+                  <span className="font-medium">{macroProgress.consumed.fat}g / {macroProgress.target.fat || 0}g</span>
+                </div>
+                <Progress value={macroProgress.target.fat ? (macroProgress.consumed.fat / macroProgress.target.fat) * 100 : 0} className="h-2" />
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-muted-foreground">Calories</span>
+                  <span className="font-medium">{macroProgress.consumed.calories} / {macroProgress.target.calories || 0}</span>
+                </div>
+                <Progress value={macroProgress.target.calories ? (macroProgress.consumed.calories / macroProgress.target.calories) * 100 : 0} className="h-2" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Suggested Focus Section */}
       <div className="bg-gradient-to-br from-primary/5 to-secondary/5 border border-primary/10 rounded-2xl p-6">
