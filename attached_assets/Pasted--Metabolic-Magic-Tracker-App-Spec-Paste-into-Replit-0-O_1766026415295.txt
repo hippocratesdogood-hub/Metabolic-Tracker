@@ -1,0 +1,368 @@
+# Metabolic Magic Tracker — App Spec (Paste into Replit)
+
+## 0) One-line Summary
+Build a web app for participants in my metabolic health program to:
+1) track daily metrics (BP, waist, glucose, ketones, weight),
+2) view trends + weekly reports,
+3) receive automated prompts,
+4) message their coach,
+5) log food via AI analysis (text/photo/voice → macros + quality score + notes).
+
+## 1) Roles
+- Participant
+- Coach
+- Admin
+
+## 2) Platforms / Deliverable
+- MVP: Mobile-responsive web app (Next.js)
+- Optional later: native mobile wrapper + push notifications
+
+## 3) MVP Features (Must Have)
+### 3.1 Authentication + Onboarding
+- Sign up / login (email+password or OAuth)
+- Consent screen (privacy + “not medical emergency”)
+- Profile fields:
+  - name, email, timezone
+  - program_start_date
+  - height (optional but helpful)
+  - units preference (US/Metric)
+  - coach assignment (admin sets or auto assigns)
+- Notification preferences: in-app + email (SMS later)
+
+### 3.2 Daily Metric Tracking (Manual entry)
+Metrics:
+- Blood Pressure: systolic, diastolic, optional heart_rate
+- Waist circumference: numeric + unit (in/cm)
+- Glucose: numeric + unit (mg/dL or mmol/L) + context tag (fasting/1hr/2hr/random)
+- Ketones: numeric + unit (mmol/L) (allow mg/dL if needed; normalize internally)
+- Weight: numeric + unit (lb/kg)
+
+Requirements:
+- “Today” dashboard shows all metrics with quick-add controls
+- Allow partial daily completion
+- Validate plausible ranges (soft warnings, not hard blocks)
+- Store both raw value + normalized value (for conversions)
+
+### 3.3 Trends
+- Trend charts per metric for ranges: 7 / 30 / 90 days
+- Compute:
+  - 7-day rolling average
+  - delta over selected range
+  - adherence % over selected range
+- Highlight outliers:
+  - big weight jump (configurable, e.g., >2% in 48h)
+  - repeated high fasting glucose (configurable)
+
+### 3.4 Weekly Report (Auto-generated)
+- Generate weekly report every 7 days from program_start_date (cron/worker)
+- Report includes:
+  - adherence summary + streak
+  - 7-day rolling averages
+  - best improvements + setbacks
+  - “Next 7 days focus” suggestions (rule-based in MVP)
+- Display in-app and store report JSON
+- Optional: downloadable PDF later (V1)
+
+### 3.5 Automated Prompts (Rule engine)
+Prompt delivery channels (MVP):
+- In-app notifications
+- Email (optional but recommended)
+
+Prompt triggers:
+- schedule-based (e.g., 7am check-in reminder, 7pm “did you log?”)
+- event-based (e.g., high glucose entry)
+- missed-day logic (e.g., no weight logged in 3 days)
+
+Prompt system requirements:
+- Admin can create/edit prompt templates
+- Admin can create/edit rules with conditions_json
+- Cooldowns to prevent spamming
+- Log every prompt delivery (audit trail)
+
+### 3.6 Messaging (Participant ↔ Coach)
+- 1:1 conversation per participant with assigned coach
+- Realtime preferred; polling acceptable for MVP
+- Support text messages; attachments optional MVP (images preferred in V1)
+- Coach inbox view: list participants + unread count
+
+### 3.7 AI Food Tracker (MVP: text + photo, voice optional)
+Inputs:
+- Text meal entry
+- Photo upload of meal
+- (Optional MVP) voice → speech-to-text
+
+Outputs:
+- Estimated macros: protein/carbs/fat, calories (include ranges + confidence)
+- “Food quality score” (0–100) using a rubric we can tweak
+- Notes: brief coaching insight (e.g., “likely high carb load → glucose spike”)
+- Must store:
+  - raw input (text / image url)
+  - ai_output_json in fixed schema
+  - user_corrections_json (user can edit macros/foods)
+- Must show: confidence + allow corrections (critical for trust)
+
+## 4) V1 Enhancements (Nice to Have)
+- Push notifications (native wrapper)
+- SMS via Twilio
+- Integrations: CGM, Apple Health / Google Fit, Bluetooth devices
+- Coach notes + tags + canned responses
+- Cohort/group chat or community (optional)
+- Better food macros via nutrition DB API (Nutritionix/Edamam/USDA) + AI recognition hybrid
+
+## 5) Non-Functional Requirements
+- Mobile-first UI (fast daily entry)
+- Charts load <2 seconds for 30-day range
+- HIPAA-aligned handling if treated as PHI:
+  - RBAC (coach sees only assigned participants)
+  - audit logs
+  - encryption in transit + at rest
+  - export/delete user data
+
+## 6) Recommended Tech Stack (Replit-Friendly)
+Frontend:
+- Next.js (React) + Tailwind CSS
+
+Backend:
+- Next.js API routes (or Express) + TypeScript
+
+Database:
+- Postgres (Neon or Supabase Postgres)
+
+Auth:
+- NextAuth OR Supabase Auth
+
+File Storage:
+- S3-compatible (AWS S3 or Cloudflare R2) for meal photos
+
+Realtime messaging:
+- Supabase Realtime OR Pusher OR Socket.io
+
+Background jobs:
+- Cron + worker (Trigger.dev, or a simple scheduled job) for weekly reports + scheduled prompts
+
+Email:
+- Resend or SendGrid
+
+SMS (later):
+- Twilio
+
+## 7) Data Model (Tables)
+
+### 7.1 users
+- id (uuid)
+- role (participant|coach|admin)
+- name
+- email (unique)
+- password_hash (if not OAuth)
+- timezone
+- units_preference (US|Metric)
+- program_start_date
+- coach_id (nullable)
+- created_at, updated_at
+
+### 7.2 metric_entries
+- id (uuid)
+- user_id (fk users.id)
+- timestamp (timestamptz)
+- type (BP|WAIST|GLUCOSE|KETONES|WEIGHT)
+- raw_unit (string)
+- normalized_value (numeric)  // for simple metrics
+- value_json (jsonb)          // for complex metrics like BP
+  - BP: { systolic, diastolic, heart_rate? }
+  - Glucose: { value, unit, context_tag }
+  - Others: { value, unit }
+- source (manual|import)
+- notes (text nullable)
+- created_at
+
+### 7.3 food_entries
+- id (uuid)
+- user_id (fk)
+- timestamp (timestamptz)
+- input_type (text|photo|voice)
+- raw_text (text nullable)
+- photo_url (text nullable)
+- voice_url (text nullable)
+- ai_output_json (jsonb)          // fixed schema
+- user_corrections_json (jsonb)   // optional
+- tags (jsonb nullable)           // meal_type, fasting_day, etc.
+- created_at
+
+### 7.4 conversations
+- id (uuid)
+- participant_id (fk users.id)
+- coach_id (fk users.id)
+- created_at
+
+### 7.5 messages
+- id (uuid)
+- conversation_id (fk)
+- sender_id (fk users.id)
+- body (text)
+- attachments_json (jsonb nullable)
+- created_at
+- read_at (timestamptz nullable)
+
+### 7.6 prompts
+- id (uuid)
+- name
+- category (reminder|intervention|education)
+- message_template (text; supports variables like {{name}}, {{streak}})
+- channel (in_app|email|sms)
+- active (bool)
+- created_at
+
+### 7.7 prompt_rules
+- id (uuid)
+- prompt_id (fk prompts.id)
+- trigger_type (schedule|event|missed)
+- schedule_json (jsonb nullable)    // cron-like or hour/minute
+- conditions_json (jsonb nullable)  // e.g., { "metric":"glucose", "op":">=", "value":110, "context":"fasting", "days":3 }
+- cooldown_hours (int)
+- priority (int)
+- active (bool)
+- created_at
+
+### 7.8 prompt_deliveries
+- id (uuid)
+- user_id (fk)
+- prompt_id (fk)
+- fired_at (timestamptz)
+- trigger_context_json (jsonb)
+- status (sent|failed|opened)
+- created_at
+
+### 7.9 reports
+- id (uuid)
+- user_id (fk)
+- period_start (date)
+- period_end (date)
+- summary_json (jsonb)
+- created_at
+
+## 8) Key Business Logic
+
+### 8.1 Unit normalization
+- Glucose: store normalized in mg/dL (also store raw)
+  - mmol/L → mg/dL multiply by 18.0
+- Ketones: store normalized in mmol/L (also store raw)
+
+### 8.2 Adherence
+- daily_adherence = (# of required metrics logged today) / (required metrics count)
+- weekly_adherence = average daily adherence across last 7 days
+- streak = consecutive days with >= threshold (e.g., 80% completion)
+
+### 8.3 Trend calculations
+- rolling_7d_avg for numeric metrics
+- delta = latest_value - value_n_days_ago
+- outlier detection:
+  - weight change > 2% in 48h (config)
+  - fasting glucose >= 110 mg/dL for 3 days (config)
+  - BP >= 140/90 twice in 7 days (config)
+
+## 9) AI Food Tracker — Implementation Requirements
+
+### 9.1 Output must be structured JSON (fixed schema)
+Return fields:
+- foods_detected: array of { name, estimated_portion, confidence }
+- macros_estimate: { calories, protein_g, carbs_g, fat_g, fiber_g? }
+- macros_range: { calories_min, calories_max, ... } // optional but recommended
+- quality_score_0_100
+- flags: array of strings (e.g., "high_carb", "ultra_processed", "low_protein")
+- coaching_note: short text
+- overall_confidence_0_1
+
+### 9.2 Corrections
+- User can edit foods/macros; store in user_corrections_json
+- Display “AI estimate” vs “Your edit”
+
+### 9.3 Safety/Disclaimer
+- Display: “Estimates only. Not medical advice.”
+
+## 10) API Endpoints (Minimum)
+
+### Auth
+- handled by NextAuth/Supabase
+
+### Metrics
+- POST /api/metrics
+- GET /api/metrics?type=&from=&to=
+- PUT /api/metrics/:id
+- DELETE /api/metrics/:id
+
+### Trends / Reports
+- GET /api/trends?type=&range=7|30|90
+- POST /api/reports/generate (cron/admin)
+- GET /api/reports/latest
+
+### Food
+- POST /api/food (text)
+- POST /api/food/upload (photo → returns photo_url)
+- POST /api/food/analyze (text/photo_url → returns ai_output_json)
+- GET /api/food?from=&to=
+- PUT /api/food/:id (save corrections)
+
+### Messaging
+- POST /api/conversations
+- GET /api/conversations
+- POST /api/messages
+- GET /api/messages?conversation_id=
+
+### Prompts
+- GET /api/prompts
+- POST /api/prompts
+- POST /api/prompt_rules
+- POST /api/prompts/fire (internal/cron)
+
+## 11) UI Screens (Minimum)
+Participant:
+1) Login/Signup
+2) Today Dashboard (quick add tiles for metrics + food)
+3) Trends (tabs per metric)
+4) Food Log (list + add + details w/ AI output + edit)
+5) Messages (thread with coach)
+6) Weekly Reports
+7) Settings (units + reminders + privacy/export)
+
+Coach:
+1) Coach Inbox (participants list, flags, unread)
+2) Participant Detail (trends + recent logs)
+3) Messaging thread
+
+Admin:
+1) Users management + coach assignments
+2) Prompts + rules editor
+3) Deliveries audit log
+
+## 12) Prompt Rule Examples (MVP)
+1) Check-in reminder:
+- Trigger: schedule daily 7pm local time
+- Condition: no metric entries today
+- Action: send in-app reminder
+
+2) High fasting glucose:
+- Trigger: event (glucose logged)
+- Condition: fasting glucose >= 110 mg/dL for 3 days
+- Action: send intervention prompt + suggest messaging coach
+- Cooldown: 72 hours
+
+3) BP elevated:
+- Trigger: event (BP logged)
+- Condition: BP >= 140/90 twice in last 7 days
+- Action: prompt “recheck/rest/contact clinician” disclaimer
+- Cooldown: 168 hours
+
+## 13) Acceptance Criteria (Definition of Done)
+- Participant can log metrics in <60 seconds/day
+- Trend charts work for 7/30/90 days
+- Weekly report auto-generates and displays
+- Prompt engine fires reliably, respects cooldowns, logs deliveries
+- Messaging works and respects RBAC
+- Food AI returns structured JSON + user can correct it
+- Coach can view assigned participant data only
+- Admin can manage users/coaches and prompt rules
+
+## 14) Notes for Developer
+- Build MVP with clean architecture to support V1 integrations later.
+- Prioritize low-friction daily entry and data integrity.
+- Use feature flags for anything “later” (SMS, push, integrations).
