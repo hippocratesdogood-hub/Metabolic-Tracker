@@ -5,9 +5,15 @@ import { setupAuth, crypto } from "./auth";
 import { analyticsService } from "./analytics";
 import passport from "passport";
 import multer from "multer";
+import OpenAI from "openai";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -254,28 +260,39 @@ export async function registerRoutes(
   app.post("/api/food/analyze", requireAuth, async (req, res) => {
     try {
       const { rawText, timestamp } = req.body;
-      const suggestedMealType = suggestMealType();
+      const mealTypeSuggestion = suggestMealType();
       
-      // Mock AI analysis - in production, this would call an AI service
-      const mockAnalysis = {
-        foods_detected: [
-          { name: "Food item", portion: "1 serving", confidence: 0.85 }
+      const systemPrompt = `You are a nutrition analysis AI. Analyze the food description and provide accurate macro estimates.
+Return a JSON object with this exact structure:
+{
+  "foods_detected": [{"name": "food name", "portion": "portion size", "confidence": 0.85}],
+  "macros": {"calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number},
+  "qualityScore": number (0-100, based on nutritional quality for metabolic health),
+  "notes": "brief coaching note about the meal",
+  "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
+  "confidence": {"low": 0.7, "high": 0.9}
+}
+Be accurate with macro estimates based on typical serving sizes. Quality score should favor high protein, low carb meals.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Analyze this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}` }
         ],
-        macros: {
-          calories: 350,
-          protein: 25,
-          carbs: 30,
-          fat: 15,
-          fiber: 5
-        },
-        qualityScore: 75,
-        notes: "Balanced meal with good protein content.",
-        suggestedMealType,
-        confidence: { low: 0.7, high: 0.9 }
-      };
+        response_format: { type: "json_object" },
+        max_tokens: 500,
+      });
+
+      const content = response.choices[0]?.message?.content || "{}";
+      const analysis = JSON.parse(content);
       
-      res.json(mockAnalysis);
+      res.json({
+        ...analysis,
+        suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,
+      });
     } catch (error: any) {
+      console.error("Food analysis error:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -287,29 +304,62 @@ export async function registerRoutes(
       }
       
       const additionalText = req.body.text || '';
-      const suggestedMealType = suggestMealType();
+      const mealTypeSuggestion = suggestMealType();
       
-      // Mock AI image analysis - in production, this would call a vision AI service
-      const mockAnalysis = {
-        foods_detected: [
-          { name: "Detected food from photo", portion: "1 serving", confidence: 0.82 }
+      const base64Image = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+
+      const systemPrompt = `You are a nutrition analysis AI with vision capabilities. Analyze the food in the image and provide accurate macro estimates.
+Return a JSON object with this exact structure:
+{
+  "foods_detected": [{"name": "food name", "portion": "estimated portion", "confidence": 0.85}],
+  "macros": {"calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number},
+  "qualityScore": number (0-100, based on nutritional quality for metabolic health),
+  "notes": "brief coaching note about the meal",
+  "description": "brief description of what you see",
+  "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
+  "confidence": {"low": 0.65, "high": 0.85}
+}
+Be accurate with macro estimates based on visible portion sizes. Quality score should favor high protein, low carb meals.`;
+
+      const userContent: any[] = [
+        {
+          type: "image_url",
+          image_url: { url: `data:${mimeType};base64,${base64Image}` }
+        }
+      ];
+      
+      if (additionalText) {
+        userContent.push({
+          type: "text",
+          text: `Additional context: ${additionalText}\nCurrent time suggests: ${mealTypeSuggestion}`
+        });
+      } else {
+        userContent.push({
+          type: "text", 
+          text: `Current time suggests: ${mealTypeSuggestion}`
+        });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent }
         ],
-        macros: {
-          calories: 420,
-          protein: 28,
-          carbs: 35,
-          fat: 18,
-          fiber: 6
-        },
-        qualityScore: 78,
-        notes: "Photo analyzed. Good protein content detected.",
-        description: additionalText || "Food photo",
-        suggestedMealType,
-        confidence: { low: 0.65, high: 0.85 }
-      };
+        response_format: { type: "json_object" },
+        max_tokens: 500,
+      });
+
+      const content = response.choices[0]?.message?.content || "{}";
+      const analysis = JSON.parse(content);
       
-      res.json(mockAnalysis);
+      res.json({
+        ...analysis,
+        suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,
+      });
     } catch (error: any) {
+      console.error("Image analysis error:", error);
       res.status(500).json({ message: error.message });
     }
   });
