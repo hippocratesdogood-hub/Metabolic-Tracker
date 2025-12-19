@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Camera, Mic, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image } from 'lucide-react';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -36,9 +36,88 @@ export default function FoodLog() {
   const [entryDate, setEntryDate] = useState<Date>(new Date());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
   
   const minDate = subDays(startOfDay(new Date()), 7);
   const maxDate = new Date();
+
+  const handleCameraClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSelectedImage(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearImage = () => {
+    setSelectedImage(null);
+    setSelectedImageFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleVoiceClick = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      toast.error('Voice input is not supported in this browser. Try Chrome or Safari.');
+      return;
+    }
+
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+      toast.info('Listening... Describe your meal');
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('');
+      setInput(transcript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        toast.error('Microphone access denied. Please allow microphone access in your browser settings.');
+      } else {
+        toast.error('Voice recognition error. Please try again.');
+      }
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognition.start();
+  };
 
   const { data: foodEntries = [], isLoading } = useQuery({
     queryKey: ['food'],
@@ -63,14 +142,20 @@ export default function FoodLog() {
   });
 
   const handleAnalyze = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && !selectedImage) return;
     setIsAnalyzing(true);
     
     try {
-      const result = await api.analyzeFoodEntry(input);
+      let result;
+      if (selectedImage && selectedImageFile) {
+        result = await api.analyzeFoodImage(selectedImageFile, input || undefined);
+      } else {
+        result = await api.analyzeFoodEntry(input);
+      }
       setAnalysisResult({
         ...result,
         mealType: result.suggestedMealType || mealType,
+        hasImage: !!selectedImage,
       });
       if (result.suggestedMealType) {
         setMealType(result.suggestedMealType as MealType);
@@ -86,9 +171,9 @@ export default function FoodLog() {
     if (!analysisResult) return;
     
     await createFoodMutation.mutateAsync({
-      inputType: 'text',
+      inputType: selectedImage ? 'photo' : 'text',
       mealType,
-      rawText: input,
+      rawText: input || analysisResult.description || 'Photo analysis',
       timestamp: entryDate,
       aiOutputJson: {
         foods_detected: analysisResult.foods_detected,
@@ -102,6 +187,7 @@ export default function FoodLog() {
     setAnalysisResult(null);
     setMealType(suggestMealType());
     setEntryDate(new Date());
+    clearImage();
   };
   
   const isBackfill = !isToday(entryDate);
@@ -222,18 +308,64 @@ export default function FoodLog() {
               data-testid="input-food-description"
             />
             
+            {selectedImage && (
+              <div className="relative mb-4">
+                <img 
+                  src={selectedImage} 
+                  alt="Selected food" 
+                  className="w-full max-h-48 object-cover rounded-lg"
+                />
+                <Button 
+                  variant="destructive" 
+                  size="icon" 
+                  className="absolute top-2 right-2 rounded-full w-8 h-8"
+                  onClick={clearImage}
+                  data-testid="button-clear-image"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-2 border-t border-border">
               <div className="flex gap-2">
-                <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary" data-testid="button-camera">
-                  <Camera className="w-5 h-5" />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageSelect}
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  data-testid="input-camera-file"
+                />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn(
+                    "rounded-full text-muted-foreground hover:text-primary",
+                    selectedImage && "text-primary"
+                  )}
+                  onClick={handleCameraClick}
+                  data-testid="button-camera"
+                >
+                  {selectedImage ? <Image className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary" data-testid="button-voice">
-                  <Mic className="w-5 h-5" />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn(
+                    "rounded-full text-muted-foreground hover:text-primary",
+                    isRecording && "text-red-500 animate-pulse"
+                  )}
+                  onClick={handleVoiceClick}
+                  data-testid="button-voice"
+                >
+                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </Button>
               </div>
               <Button 
                 onClick={handleAnalyze} 
-                disabled={!input.trim() || isAnalyzing}
+                disabled={(!input.trim() && !selectedImage) || isAnalyzing}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-6"
                 data-testid="button-analyze"
               >

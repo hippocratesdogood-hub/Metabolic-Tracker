@@ -119,6 +119,27 @@ class ApiClient {
     });
   }
 
+  async analyzeFoodImage(imageFile: File, additionalText?: string) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    if (additionalText) {
+      formData.append('text', additionalText);
+    }
+    
+    const response = await fetch(`${this.baseUrl}/food/analyze-image`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(error.message || 'Failed to analyze image');
+    }
+    
+    return response.json();
+  }
+
   // Macro Targets
   async getMacroTargets() {
     return this.request<any>("/macro-targets");

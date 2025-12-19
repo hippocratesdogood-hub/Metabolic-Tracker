@@ -4,9 +4,22 @@ import { storage } from "./storage";
 import { setupAuth, crypto } from "./auth";
 import { analyticsService } from "./analytics";
 import passport from "passport";
+import multer from "multer";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 function suggestMealType(): string {
   const hour = new Date().getHours();
@@ -259,6 +272,40 @@ export async function registerRoutes(
         notes: "Balanced meal with good protein content.",
         suggestedMealType,
         confidence: { low: 0.7, high: 0.9 }
+      };
+      
+      res.json(mockAnalysis);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/food/analyze-image", requireAuth, upload.single('image'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No image provided" });
+      }
+      
+      const additionalText = req.body.text || '';
+      const suggestedMealType = suggestMealType();
+      
+      // Mock AI image analysis - in production, this would call a vision AI service
+      const mockAnalysis = {
+        foods_detected: [
+          { name: "Detected food from photo", portion: "1 serving", confidence: 0.82 }
+        ],
+        macros: {
+          calories: 420,
+          protein: 28,
+          carbs: 35,
+          fat: 18,
+          fiber: 6
+        },
+        qualityScore: 78,
+        notes: "Photo analyzed. Good protein content detected.",
+        description: additionalText || "Food photo",
+        suggestedMealType,
+        confidence: { low: 0.65, high: 0.85 }
       };
       
       res.json(mockAnalysis);
