@@ -70,9 +70,11 @@ export default function FoodLog() {
     }
   };
 
-  const handleVoiceClick = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast.error('Voice input is not supported in this browser. Try Chrome or Safari.');
+  const handleVoiceClick = async () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast.error('Voice input is not supported on this device. Please type your meal instead.');
       return;
     }
 
@@ -82,41 +84,78 @@ export default function FoodLog() {
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      toast.error('Microphone access denied. Please enable microphone in your browser settings.');
+      return;
+    }
 
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
 
-    recognition.onstart = () => {
-      setIsRecording(true);
-      toast.info('Listening... Describe your meal');
-    };
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
 
-    recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
-        .join('');
-      setInput(transcript);
-    };
+      recognition.onstart = () => {
+        setIsRecording(true);
+        toast.info('Listening... Describe your meal');
+      };
 
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'not-allowed') {
-        toast.error('Microphone access denied. Please allow microphone access in your browser settings.');
-      } else {
-        toast.error('Voice recognition error. Please try again.');
-      }
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+        
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript;
+          } else {
+            interimTranscript += result[0].transcript;
+          }
+        }
+        
+        setInput(finalTranscript || interimTranscript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+        
+        switch (event.error) {
+          case 'not-allowed':
+          case 'permission-denied':
+            toast.error('Microphone permission denied. Please allow access in Settings.');
+            break;
+          case 'no-speech':
+            toast.info('No speech detected. Tap the mic and try again.');
+            break;
+          case 'network':
+            toast.error('Network error. Please check your connection.');
+            break;
+          case 'aborted':
+            break;
+          default:
+            toast.error(`Voice error: ${event.error}. Try typing instead.`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+        if (input.trim()) {
+          toast.success('Got it! Tap "Log Meal" to analyze.');
+        }
+      };
+
+      recognition.start();
+    } catch (err: any) {
+      console.error('Failed to start speech recognition:', err);
+      toast.error('Could not start voice input. Please type your meal instead.');
       setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognition.start();
+    }
   };
 
   const { data: foodEntries = [], isLoading } = useQuery({
