@@ -18,6 +18,7 @@ import PromptsAdmin from "@/pages/PromptsAdmin";
 import AdminDashboard from "@/pages/AdminDashboard";
 import Participants from "@/pages/Participants";
 import ResetPassword from "@/pages/ResetPassword";
+import MetabolicAge from "@/pages/MetabolicAge";
 
 function ProtectedRoute({ component: Component, allowForceReset = false }: { component: () => React.JSX.Element; allowForceReset?: boolean }) {
   const { user, isLoading } = useAuth();
@@ -54,6 +55,7 @@ function Router() {
         <Route path="/food">{() => <ProtectedRoute component={FoodLog} />}</Route>
         <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
         <Route path="/reports">{() => <ProtectedRoute component={Reports} />}</Route>
+        <Route path="/metabolic-age">{() => <ProtectedRoute component={MetabolicAge} />}</Route>
         <Route path="/admin/prompts">{() => <ProtectedRoute component={PromptsAdmin} />}</Route>
         <Route path="/admin/participants">{() => <ProtectedRoute component={Participants} />}</Route>
         <Route path="/admin">{() => <ProtectedRoute component={AdminDashboard} />}</Route>
