@@ -126,7 +126,7 @@ class ApiClient {
       formData.append('text', additionalText);
     }
     
-    const response = await fetch(`${this.baseUrl}/food/analyze-image`, {
+    const response = await fetch('/api/food/analyze-image', {
       method: 'POST',
       body: formData,
       credentials: 'include',
