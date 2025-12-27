@@ -247,7 +247,7 @@ export default function FoodLog() {
   const MealIcon = mealIcons[mealType];
 
   return (
-    <div className="space-y-6 pb-20 overflow-x-hidden w-full max-w-full">
+    <div className="space-y-6 pb-20">
       <div>
         <h1 className="text-2xl font-heading font-bold" data-testid="text-page-title">Food Log</h1>
         <p className="text-muted-foreground">Snap a photo or describe your meal.</p>
@@ -490,7 +490,7 @@ export default function FoodLog() {
         </CardContent>
       </Card>
 
-      <div className="space-y-4 overflow-hidden">
+      <div className="space-y-4">
         <h3 className="font-heading font-semibold text-lg">Recent Meals</h3>
         {isLoading ? (
           <div className="flex justify-center py-8">
@@ -510,39 +510,41 @@ export default function FoodLog() {
             const MealEntryIcon = mealIcons[entry.mealType as MealType] || Cookie;
             
             return (
-              <div key={entry.id} className="bg-card rounded-xl shadow-sm p-4 w-full box-border" style={{ maxWidth: '100%', overflow: 'hidden' }} data-testid={`card-food-${entry.id}`}>
-                <div className="flex items-start gap-3" style={{ maxWidth: '100%' }}>
-                  <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0",
-                    qualityScore >= 90 ? "bg-green-100 text-green-700" :
-                    qualityScore >= 70 ? "bg-yellow-100 text-yellow-700" :
-                    "bg-red-100 text-red-700"
-                  )}>
-                    {qualityScore || '--'}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', wordBreak: 'break-word' }}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <MealEntryIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      <span className="font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{entry.rawText || 'Food entry'}</span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                        {format(new Date(entry.timestamp), 'h:mm a')}
-                      </span>
+              <Card key={entry.id} className="border-none shadow-sm" data-testid={`card-food-${entry.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shrink-0",
+                      qualityScore >= 90 ? "bg-green-100 text-green-700" :
+                      qualityScore >= 70 ? "bg-yellow-100 text-yellow-700" :
+                      "bg-red-100 text-red-700"
+                    )}>
+                      {qualityScore || '--'}
                     </div>
-                    {notes && (
-                      <p className="text-xs text-muted-foreground mt-1" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {notes}
-                      </p>
-                    )}
-                    {macros && (
-                      <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
-                        <span>{macros.protein}g P</span>
-                        <span>{macros.carbs}g C</span>
-                        <span>{macros.fat}g F</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MealEntryIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium truncate">{entry.rawText || 'Food entry'}</span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                          {format(new Date(entry.timestamp), 'h:mm a')}
+                        </span>
                       </div>
-                    )}
+                      {notes && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {notes}
+                        </p>
+                      )}
+                      {macros && (
+                        <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
+                          <span>{macros.protein}g P</span>
+                          <span>{macros.carbs}g C</span>
+                          <span>{macros.fat}g F</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             );
           })
         )}
