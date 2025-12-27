@@ -90,8 +90,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-20 md:pb-0 relative">
-        <div className="max-w-4xl mx-auto p-4 md:p-8 animate-in fade-in duration-500">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20 md:pb-0 relative">
+        <div className="max-w-4xl mx-auto p-4 md:p-8 animate-in fade-in duration-500 overflow-hidden">
           {children}
         </div>
       </main>

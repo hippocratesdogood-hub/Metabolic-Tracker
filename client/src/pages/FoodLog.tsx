@@ -520,18 +520,18 @@ export default function FoodLog() {
                   )}>
                     {qualityScore || '--'}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <MealEntryIcon className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <MealEntryIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                         <p className="font-medium truncate">{entry.rawText || 'Food entry'}</p>
                       </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
                         {format(new Date(entry.timestamp), 'h:mm a')}
                       </span>
                     </div>
                     {notes && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words">
                         {notes}
                       </p>
                     )}
