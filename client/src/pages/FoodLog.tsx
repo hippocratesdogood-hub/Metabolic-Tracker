@@ -181,13 +181,24 @@ export default function FoodLog() {
   });
 
   const handleAnalyze = async () => {
-    if (!input.trim() && !selectedImage) return;
+    if (!input.trim() && !selectedImage) {
+      toast.error('Please add a photo or describe your meal');
+      return;
+    }
+    
     setIsAnalyzing(true);
+    toast.info('Analyzing your meal...');
     
     try {
       let result;
       if (selectedImage && selectedImageFile) {
         result = await api.analyzeFoodImage(selectedImageFile, input || undefined);
+      } else if (selectedImage) {
+        // Image exists but file was lost - convert back to file
+        const response = await fetch(selectedImage);
+        const blob = await response.blob();
+        const file = new File([blob], 'meal.jpg', { type: 'image/jpeg' });
+        result = await api.analyzeFoodImage(file, input || undefined);
       } else {
         result = await api.analyzeFoodEntry(input);
       }
@@ -199,8 +210,10 @@ export default function FoodLog() {
       if (result.suggestedMealType) {
         setMealType(result.suggestedMealType as MealType);
       }
+      toast.success('Analysis complete!');
     } catch (error: any) {
-      toast.error('Failed to analyze meal');
+      console.error('Food analysis error:', error);
+      toast.error(error.message || 'Failed to analyze meal. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
