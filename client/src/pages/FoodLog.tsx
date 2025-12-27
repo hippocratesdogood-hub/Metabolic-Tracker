@@ -510,38 +510,38 @@ export default function FoodLog() {
             const MealEntryIcon = mealIcons[entry.mealType as MealType] || Cookie;
             
             return (
-              <Card key={entry.id} className="border-none shadow-sm w-full overflow-hidden" data-testid={`card-food-${entry.id}`}>
-                <CardContent className="p-4 flex gap-3 w-full">
-                  <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shrink-0",
-                    qualityScore >= 90 ? "bg-green-100 text-green-700" :
-                    qualityScore >= 70 ? "bg-yellow-100 text-yellow-700" :
-                    "bg-red-100 text-red-700"
-                  )}>
-                    {qualityScore || '--'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-                        <MealEntryIcon className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="font-medium truncate block">{entry.rawText || 'Food entry'}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 ml-1">
-                        {format(new Date(entry.timestamp), 'h:mm a')}
-                      </span>
+              <Card key={entry.id} className="border-none shadow-sm overflow-hidden" data-testid={`card-food-${entry.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shrink-0",
+                      qualityScore >= 90 ? "bg-green-100 text-green-700" :
+                      qualityScore >= 70 ? "bg-yellow-100 text-yellow-700" :
+                      "bg-red-100 text-red-700"
+                    )}>
+                      {qualityScore || '--'}
                     </div>
-                    {notes && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 overflow-hidden text-ellipsis">
-                        {notes}
-                      </p>
-                    )}
-                    {macros && (
-                      <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
-                        <span>{macros.protein}g P</span>
-                        <span>{macros.carbs}g C</span>
-                        <span>{macros.fat}g F</span>
+                    <div className="flex-1 overflow-hidden" style={{ maxWidth: 'calc(100% - 52px)' }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <MealEntryIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium line-clamp-1">{entry.rawText || 'Food entry'}</span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 ml-auto">
+                          {format(new Date(entry.timestamp), 'h:mm a')}
+                        </span>
                       </div>
-                    )}
+                      {notes && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {notes}
+                        </p>
+                      )}
+                      {macros && (
+                        <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
+                          <span>{macros.protein}g P</span>
+                          <span>{macros.carbs}g C</span>
+                          <span>{macros.fat}g F</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
