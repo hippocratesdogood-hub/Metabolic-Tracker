@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/', label: 'Today', icon: LayoutDashboard },
     { href: '/trends', label: 'Trends', icon: TrendingUp },
     { href: '/food', label: 'Food', icon: Utensils },
-    { href: '/metabolic-age', label: 'Age', icon: Calculator },
+    { href: '/metabolic-age', label: 'Met Age', icon: Calculator },
     { href: '/messages', label: 'Coach', icon: MessageSquare },
     { href: '/reports', label: 'Reports', icon: FileText },
     ...(isAdminOrCoach ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
