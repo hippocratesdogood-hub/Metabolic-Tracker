@@ -1,16 +1,70 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { useData } from '@/lib/dataAdapter';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Calendar, Trophy, TrendingUp, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import { ArrowRight, Calendar, Trophy, TrendingUp, AlertCircle, CheckCircle2, Download, Loader2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function Reports() {
   const { user } = useData();
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const today = new Date();
   const weekStart = subDays(today, 7);
   
+  const handleDownloadPDF = async () => {
+    if (!reportRef.current) return;
+    
+    setIsGenerating(true);
+    toast.info('Generating PDF...');
+    
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const jsPDF = (await import('jspdf')).default;
+      
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#f8fafc'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      const fileName = `metabolic-report-${format(today, 'yyyy-MM-dd')}.pdf`;
+      pdf.save(fileName);
+      toast.success('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      toast.error('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // Mock Report Data (in a real app, this comes from the backend generator)
   const report = {
     period: `${format(weekStart, 'MMM d')} - ${format(today, 'MMM d, yyyy')}`,
@@ -30,15 +84,25 @@ export default function Reports() {
   };
 
   return (
-    <div className="space-y-8 pb-20 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 pb-20 max-w-3xl mx-auto" ref={reportRef}>
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-heading font-bold">Weekly Report</h1>
           <p className="text-muted-foreground">Your metabolic digest for the week.</p>
         </div>
-        <Button variant="outline" size="sm" className="hidden sm:flex">
-          <Download className="w-4 h-4 mr-2" />
-          Download PDF
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleDownloadPDF}
+          disabled={isGenerating}
+          data-testid="button-download-pdf"
+        >
+          {isGenerating ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4 mr-2" />
+          )}
+          {isGenerating ? 'Generating...' : 'Download PDF'}
         </Button>
       </div>
 
