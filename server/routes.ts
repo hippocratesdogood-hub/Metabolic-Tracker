@@ -10,10 +10,13 @@ import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, inser
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// OpenAI is optional - only initialize if API key is provided
+const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    })
+  : null;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -259,6 +262,9 @@ export async function registerRoutes(
 
   app.post("/api/food/analyze", requireAuth, async (req, res) => {
     try {
+      if (!openai) {
+        return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
+      }
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
       
@@ -299,6 +305,9 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
 
   app.post("/api/food/analyze-image", requireAuth, upload.single('image'), async (req, res) => {
     try {
+      if (!openai) {
+        return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
+      }
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });
       }

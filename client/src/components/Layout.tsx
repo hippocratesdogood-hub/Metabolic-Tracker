@@ -31,10 +31,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <header className="md:hidden h-14 border-b border-border bg-card flex items-center justify-between px-4 sticky top-0 z-50">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-xs">
-            MM
-          </div>
-          <span className="font-heading font-semibold text-lg">Metabolic Magic</span>
+          <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-8 h-8 rounded-lg object-contain" />
+          <span className="font-heading font-semibold text-lg">Metabolic OS</span>
         </div>
         <Link href="/login">
           <Button variant="ghost" size="icon" className="rounded-full">
@@ -46,12 +44,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r border-sidebar-border bg-sidebar h-screen sticky top-0">
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold shadow-lg shadow-primary/20">
-            MM
-          </div>
+          <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-10 h-10 rounded-xl object-contain" />
           <div>
             <h1 className="font-heading font-bold text-lg leading-none">Metabolic</h1>
-            <h1 className="font-heading font-medium text-lg text-primary leading-none">Magic</h1>
+            <h1 className="font-heading font-medium text-lg text-primary leading-none">OS</h1>
           </div>
         </div>
 

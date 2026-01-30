@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
 
@@ -40,10 +40,8 @@ export default function Login() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl -z-10 animate-pulse" style={{ animationDelay: '1s' }} />
 
       <div className="mb-8 text-center">
-        <div className="w-16 h-16 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center text-white mx-auto mb-4 shadow-xl shadow-primary/20">
-          <Sparkles className="w-8 h-8" />
-        </div>
-        <h1 className="text-3xl font-heading font-bold text-foreground">Metabolic Magic</h1>
+        <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-16 h-16 rounded-2xl mx-auto mb-4 shadow-xl object-contain" />
+        <h1 className="text-3xl font-heading font-bold text-foreground">Metabolic OS</h1>
         <p className="text-muted-foreground mt-2">Your journey to metabolic flexibility starts here.</p>
       </div>
 
