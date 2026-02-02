@@ -46,15 +46,18 @@ export interface IStorage {
 
   // Metrics
   createMetricEntry(entry: InsertMetricEntry): Promise<MetricEntry>;
+  getMetricEntryById(id: string): Promise<MetricEntry | undefined>;
   getMetricEntries(userId: string, type?: string, from?: Date, to?: Date): Promise<MetricEntry[]>;
   updateMetricEntry(id: string, data: Partial<InsertMetricEntry>): Promise<MetricEntry | undefined>;
   deleteMetricEntry(id: string): Promise<boolean>;
 
   // Food
   createFoodEntry(entry: InsertFoodEntry): Promise<FoodEntry>;
+  getFoodEntryById(id: string): Promise<FoodEntry | undefined>;
   getFoodEntries(userId: string, from?: Date, to?: Date): Promise<FoodEntry[]>;
   getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]>;
   updateFoodEntry(id: string, data: Partial<InsertFoodEntry>): Promise<FoodEntry | undefined>;
+  deleteFoodEntry(id: string): Promise<boolean>;
 
   // Macro Targets
   getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
@@ -126,6 +129,11 @@ export class PostgresStorage implements IStorage {
     return results[0];
   }
 
+  async getMetricEntryById(id: string): Promise<MetricEntry | undefined> {
+    const results = await db.select().from(schema.metricEntries).where(eq(schema.metricEntries.id, id));
+    return results[0];
+  }
+
   async getMetricEntries(
     userId: string,
     type?: string,
@@ -174,6 +182,11 @@ export class PostgresStorage implements IStorage {
     return results[0];
   }
 
+  async getFoodEntryById(id: string): Promise<FoodEntry | undefined> {
+    const results = await db.select().from(schema.foodEntries).where(eq(schema.foodEntries.id, id));
+    return results[0];
+  }
+
   async getFoodEntries(userId: string, from?: Date, to?: Date): Promise<FoodEntry[]> {
     const conditions = [eq(schema.foodEntries.userId, userId)];
     
@@ -198,6 +211,14 @@ export class PostgresStorage implements IStorage {
       .where(eq(schema.foodEntries.id, id))
       .returning();
     return results[0];
+  }
+
+  async deleteFoodEntry(id: string): Promise<boolean> {
+    const results = await db
+      .delete(schema.foodEntries)
+      .where(eq(schema.foodEntries.id, id))
+      .returning();
+    return results.length > 0;
   }
 
   async getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]> {

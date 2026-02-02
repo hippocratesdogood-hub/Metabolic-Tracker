@@ -190,10 +190,16 @@ export async function registerRoutes(
 
   app.put("/api/metrics/:id", requireAuth, async (req, res) => {
     try {
-      const entry = await storage.updateMetricEntry(req.params.id, req.body);
-      if (!entry) {
+      // Verify ownership before updating
+      const existing = await storage.getMetricEntryById(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Entry not found" });
       }
+      if (existing.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const entry = await storage.updateMetricEntry(req.params.id, req.body);
       res.json(entry);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -202,10 +208,16 @@ export async function registerRoutes(
 
   app.delete("/api/metrics/:id", requireAuth, async (req, res) => {
     try {
-      const deleted = await storage.deleteMetricEntry(req.params.id);
-      if (!deleted) {
+      // Verify ownership before deleting
+      const existing = await storage.getMetricEntryById(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Entry not found" });
       }
+      if (existing.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteMetricEntry(req.params.id);
       res.json({ message: "Deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -250,11 +262,35 @@ export async function registerRoutes(
 
   app.put("/api/food/:id", requireAuth, async (req, res) => {
     try {
-      const entry = await storage.updateFoodEntry(req.params.id, req.body);
-      if (!entry) {
+      // Verify ownership before updating
+      const existing = await storage.getFoodEntryById(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Entry not found" });
       }
+      if (existing.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const entry = await storage.updateFoodEntry(req.params.id, req.body);
       res.json(entry);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/food/:id", requireAuth, async (req, res) => {
+    try {
+      // Verify ownership before deleting
+      const existing = await storage.getFoodEntryById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Entry not found" });
+      }
+      if (existing.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteFoodEntry(req.params.id);
+      res.json({ message: "Deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
