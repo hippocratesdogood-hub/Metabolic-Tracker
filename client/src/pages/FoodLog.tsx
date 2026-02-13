@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare } from 'lucide-react';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -29,6 +31,255 @@ function suggestMealType(): MealType {
   return 'Snack';
 }
 
+const SERVING_OPTIONS = [0.5, 1, 1.5, 2, 3];
+
+function scaleMacros(macros: any, multiplier: number) {
+  if (!macros) return macros;
+  return {
+    calories: Math.round(macros.calories * multiplier),
+    protein: Math.round(macros.protein * multiplier),
+    carbs: Math.round(macros.carbs * multiplier),
+    fat: Math.round(macros.fat * multiplier),
+    fiber: macros.fiber != null ? Math.round(macros.fiber * multiplier) : undefined,
+  };
+}
+
+function ServingPills({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-muted-foreground mr-1">Servings:</span>
+      {SERVING_OPTIONS.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onChange(opt)}
+          className={cn(
+            "px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
+            value === opt
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-accent"
+          )}
+        >
+          {opt}x
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FoodEditModal({
+  entry,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  entry: any;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const originalMacros = entry.userCorrectionsJson?.macros || entry.aiOutputJson?.macros || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const [editedText, setEditedText] = useState(entry.rawText || '');
+  const [editNote, setEditNote] = useState((entry.tags as any)?.personalNote || '');
+  const [reanalyzedResult, setReanalyzedResult] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const displayMacros = reanalyzedResult?.macros || originalMacros;
+  const hasTextChanged = editedText.trim() !== (entry.rawText || '').trim();
+  const hasNoteChanged = editNote.trim() !== ((entry.tags as any)?.personalNote || '').trim();
+  const hasNewAnalysis = reanalyzedResult !== null;
+  const canSave = hasNewAnalysis || hasNoteChanged;
+
+  const handleReanalyze = async () => {
+    if (!editedText.trim()) {
+      toast.error('Please describe your meal');
+      return;
+    }
+    setIsAnalyzing(true);
+    try {
+      const result = await api.analyzeFoodEntry(editedText);
+      setReanalyzedResult(result);
+      toast.success('Macros updated!');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to re-analyze');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setIsSaving(true);
+    try {
+      const updates: any = {};
+      const currentTags = (entry.tags as Record<string, unknown>) || {};
+      updates.tags = { ...currentTags, personalNote: editNote.trim() || undefined };
+
+      if (hasNewAnalysis) {
+        const existingOutput = entry.userCorrectionsJson || entry.aiOutputJson || {};
+        updates.rawText = editedText;
+        updates.userCorrectionsJson = {
+          ...existingOutput,
+          macros: reanalyzedResult.macros,
+          qualityScore: reanalyzedResult.qualityScore ?? existingOutput.qualityScore,
+          notes: reanalyzedResult.notes ?? existingOutput.notes,
+          foods_detected: reanalyzedResult.foods_detected ?? existingOutput.foods_detected,
+        };
+      }
+
+      await api.updateFoodEntry(entry.id, updates);
+      toast.success('Meal updated');
+      onSaved();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await api.deleteFoodEntry(entry.id);
+      toast.success('Meal deleted');
+      onDeleted();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const MealEntryIcon = mealIcons[entry.mealType as MealType] || Cookie;
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="w-4 h-4" />
+            Edit Meal
+          </DialogTitle>
+          <DialogDescription className="flex items-center gap-2">
+            <MealEntryIcon className="w-3.5 h-3.5" />
+            <span className="truncate">{entry.mealType || 'Meal'}</span>
+            <span className="text-muted-foreground shrink-0">
+              {format(new Date(entry.timestamp), 'MMM d, h:mm a')}
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">What did you eat?</Label>
+            <Textarea
+              value={editedText}
+              onChange={(e) => setEditedText(e.target.value)}
+              className="resize-none min-h-[80px] text-sm"
+              placeholder="e.g. 2 eggs, 1 slice sourdough toast, black coffee..."
+              maxLength={1000}
+            />
+            {hasTextChanged && !hasNewAnalysis && (
+              <p className="text-xs text-amber-600">Tap "Update Macros" to re-analyze with your changes</p>
+            )}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2"
+            onClick={handleReanalyze}
+            disabled={isAnalyzing || !hasTextChanged}
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              'Update Macros'
+            )}
+          </Button>
+
+          <div className={cn(
+            "grid grid-cols-4 gap-2 text-center rounded-lg p-3",
+            hasNewAnalysis ? "bg-green-50 ring-1 ring-green-200" : "bg-muted/50"
+          )}>
+            <div>
+              <div className="text-xs text-muted-foreground">Cals</div>
+              <div className="font-bold text-sm">{displayMacros.calories}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Protein</div>
+              <div className="font-bold text-sm">{displayMacros.protein}g</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Carbs</div>
+              <div className="font-bold text-sm">{displayMacros.carbs}g</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Fat</div>
+              <div className="font-bold text-sm">{displayMacros.fat}g</div>
+            </div>
+          </div>
+          {hasNewAnalysis && (
+            <p className="text-xs text-green-600 text-center">Macros updated from AI analysis</p>
+          )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium flex items-center gap-1.5">
+              <MessageSquare className="w-3 h-3" />
+              Personal note <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Textarea
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              className="resize-none min-h-[48px] text-sm"
+              placeholder="e.g. felt great after this, too heavy before workout..."
+              maxLength={300}
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            {!confirmDelete ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-1.5"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Confirm Delete
+              </Button>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={isSaving || !canSave}>
+                {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function FoodLog() {
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
@@ -39,6 +290,9 @@ export default function FoodLog() {
   const [isRecording, setIsRecording] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [servingMultiplier, setServingMultiplier] = useState(1);
+  const [personalNote, setPersonalNote] = useState('');
+  const [editingEntry, setEditingEntry] = useState<any>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -50,16 +304,40 @@ export default function FoodLog() {
     fileInputRef.current?.click();
   };
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedImageFile(file);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setSelectedImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('Image is too large. Please use an image under 10MB.');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
     }
+
+    // Validate file type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error('Please select a valid image file (JPEG, PNG, or WebP).');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setSelectedImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setSelectedImage(event.target?.result as string);
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read image. Please try again.');
+    };
+    reader.readAsDataURL(file);
   };
 
   const clearImage = () => {
@@ -168,11 +446,48 @@ export default function FoodLog() {
     queryFn: () => api.getMacroProgress(),
   });
 
+  const { data: favorites = [] } = useQuery({
+    queryKey: ['food-favorites'],
+    queryFn: () => api.getFavorites(),
+  });
+
+  const { data: foodStreak } = useQuery({
+    queryKey: ['food-streak'],
+    queryFn: () => api.getFoodStreak(),
+  });
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (id: string) => api.toggleFavorite(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food-favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['food'] });
+    },
+  });
+
+  const handleUseFavorite = (entry: any) => {
+    const macros = entry.userCorrectionsJson?.macros || entry.aiOutputJson?.macros;
+    const qualityScore = entry.userCorrectionsJson?.qualityScore || entry.aiOutputJson?.qualityScore;
+    const notes = entry.userCorrectionsJson?.notes || entry.aiOutputJson?.notes;
+    const foods_detected = entry.userCorrectionsJson?.foods_detected || entry.aiOutputJson?.foods_detected;
+
+    setInput(entry.rawText || '');
+    setMealType(entry.mealType as MealType || suggestMealType());
+    setAnalysisResult({
+      macros,
+      qualityScore,
+      notes,
+      foods_detected,
+      confidence: { low: 0.95, high: 0.99 },
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const createFoodMutation = useMutation({
     mutationFn: (entry: any) => api.createFoodEntry(entry),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['food'] });
       queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['food-streak'] });
       toast.success('Meal logged successfully!');
     },
     onError: (err: any) => {
@@ -221,7 +536,9 @@ export default function FoodLog() {
 
   const handleSave = async () => {
     if (!analysisResult) return;
-    
+
+    const savedMacros = scaleMacros(analysisResult.macros, servingMultiplier);
+
     await createFoodMutation.mutateAsync({
       inputType: selectedImage ? 'photo' : 'text',
       mealType,
@@ -229,14 +546,17 @@ export default function FoodLog() {
       timestamp: entryDate,
       aiOutputJson: {
         foods_detected: analysisResult.foods_detected,
-        macros: analysisResult.macros,
+        macros: savedMacros,
         qualityScore: analysisResult.qualityScore,
         notes: analysisResult.notes,
       },
+      tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
     });
-    
+
     setInput('');
     setAnalysisResult(null);
+    setServingMultiplier(1);
+    setPersonalNote('');
     setMealType(suggestMealType());
     setEntryDate(new Date());
     clearImage();
@@ -286,12 +606,79 @@ export default function FoodLog() {
         </Card>
       )}
 
+      {foodStreak && (
+        <Card className="border-none shadow-sm bg-gradient-to-r from-orange-50/50 to-amber-50/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                <span className="font-medium text-sm">Meal Streak</span>
+                {foodStreak.streak > 0 && (
+                  <span className="text-xs font-bold text-orange-600">{foodStreak.streak}</span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {foodStreak.daysLoggedThisWeek}/7 this week
+              </span>
+            </div>
+            <div className="flex justify-between px-2">
+              {foodStreak.weekDays.map((day) => {
+                const isToday = day.date === new Date().toISOString().split('T')[0];
+                return (
+                  <div key={day.date} className="flex flex-col items-center gap-1.5">
+                    <span className="text-[10px] text-muted-foreground font-medium">{day.dayLabel}</span>
+                    <div className={cn(
+                      "w-7 h-7 rounded-full flex items-center justify-center transition-colors",
+                      day.logged ? "bg-primary" : "bg-muted",
+                      isToday && "ring-2 ring-primary/30"
+                    )}>
+                      {day.logged && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3 text-center italic">
+              {foodStreak.message}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {favorites.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
+            <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
+            Favorites
+          </h3>
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
+            {favorites.map((fav: any) => {
+              const macros = fav.userCorrectionsJson?.macros || fav.aiOutputJson?.macros;
+              const FavIcon = mealIcons[fav.mealType as MealType] || Cookie;
+              return (
+                <button
+                  key={fav.id}
+                  onClick={() => handleUseFavorite(fav)}
+                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border bg-background hover:bg-accent transition-colors text-sm max-w-[220px]"
+                >
+                  <FavIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate font-medium">{fav.rawText || 'Meal'}</span>
+                  {macros && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{macros.calories} cal</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <Card className="border-none shadow-md overflow-hidden">
         <CardContent className="p-0">
           <div className="p-4 space-y-4">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Select value={mealType} onValueChange={(v) => setMealType(v as MealType)}>
-                <SelectTrigger className="w-[140px]" data-testid="select-meal-type">
+                <SelectTrigger className="w-[140px]" aria-label="Select meal type" data-testid="select-meal-type">
                   <div className="flex items-center gap-2">
                     <MealIcon className="w-4 h-4" />
                     <SelectValue />
@@ -352,13 +739,21 @@ export default function FoodLog() {
               )}
             </div>
 
-            <Textarea 
-              placeholder="e.g. 2 eggs, 1 slice sourdough toast, black coffee..." 
+            <Textarea
+              id="food-description"
+              placeholder="e.g. 2 eggs, 1 slice sourdough toast, black coffee..."
               className="resize-none min-h-[100px] text-lg bg-transparent border-none focus-visible:ring-0 p-0 placeholder:text-muted-foreground/50"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              aria-label="Describe your meal"
+              maxLength={1000}
               data-testid="input-food-description"
             />
+            {input.length > 800 && (
+              <p className="text-xs text-muted-foreground text-right">
+                {input.length}/1000 characters
+              </p>
+            )}
             
             {selectedImage && (
               <div className="relative mb-4">
@@ -385,31 +780,35 @@ export default function FoodLog() {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageSelect}
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                   capture="environment"
                   className="hidden"
+                  aria-label="Upload photo of your meal"
                   data-testid="input-camera-file"
                 />
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className={cn(
                     "rounded-full text-muted-foreground hover:text-primary",
                     selectedImage && "text-primary"
                   )}
                   onClick={handleCameraClick}
+                  aria-label={selectedImage ? "Change photo" : "Add photo of your meal"}
                   data-testid="button-camera"
                 >
                   {selectedImage ? <Image className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   className={cn(
                     "rounded-full text-muted-foreground hover:text-primary",
                     isRecording && "text-red-500 animate-pulse"
                   )}
                   onClick={handleVoiceClick}
+                  aria-label={isRecording ? "Stop recording" : "Describe meal with voice"}
+                  aria-pressed={isRecording}
                   data-testid="button-voice"
                 >
                   {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -446,28 +845,47 @@ export default function FoodLog() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-                <div className="bg-background rounded-lg p-2 shadow-sm">
-                  <div className="text-xs text-muted-foreground font-medium">Cals</div>
-                  <div className="font-bold">{analysisResult.macros.calories}</div>
-                </div>
-                <div className="bg-background rounded-lg p-2 shadow-sm">
-                  <div className="text-xs text-muted-foreground font-medium">Protein</div>
-                  <div className="font-bold">{analysisResult.macros.protein}g</div>
-                </div>
-                <div className="bg-background rounded-lg p-2 shadow-sm">
-                  <div className="text-xs text-muted-foreground font-medium">Carbs</div>
-                  <div className="font-bold">{analysisResult.macros.carbs}g</div>
-                </div>
-                <div className="bg-background rounded-lg p-2 shadow-sm">
-                  <div className="text-xs text-muted-foreground font-medium">Fat</div>
-                  <div className="font-bold">{analysisResult.macros.fat}g</div>
-                </div>
+              {(() => {
+                const displayMacros = scaleMacros(analysisResult.macros, servingMultiplier);
+                return (
+                  <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                    <div className="bg-background rounded-lg p-2 shadow-sm">
+                      <div className="text-xs text-muted-foreground font-medium">Cals</div>
+                      <div className="font-bold">{displayMacros.calories}</div>
+                    </div>
+                    <div className="bg-background rounded-lg p-2 shadow-sm">
+                      <div className="text-xs text-muted-foreground font-medium">Protein</div>
+                      <div className="font-bold">{displayMacros.protein}g</div>
+                    </div>
+                    <div className="bg-background rounded-lg p-2 shadow-sm">
+                      <div className="text-xs text-muted-foreground font-medium">Carbs</div>
+                      <div className="font-bold">{displayMacros.carbs}g</div>
+                    </div>
+                    <div className="bg-background rounded-lg p-2 shadow-sm">
+                      <div className="text-xs text-muted-foreground font-medium">Fat</div>
+                      <div className="font-bold">{displayMacros.fat}g</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="mb-4">
+                <ServingPills value={servingMultiplier} onChange={setServingMultiplier} />
               </div>
 
               <p className="text-sm text-muted-foreground italic mb-4">
                 "{analysisResult.notes}"
               </p>
+
+              <div className="mb-4">
+                <Textarea
+                  value={personalNote}
+                  onChange={(e) => setPersonalNote(e.target.value)}
+                  className="resize-none min-h-[40px] text-sm bg-background/50"
+                  placeholder="Add a personal note (optional)... e.g. felt great after this"
+                  maxLength={300}
+                />
+              </div>
 
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setAnalysisResult(null)} data-testid="button-edit">Edit</Button>
@@ -507,10 +925,12 @@ export default function FoodLog() {
             const macros = entry.userCorrectionsJson?.macros || entry.aiOutputJson?.macros;
             const qualityScore = entry.userCorrectionsJson?.qualityScore || entry.aiOutputJson?.qualityScore;
             const notes = entry.userCorrectionsJson?.notes || entry.aiOutputJson?.notes;
+            const personalNoteText = (entry.tags as any)?.personalNote;
             const MealEntryIcon = mealIcons[entry.mealType as MealType] || Cookie;
-            
+            const isFavorite = !!(entry.tags as any)?.isFavorite;
+
             return (
-              <Card key={entry.id} className="border-none shadow-sm" data-testid={`card-food-${entry.id}`}>
+              <Card key={entry.id} className="border-none shadow-sm cursor-pointer hover:shadow-md transition-shadow" data-testid={`card-food-${entry.id}`} onClick={() => setEditingEntry(entry)}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className={cn(
@@ -534,6 +954,12 @@ export default function FoodLog() {
                           {notes}
                         </p>
                       )}
+                      {personalNoteText && (
+                        <p className="text-xs text-muted-foreground/70 mt-1 italic flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3 shrink-0" />
+                          <span className="line-clamp-1">{personalNoteText}</span>
+                        </p>
+                      )}
                       {macros && (
                         <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
                           <span>{macros.protein}g P</span>
@@ -542,6 +968,16 @@ export default function FoodLog() {
                         </div>
                       )}
                     </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleFavoriteMutation.mutate(entry.id); }}
+                      className="shrink-0 p-1.5 rounded-full hover:bg-accent transition-colors"
+                      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Heart className={cn(
+                        "w-4 h-4 transition-colors",
+                        isFavorite ? "text-rose-500 fill-rose-500" : "text-muted-foreground/40 hover:text-rose-400"
+                      )} />
+                    </button>
                   </div>
                 </CardContent>
               </Card>
@@ -549,6 +985,27 @@ export default function FoodLog() {
           })
         )}
       </div>
+
+      {editingEntry && (
+        <FoodEditModal
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSaved={() => {
+            setEditingEntry(null);
+            queryClient.invalidateQueries({ queryKey: ['food'] });
+            queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+            queryClient.invalidateQueries({ queryKey: ['food-favorites'] });
+            queryClient.invalidateQueries({ queryKey: ['food-streak'] });
+          }}
+          onDeleted={() => {
+            setEditingEntry(null);
+            queryClient.invalidateQueries({ queryKey: ['food'] });
+            queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+            queryClient.invalidateQueries({ queryKey: ['food-favorites'] });
+            queryClient.invalidateQueries({ queryKey: ['food-streak'] });
+          }}
+        />
+      )}
     </div>
   );
 }

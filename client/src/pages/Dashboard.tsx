@@ -6,7 +6,7 @@ import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Scale, Activity, Droplet, Heart, Ruler, Utensils } from 'lucide-react';
+import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 
@@ -18,6 +18,11 @@ export default function Dashboard() {
   const { data: macroProgress } = useQuery({
     queryKey: ['macro-progress'],
     queryFn: () => api.getMacroProgress(),
+  });
+
+  const { data: dashboardStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: () => api.getDashboardStats(),
   });
 
   const handleAddMetric = (type: MetricType) => {
@@ -37,6 +42,72 @@ export default function Dashboard() {
   const bp = getLatestMetric('BP');
   const waist = getLatestMetric('WAIST');
 
+  // Get trend data from API
+  const weightTrend = dashboardStats?.trends?.weight;
+  const glucoseTrend = dashboardStats?.trends?.glucose;
+  const ketonesTrend = dashboardStats?.trends?.ketones;
+  const waistTrend = dashboardStats?.trends?.waist;
+
+  // Helper to convert API trend to MetricCard format
+  const getTrendDirection = (trend: typeof weightTrend, invertForPositive: boolean = false) => {
+    if (!trend || trend.direction === 'neutral') return 'neutral' as const;
+    // For weight and waist, "down" is good
+    // For ketones, "up" is good
+    if (invertForPositive) {
+      return trend.direction === 'up' ? 'up' as const : 'down' as const;
+    }
+    return trend.direction === 'down' ? 'down' as const : 'up' as const;
+  };
+
+  // Generate a personalized focus message based on data
+  const getFocusMessage = () => {
+    if (!dashboardStats) {
+      return "Log your first metrics to get personalized recommendations.";
+    }
+
+    if (glucoseTrend && glucoseTrend.direction === 'up') {
+      return "Your fasting glucose is trending slightly higher. Try to prioritize fiber at your first meal today and get a 10-minute walk in after eating.";
+    }
+
+    if (ketonesTrend && ketonesTrend.direction === 'down') {
+      return "Your ketone levels have dipped. Consider extending your overnight fast or reducing carb intake to boost ketone production.";
+    }
+
+    if (weightTrend && weightTrend.isPositive && weightTrend.value) {
+      return `Great progress! You've lost ${weightTrend.value} recently. Keep up the momentum with consistent logging.`;
+    }
+
+    if (dashboardStats.streak >= 7) {
+      return `Amazing ${dashboardStats.streak}-day streak! Your consistency is paying off. Focus on protein at every meal today.`;
+    }
+
+    if (dashboardStats.streak >= 3) {
+      return "You're building great habits! Try to hit your protein target today for better energy levels.";
+    }
+
+    return "Focus on logging consistently today. Small daily actions lead to big transformations!";
+  };
+
+  // Generate streak message
+  const getStreakMessage = () => {
+    if (statsLoading) return "Loading...";
+    if (!dashboardStats) return "Start logging to build your streak!";
+
+    if (dashboardStats.streak === 0) {
+      return "Start logging today to begin your streak!";
+    }
+    if (dashboardStats.streak === 1) {
+      return "Great start! Keep logging tomorrow.";
+    }
+    if (dashboardStats.streak < 7) {
+      return `You're on a ${dashboardStats.streak}-day streak!`;
+    }
+    if (dashboardStats.streak < 30) {
+      return `Amazing ${dashboardStats.streak}-day streak!`;
+    }
+    return `Incredible ${dashboardStats.streak}-day streak!`;
+  };
+
   return (
     <div className="space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -45,7 +116,14 @@ export default function Dashboard() {
             Good morning, {user.name.split(' ')[0]}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Let's make today magical. You're on a 14-day streak!
+            {statsLoading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading your progress...
+              </span>
+            ) : (
+              getStreakMessage()
+            )}
           </p>
         </div>
         <div className="text-right hidden md:block">
@@ -56,66 +134,66 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <MetricCard
           title="Weight"
-          value={weight?.valueJson?.value?.toFixed(1) || '--'}
+          value={(weight?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
           unit="lbs"
           type="WEIGHT"
-          trend="down"
-          trendValue="1.2 lbs"
+          trend={weightTrend ? getTrendDirection(weightTrend) : undefined}
+          trendValue={weightTrend?.value || undefined}
           color="bg-blue-500"
           icon={Scale}
           onAdd={() => handleAddMetric('WEIGHT')}
-          lastUpdated={weight ? format(new Date(weight.timestamp), 'h:mm a') : undefined}
+          lastUpdated={weight ? new Date(weight.timestamp) : undefined}
         />
         <MetricCard
           title="Glucose (Fasting)"
-          value={glucose?.valueJson?.value?.toFixed(0) || '--'}
+          value={(glucose?.valueJson as { value?: number })?.value?.toFixed(0) || '--'}
           unit="mg/dL"
           type="GLUCOSE"
-          trend="neutral"
-          trendValue="stable"
-          color="bg-teal-500"
+          trend={glucoseTrend ? getTrendDirection(glucoseTrend) : undefined}
+          trendValue={glucoseTrend?.value || undefined}
+          color="bg-[#004aad]"
           icon={Droplet}
           onAdd={() => handleAddMetric('GLUCOSE')}
-          lastUpdated={glucose ? format(new Date(glucose.timestamp), 'h:mm a') : undefined}
+          lastUpdated={glucose ? new Date(glucose.timestamp) : undefined}
         />
         <MetricCard
           title="Ketones"
-          value={ketones?.valueJson?.value?.toFixed(1) || '--'}
+          value={(ketones?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
           unit="mmol/L"
           type="KETONES"
-          trend="up"
-          trendValue="0.4"
+          trend={ketonesTrend ? getTrendDirection(ketonesTrend, true) : undefined}
+          trendValue={ketonesTrend?.value || undefined}
           color="bg-purple-500"
           icon={Activity}
           onAdd={() => handleAddMetric('KETONES')}
-          lastUpdated={ketones ? format(new Date(ketones.timestamp), 'h:mm a') : undefined}
+          lastUpdated={ketones ? new Date(ketones.timestamp) : undefined}
         />
         <MetricCard
           title="Blood Pressure"
-          value={bp?.valueJson ? `${bp.valueJson.systolic}/${bp.valueJson.diastolic}` : '--/--'}
+          value={bp?.valueJson ? `${(bp.valueJson as { systolic?: number; diastolic?: number }).systolic}/${(bp.valueJson as { systolic?: number; diastolic?: number }).diastolic}` : '--/--'}
           unit="mmHg"
           type="BP"
           trend="neutral"
           color="bg-red-500"
           icon={Heart}
           onAdd={() => handleAddMetric('BP')}
-          lastUpdated={bp ? format(new Date(bp.timestamp), 'h:mm a') : undefined}
+          lastUpdated={bp ? new Date(bp.timestamp) : undefined}
         />
         <MetricCard
           title="Waist"
-          value={waist?.valueJson?.value?.toFixed(1) || '--'}
+          value={(waist?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
           unit="in"
           type="WAIST"
-          trend="down"
-          trendValue="0.5 in"
+          trend={waistTrend ? getTrendDirection(waistTrend) : undefined}
+          trendValue={waistTrend?.value || undefined}
           color="bg-indigo-500"
           icon={Ruler}
           onAdd={() => handleAddMetric('WAIST')}
-          lastUpdated={waist ? format(new Date(waist.timestamp), 'h:mm a') : undefined}
+          lastUpdated={waist ? new Date(waist.timestamp) : undefined}
         />
       </div>
 
-      {macroProgress?.target && (
+      {macroProgress?.target ? (
         <Card className="border-none shadow-md" data-testid="card-macro-progress">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
@@ -163,6 +241,22 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <Card className="border-none shadow-md border-dashed" data-testid="card-macro-prompt">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <Utensils className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="font-heading font-semibold">Nutrition Tracking</h3>
+                <p className="text-sm text-muted-foreground">
+                  Your coach will set your daily macro targets. Once set, you'll see your nutrition progress here.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Suggested Focus Section */}
@@ -171,14 +265,14 @@ export default function Dashboard() {
           <span className="text-xl">✨</span> Today's Focus
         </h3>
         <p className="text-muted-foreground">
-          Your fasting glucose is trending slightly higher. Try to prioritize fiber at your first meal today and get a 10-minute walk in after eating.
+          {getFocusMessage()}
         </p>
       </div>
 
-      <MetricEntryModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        type={selectedType} 
+      <MetricEntryModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        type={selectedType}
       />
     </div>
   );

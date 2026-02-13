@@ -73,5 +73,5 @@ export async function seedIfEmpty() {
   console.log("  - jordan@example.com (participant)");
   console.log("  - coach@example.com (coach)");
   console.log("  - admin@example.com (admin)");
-  console.log("  Password for all: password123");
+  console.log("  (Default passwords set - change in production)");
 }

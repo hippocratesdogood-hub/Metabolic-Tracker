@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -15,24 +15,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   const isAdminOrCoach = user?.role === 'admin' || user?.role === 'coach';
+  const isParticipant = user?.role === 'participant';
 
   const navItems = [
-    { href: '/', label: 'Today', icon: LayoutDashboard },
-    { href: '/trends', label: 'Trends', icon: TrendingUp },
-    { href: '/food', label: 'Food', icon: Utensils },
-    { href: '/metabolic-age', label: 'Met Age', icon: Calculator },
-    { href: '/messages', label: 'Coach', icon: MessageSquare },
-    { href: '/reports', label: 'Reports', icon: FileText },
-    ...(isAdminOrCoach ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
+    ...(isParticipant ? [
+      { href: '/', label: 'Today', icon: LayoutDashboard },
+      { href: '/trends', label: 'Trends', icon: TrendingUp },
+      { href: '/food', label: 'Food', icon: Utensils },
+      { href: '/metabolic-age', label: 'Met Age', icon: Calculator },
+      { href: '/messages', label: 'Coach', icon: MessageSquare },
+      { href: '/reports', label: 'Reports', icon: FileText },
+    ] : []),
+    ...(isAdminOrCoach ? [
+      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+      { href: '/admin/participants', label: 'Participants', icon: User },
+      { href: '/admin/prompts', label: 'Prompts', icon: Shield },
+      { href: '/admin/ai-reports', label: 'AI Reports', icon: Sparkles },
+      { href: '/messages', label: 'Messages', icon: MessageSquare },
+    ] : []),
   ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row font-sans text-foreground">
       {/* Mobile Header */}
       <header className="md:hidden h-14 border-b border-border bg-card flex items-center justify-between px-4 sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-8 h-8 rounded-lg object-contain" />
-          <span className="font-heading font-semibold text-lg">Metabolic OS</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-heading font-bold text-lg">Metabolic</span>
+          <span className="inline-flex items-center justify-center bg-[#F07D1A] text-white font-heading font-bold text-xs px-1.5 py-0.5 rounded-md leading-none">OS</span>
         </div>
         <Link href="/login">
           <Button variant="ghost" size="icon" className="rounded-full">
@@ -43,12 +53,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r border-sidebar-border bg-sidebar h-screen sticky top-0">
-        <div className="p-6 flex items-center gap-3">
-          <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-10 h-10 rounded-xl object-contain" />
-          <div>
-            <h1 className="font-heading font-bold text-lg leading-none">Metabolic</h1>
-            <h1 className="font-heading font-medium text-lg text-primary leading-none">OS</h1>
-          </div>
+        <div className="p-6 flex items-center gap-2">
+          <h1 className="font-heading font-bold text-xl leading-none">Metabolic</h1>
+          <span className="inline-flex items-center justify-center bg-[#F07D1A] text-white font-heading font-bold text-sm px-2 py-0.5 rounded-md leading-none">OS</span>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2">

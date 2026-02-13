@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,6 +14,54 @@ export const promptCategoryEnum = pgEnum("prompt_category", ["reminder", "interv
 export const promptChannelEnum = pgEnum("prompt_channel", ["in_app", "email", "sms"]);
 export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "missed"]);
 export const deliveryStatusEnum = pgEnum("delivery_status", ["sent", "failed", "opened"]);
+
+// Audit log enums
+export const auditActionEnum = pgEnum("audit_action", [
+  // Authentication events
+  "LOGIN_SUCCESS",
+  "LOGIN_FAILURE",
+  "LOGOUT",
+  "SESSION_EXPIRED",
+  "PASSWORD_CHANGE",
+  "PASSWORD_RESET_REQUEST",
+  "PASSWORD_RESET_COMPLETE",
+  // Data access events
+  "PHI_VIEW",
+  "PHI_EXPORT",
+  "BULK_DATA_ACCESS",
+  "REPORT_GENERATED",
+  // Data modification events
+  "RECORD_CREATE",
+  "RECORD_UPDATE",
+  "RECORD_DELETE",
+  // Permission/role events
+  "ROLE_CHANGE",
+  "COACH_ASSIGNMENT",
+  "PERMISSION_GRANTED",
+  "PERMISSION_REVOKED",
+  // Authorization events
+  "AUTH_FAILURE",
+  "ACCESS_DENIED",
+  "RATE_LIMIT_EXCEEDED",
+  // Admin actions
+  "USER_CREATED",
+  "USER_DEACTIVATED",
+  "USER_REACTIVATED",
+  "CONFIG_CHANGE",
+]);
+
+export const auditResultEnum = pgEnum("audit_result", ["SUCCESS", "FAILURE", "DENIED"]);
+
+export const auditResourceTypeEnum = pgEnum("audit_resource_type", [
+  "USER",
+  "METRIC_ENTRY",
+  "FOOD_ENTRY",
+  "MESSAGE",
+  "CONVERSATION",
+  "REPORT",
+  "SESSION",
+  "SYSTEM",
+]);
 
 // Tables
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive"]);
@@ -49,7 +97,15 @@ export const metricEntries = pgTable("metric_entries", {
   source: entrySourceEnum("source").default("manual").notNull(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+  // Edit tracking fields
+  editedAt: timestamp("edited_at"),
+  editedBy: varchar("edited_by").references(() => users.id),
+  previousValueJson: jsonb("previous_value_json"), // Stores value before edit for audit
+}, (table) => ({
+  // Unique constraint to prevent duplicate imports
+  uniqueUserTimestampType: uniqueIndex("metric_entries_user_timestamp_type_idx")
+    .on(table.userId, table.timestamp, table.type),
+}));
 
 export const foodEntries = pgTable("food_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -154,6 +210,51 @@ export const reports = pgTable("reports", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+/**
+ * Audit Logs Table
+ *
+ * HIPAA Compliance Requirements:
+ * - Immutable: No UPDATE or DELETE operations allowed (enforced at application level)
+ * - Retention: 6+ years (configured via database policies)
+ * - No PHI: Only resource IDs stored, not actual health data
+ * - Timestamps: With timezone for accurate audit trails
+ */
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  // Timestamp with timezone for accurate audit trails
+  timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow().notNull(),
+
+  // Actor information (who performed the action)
+  userId: varchar("user_id"), // Nullable for unauthenticated actions (failed logins)
+  userRole: text("user_role"), // Role at time of action (stored as text for historical accuracy)
+
+  // Action details
+  action: auditActionEnum("action").notNull(),
+  result: auditResultEnum("result").notNull(),
+
+  // Resource information (what was affected)
+  resourceType: auditResourceTypeEnum("resource_type").notNull(),
+  resourceId: varchar("resource_id"), // ID of affected resource (no PHI)
+
+  // Target user (for actions affecting another user, like coach viewing participant data)
+  targetUserId: varchar("target_user_id"),
+
+  // Request context (sanitized - no PHI)
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  requestPath: text("request_path"),
+  requestMethod: text("request_method"),
+
+  // Additional context (sanitized metadata, no PHI)
+  // Examples: { "reason": "invalid_password" }, { "oldRole": "participant", "newRole": "coach" }
+  metadata: jsonb("metadata"),
+
+  // Error information for failures
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
@@ -191,6 +292,23 @@ export const insertPromptRuleSchema = createInsertSchema(promptRules, {
   priority: z.number().int().min(0),
 }).omit({ id: true, createdAt: true });
 
+export const insertAuditLogSchema = createInsertSchema(auditLogs, {
+  action: z.enum([
+    "LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT", "SESSION_EXPIRED",
+    "PASSWORD_CHANGE", "PASSWORD_RESET_REQUEST", "PASSWORD_RESET_COMPLETE",
+    "PHI_VIEW", "PHI_EXPORT", "BULK_DATA_ACCESS", "REPORT_GENERATED",
+    "RECORD_CREATE", "RECORD_UPDATE", "RECORD_DELETE",
+    "ROLE_CHANGE", "COACH_ASSIGNMENT", "PERMISSION_GRANTED", "PERMISSION_REVOKED",
+    "AUTH_FAILURE", "ACCESS_DENIED", "RATE_LIMIT_EXCEEDED",
+    "USER_CREATED", "USER_DEACTIVATED", "USER_REACTIVATED", "CONFIG_CHANGE",
+  ]),
+  result: z.enum(["SUCCESS", "FAILURE", "DENIED"]),
+  resourceType: z.enum([
+    "USER", "METRIC_ENTRY", "FOOD_ENTRY", "MESSAGE",
+    "CONVERSATION", "REPORT", "SESSION", "SYSTEM",
+  ]),
+}).omit({ id: true });
+
 // Select/Insert Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -210,3 +328,11 @@ export type PromptRule = typeof promptRules.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MacroTarget = typeof macroTargets.$inferSelect;
 export type InsertMacroTarget = z.infer<typeof insertMacroTargetSchema>;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// Audit action type for type-safe action names
+export type AuditAction = InsertAuditLog["action"];
+export type AuditResult = InsertAuditLog["result"];
+export type AuditResourceType = InsertAuditLog["resourceType"];

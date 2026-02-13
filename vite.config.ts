@@ -39,6 +39,41 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Vendor chunks - split large dependencies
+          if (id.includes("node_modules")) {
+            // Large PDF/export libraries - lazy loaded
+            if (id.includes("jspdf") || id.includes("html2canvas") || id.includes("dompurify")) {
+              return "vendor-pdf";
+            }
+            // Charting library
+            if (id.includes("recharts") || id.includes("d3-")) {
+              return "vendor-charts";
+            }
+            // Sentry monitoring
+            if (id.includes("@sentry")) {
+              return "vendor-sentry";
+            }
+            // Form handling
+            if (id.includes("react-hook-form") || id.includes("@hookform") || id.includes("zod")) {
+              return "vendor-forms";
+            }
+            // React Query
+            if (id.includes("@tanstack")) {
+              return "vendor-query";
+            }
+            // Core React
+            if (id.includes("react") || id.includes("scheduler")) {
+              return "vendor-react";
+            }
+          }
+        },
+      },
+    },
+    // Increase chunk size warning limit for PDF exports
+    chunkSizeWarningLimit: 600,
   },
   server: {
     host: "0.0.0.0",

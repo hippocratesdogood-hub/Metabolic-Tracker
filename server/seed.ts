@@ -78,8 +78,7 @@ async function seed() {
   }
 
   console.log("✅ Users created: alex@example.com, jordan@example.com (participants), coach@example.com (coach), admin@example.com (admin)");
-  console.log("✅ Password for all: password123");
-  console.log("✅ Seed complete!");
+  console.log("✅ Seed complete! (Default password set - change in production)");
   process.exit(0);
 }
 

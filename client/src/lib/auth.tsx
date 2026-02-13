@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from './api';
+import { setUserContext, clearUserContext } from './errorTracking';
 
 type AuthUser = {
   id: string;
   email: string;
   role: string;
   name: string;
+  coachId?: string | null;
   forcePasswordReset?: boolean;
 } | null;
 
@@ -28,8 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { user: currentUser } = await api.getCurrentUser();
       setUser(currentUser);
+      // Set user context for error tracking (ID and role only - no PHI)
+      if (currentUser) {
+        setUserContext(currentUser.id, currentUser.role);
+      }
     } catch (error) {
       setUser(null);
+      clearUserContext();
     } finally {
       setIsLoading(false);
     }
@@ -42,6 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const { user: loggedInUser } = await api.login(email, password);
     setUser(loggedInUser);
+    // Set user context for error tracking (ID and role only - no PHI)
+    if (loggedInUser) {
+      setUserContext(loggedInUser.id, loggedInUser.role);
+    }
   };
 
   const signup = async (email: string, name: string, password: string) => {
@@ -52,11 +63,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: 'participant',
     });
     setUser(newUser);
+    // Set user context for error tracking (ID and role only - no PHI)
+    if (newUser) {
+      setUserContext(newUser.id, newUser.role);
+    }
   };
 
   const logout = async () => {
     await api.logout();
     setUser(null);
+    // Clear user context from error tracking
+    clearUserContext();
   };
 
   return (

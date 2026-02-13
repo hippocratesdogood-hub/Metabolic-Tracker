@@ -11,8 +11,93 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Password strength utilities
+function checkPasswordStrength(password: string): {
+  score: number;
+  feedback: string[];
+  level: 'weak' | 'fair' | 'good' | 'strong';
+} {
+  const feedback: string[] = [];
+  let score = 0;
+
+  if (password.length >= 12) score++;
+  else feedback.push('At least 12 characters');
+
+  if (/[A-Z]/.test(password)) score++;
+  else feedback.push('One uppercase letter');
+
+  if (/[a-z]/.test(password)) score++;
+  else feedback.push('One lowercase letter');
+
+  if (/[0-9]/.test(password)) score++;
+  else feedback.push('One number');
+
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+  else feedback.push('One special character (!@#$%^&*)');
+
+  const level = score <= 2 ? 'weak' : score <= 3 ? 'fair' : score <= 4 ? 'good' : 'strong';
+  return { score, feedback, level };
+}
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  if (!password) return null;
+
+  const { score, feedback, level } = checkPasswordStrength(password);
+
+  const colors = {
+    weak: 'bg-red-500',
+    fair: 'bg-orange-500',
+    good: 'bg-yellow-500',
+    strong: 'bg-green-500',
+  };
+
+  const labels = {
+    weak: 'Weak',
+    fair: 'Fair',
+    good: 'Good',
+    strong: 'Strong',
+  };
+
+  return (
+    <div className="space-y-2 mt-2">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div
+            key={i}
+            className={cn(
+              'h-1 flex-1 rounded',
+              i <= score ? colors[level] : 'bg-gray-200'
+            )}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className={cn(
+          level === 'weak' && 'text-red-600',
+          level === 'fair' && 'text-orange-600',
+          level === 'good' && 'text-yellow-600',
+          level === 'strong' && 'text-green-600',
+        )}>
+          {labels[level]}
+        </span>
+      </div>
+      {feedback.length > 0 && (
+        <ul className="text-xs text-muted-foreground space-y-1">
+          {feedback.map((f, i) => (
+            <li key={i} className="flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {f}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -205,41 +290,62 @@ export default function Participants() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setSelectedParticipant(p); setShowViewModal(true); }}
-                        data-testid={`button-view-${p.id}`}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}
-                        data-testid={`button-edit-${p.id}`}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}
-                        data-testid={`button-reset-${p.id}`}
-                      >
-                        <KeyRound className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setSelectedParticipant(p); setShowMacroModal(true); }}
-                        data-testid={`button-macros-${p.id}`}
-                        title="Set macro targets"
-                      >
-                        <Target className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <TooltipProvider delayDuration={300}>
+                      <div className="flex justify-end gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedParticipant(p); setShowViewModal(true); }}
+                              data-testid={`button-view-${p.id}`}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>View profile</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}
+                              data-testid={`button-edit-${p.id}`}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Edit profile</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}
+                              data-testid={`button-reset-${p.id}`}
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Reset password</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedParticipant(p); setShowMacroModal(true); }}
+                              data-testid={`button-macros-${p.id}`}
+                            >
+                              <Target className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Set macro targets</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TooltipProvider>
                   </TableCell>
                 </TableRow>
               ))}
@@ -319,8 +425,9 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
     e.preventDefault();
     setError('');
 
-    if (password.length < 10) {
-      setError('Password is too weak. Use at least 10 characters.');
+    const { level } = checkPasswordStrength(password);
+    if (level === 'weak' || level === 'fair') {
+      setError('Password is too weak. Please choose a stronger password.');
       return;
     }
     if (password !== confirmPassword) {
@@ -348,7 +455,7 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Participant</DialogTitle>
           <DialogDescription>
@@ -391,13 +498,58 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
             <p className="text-xs text-muted-foreground">You can assign a coach now or later.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Temporary password *</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required data-testid="input-password" />
-            <p className="text-xs text-muted-foreground">Use at least 10 characters. Avoid common words.</p>
+            <Label htmlFor="password">
+              Temporary password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              aria-required="true"
+              aria-describedby="password-strength"
+              data-testid="input-password"
+            />
+            <div id="password-strength">
+              <PasswordStrengthMeter password={password} />
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirm">Confirm temporary password *</Label>
-            <Input id="confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required data-testid="input-confirm" />
+            <Label htmlFor="confirm">
+              Confirm temporary password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="confirm"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              aria-required="true"
+              aria-invalid={confirmPassword !== '' && password !== confirmPassword}
+              className={cn(
+                confirmPassword !== '' && password !== confirmPassword && "border-red-500"
+              )}
+              data-testid="input-confirm"
+            />
+            {confirmPassword !== '' && (
+              <p className={cn(
+                "text-xs flex items-center gap-1",
+                password === confirmPassword ? "text-green-600" : "text-red-500"
+              )}>
+                {password === confirmPassword ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />
+                    Passwords match
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3" />
+                    Passwords do not match
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="forceReset" checked={forceReset} onCheckedChange={(c) => setForceReset(!!c)} data-testid="checkbox-force-reset" />
@@ -405,7 +557,12 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
           </div>
           <p className="text-xs text-muted-foreground">Recommended for security.</p>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-500 flex items-center gap-1" role="alert">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </p>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
@@ -491,7 +648,7 @@ function EditParticipantModal({ open, onClose, participant, coaches, onSubmit, i
       setEmail(participant.email || '');
       setPhone(participant.phone || '');
       setDateOfBirth(participant.dateOfBirth ? format(new Date(participant.dateOfBirth), 'yyyy-MM-dd') : '');
-      setCoachId(participant.coachId || '');
+      setCoachId(participant.coachId || 'none');
       setTimezone(participant.timezone || '');
       setUnitsPreference(participant.unitsPreference || '');
     }
@@ -504,7 +661,7 @@ function EditParticipantModal({ open, onClose, participant, coaches, onSubmit, i
       email,
       phone: phone || null,
       dateOfBirth: dateOfBirth || null,
-      coachId: coachId || null,
+      coachId: coachId === 'none' ? null : coachId,
       timezone,
       unitsPreference,
     });
@@ -542,7 +699,7 @@ function EditParticipantModal({ open, onClose, participant, coaches, onSubmit, i
                 <SelectValue placeholder="Select coach" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">None</SelectItem>
                 {coaches.map((c: any) => (
                   <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                 ))}
@@ -587,8 +744,9 @@ function ResetPasswordModal({ open, onClose, participant, onSubmit, isLoading }:
     e.preventDefault();
     setError('');
 
-    if (password.length < 10) {
-      setError('Password must be at least 10 characters.');
+    const { level } = checkPasswordStrength(password);
+    if (level === 'weak' || level === 'fair') {
+      setError('Password is too weak. Please choose a stronger password.');
       return;
     }
     if (password !== confirmPassword) {
@@ -620,19 +778,67 @@ function ResetPasswordModal({ open, onClose, participant, onSubmit, isLoading }:
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>New temporary password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required data-testid="input-new-password" />
+            <Label htmlFor="new-temp-password">
+              New temporary password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="new-temp-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              aria-required="true"
+              data-testid="input-new-password"
+            />
+            <PasswordStrengthMeter password={password} />
           </div>
           <div className="space-y-2">
-            <Label>Confirm temporary password</Label>
-            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required data-testid="input-confirm-new-password" />
+            <Label htmlFor="confirm-temp-password">
+              Confirm temporary password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="confirm-temp-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              aria-required="true"
+              aria-invalid={confirmPassword !== '' && password !== confirmPassword}
+              className={cn(
+                confirmPassword !== '' && password !== confirmPassword && "border-red-500"
+              )}
+              data-testid="input-confirm-new-password"
+            />
+            {confirmPassword !== '' && (
+              <p className={cn(
+                "text-xs flex items-center gap-1",
+                password === confirmPassword ? "text-green-600" : "text-red-500"
+              )}>
+                {password === confirmPassword ? (
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />
+                    Passwords match
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-3 w-3" />
+                    Passwords do not match
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="forceResetNew" checked={forceReset} onCheckedChange={(c) => setForceReset(!!c)} />
             <Label htmlFor="forceResetNew" className="text-sm font-normal">Force password reset at next login</Label>
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-500 flex items-center gap-1" role="alert">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </p>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>

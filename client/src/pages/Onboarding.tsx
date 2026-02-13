@@ -1,29 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowRight, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
 
 type Step = 'consent' | 'profile' | 'complete';
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
+  const { user, refreshUser } = useAuth();
   const [step, setStep] = useState<Step>('consent');
-  
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
   // Form State
   const [agreed, setAgreed] = useState(false);
   const [name, setName] = useState('');
   const [units, setUnits] = useState('US');
-  const [coach, setCoach] = useState('');
 
-  const handleNext = () => {
+  // Pre-populate name from user profile
+  useEffect(() => {
+    if (user?.name) {
+      setName(user.name);
+    }
+  }, [user]);
+
+  const handleNext = async () => {
     if (step === 'consent' && agreed) setStep('profile');
-    else if (step === 'profile' && name) setStep('complete');
+    else if (step === 'profile' && name) {
+      // Save profile data before showing completion
+      setSaving(true);
+      setError('');
+      try {
+        await api.updateUser(user!.id, {
+          name,
+          unitsPreference: units as 'US' | 'Metric',
+        });
+        await refreshUser();
+        setStep('complete');
+      } catch (err: any) {
+        setError(err.message || 'Failed to save profile. Please try again.');
+      } finally {
+        setSaving(false);
+      }
+    }
     else if (step === 'complete') setLocation('/');
   };
 
@@ -32,17 +58,23 @@ export default function Onboarding() {
     if (step === 'complete') setStep('profile');
   };
 
+  // Redirect to login if not authenticated
+  if (!user) {
+    setLocation('/login');
+    return null;
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
        {/* Progress Dots */}
        <div className="flex gap-2 mb-8">
         {['consent', 'profile', 'complete'].map((s, i) => (
-          <div 
+          <div
             key={s}
             className={cn(
               "w-3 h-3 rounded-full transition-colors duration-300",
-              ['consent', 'profile', 'complete'].indexOf(step) >= i 
-                ? "bg-primary" 
+              ['consent', 'profile', 'complete'].indexOf(step) >= i
+                ? "bg-primary"
                 : "bg-muted"
             )}
           />
@@ -82,23 +114,23 @@ export default function Onboarding() {
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             <CardHeader>
               <CardTitle>Tell us about you</CardTitle>
-              <CardDescription>Set up your profile to personalize your experience.</CardDescription>
+              <CardDescription>Confirm your name and set your preferred units.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input 
-                  id="name" 
-                  placeholder="e.g. Alex Rivera" 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)} 
+                <Input
+                  id="name"
+                  placeholder="e.g. Alex Rivera"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label>Unit Preference</Label>
                 <div className="grid grid-cols-2 gap-4">
-                  <div 
+                  <div
                     onClick={() => setUnits('US')}
                     className={cn(
                       "cursor-pointer border rounded-lg p-4 text-center transition-all hover:border-primary",
@@ -108,7 +140,7 @@ export default function Onboarding() {
                     <div className="font-bold">US</div>
                     <div className="text-xs text-muted-foreground mt-1">lbs, in, mg/dL</div>
                   </div>
-                  <div 
+                  <div
                     onClick={() => setUnits('Metric')}
                     className={cn(
                       "cursor-pointer border rounded-lg p-4 text-center transition-all hover:border-primary",
@@ -121,26 +153,28 @@ export default function Onboarding() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Select Your Coach (Optional)</Label>
-                <Select value={coach} onValueChange={setCoach}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Auto-assign me a coach" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sarah">Dr. Sarah (Metabolic Specialist)</SelectItem>
-                    <SelectItem value="mike">Coach Mike (Performance)</SelectItem>
-                    <SelectItem value="auto">Auto-assign</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Your coach has been assigned by your program administrator.
+              </p>
+
+              {error && (
+                <p className="text-sm text-red-500">{error}</p>
+              )}
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="ghost" onClick={handleBack}>
+              <Button variant="ghost" onClick={handleBack} disabled={saving}>
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back
               </Button>
-              <Button onClick={handleNext} disabled={!name}>
-                Next <ArrowRight className="w-4 h-4 ml-2" />
+              <Button onClick={handleNext} disabled={!name || saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    Next <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
               </Button>
             </CardFooter>
           </div>

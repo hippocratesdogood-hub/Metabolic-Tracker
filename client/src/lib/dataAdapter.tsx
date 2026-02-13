@@ -9,7 +9,6 @@ type DataContextType = {
   user: any;
   metrics: MetricEntry[];
   foodEntries: FoodEntry[];
-  messages: any[];
   getMetricsByType: (type: MetricType) => MetricEntry[];
   addMetric: (entry: any) => Promise<void>;
   addFoodEntry: (entry: any) => Promise<void>;
@@ -23,8 +22,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<MetricEntry[]>([]);
   const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
-
   const refreshMetrics = async () => {
     if (!user) return;
     try {
@@ -74,7 +71,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         user: user || { name: '', email: '', role: 'participant' },
         metrics,
         foodEntries,
-        messages,
         getMetricsByType,
         addMetric,
         addFoodEntry,

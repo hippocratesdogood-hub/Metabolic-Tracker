@@ -93,6 +93,7 @@ class ApiClient {
     rawText?: string;
     timestamp?: Date;
     aiOutputJson?: any;
+    tags?: any;
   }) {
     return this.request<FoodEntry>("/food", {
       method: "POST",
@@ -110,6 +111,30 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  async toggleFavorite(id: string) {
+    return this.request<FoodEntry>(`/food/${id}/favorite`, {
+      method: "PUT",
+    });
+  }
+
+  async getFavorites() {
+    return this.request<FoodEntry[]>("/food/favorites");
+  }
+
+  async deleteFoodEntry(id: string) {
+    return this.request(`/food/${id}`, { method: "DELETE" });
+  }
+
+  async getFoodStreak() {
+    return this.request<{
+      streak: number;
+      weekDays: { date: string; dayLabel: string; logged: boolean }[];
+      daysLoggedThisWeek: number;
+      totalDaysInWeek: number;
+      message: string;
+    }>("/food/streak");
   }
 
   async analyzeFoodEntry(rawText: string, timestamp?: Date) {
@@ -301,14 +326,36 @@ class ApiClient {
     return this.request<any>(`/admin/analytics/macros?${params}`);
   }
 
-  async getAnalyticsOutcomes(range: number = 30, coachId?: string) {
+  async getAnalyticsOutcomes(range: number = 30, coachId?: string, compare: boolean = false) {
     const params = new URLSearchParams({ range: range.toString() });
     if (coachId) params.append("coachId", coachId);
+    if (compare) params.append("compare", "true");
     return this.request<any>(`/admin/analytics/outcomes?${params}`);
   }
 
   async getAnalyticsCoaches(range: number = 7) {
     return this.request<any[]>(`/admin/analytics/coaches?range=${range}`);
+  }
+
+  async getAnalyticsTrends(range: number = 30, coachId?: string) {
+    const params = new URLSearchParams({ range: range.toString() });
+    if (coachId) params.append("coachId", coachId);
+    return this.request<any[]>(`/admin/analytics/trends?${params}`);
+  }
+
+  async getAnalyticsDemographics(coachId?: string) {
+    const params = new URLSearchParams();
+    if (coachId) params.append("coachId", coachId);
+    const query = params.toString();
+    return this.request<any>(`/admin/analytics/demographics${query ? `?${query}` : ""}`);
+  }
+
+  // AI Report Assistant
+  async askAIAssistant(messages: { role: "user" | "assistant"; content: string }[]) {
+    return this.request<{ response: string }>("/admin/ai-assistant", {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+    });
   }
 
   // Messaging
@@ -332,6 +379,48 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ conversationId, body }),
     });
+  }
+
+  // Dashboard Stats (streak, trends)
+  async getDashboardStats() {
+    return this.request<{
+      streak: number;
+      daysInProgram: number;
+      firstLogDate: string | null;
+      totalLogs: number;
+      trends: {
+        weight: { direction: 'up' | 'down' | 'neutral'; value: string | null; isPositive: boolean };
+        glucose: { direction: 'up' | 'down' | 'neutral'; value: string | null; isPositive: boolean };
+        ketones: { direction: 'up' | 'down' | 'neutral'; value: string | null; isPositive: boolean };
+        waist: { direction: 'up' | 'down' | 'neutral'; value: string | null; isPositive: boolean };
+        bp: { direction: 'up' | 'down' | 'neutral'; value: string | null; isPositive: boolean };
+      };
+    }>("/dashboard-stats");
+  }
+
+  // Weekly Report
+  async getWeeklyReport() {
+    return this.request<{
+      period: { start: string; end: string; label: string };
+      streak: number;
+      adherence: number;
+      daysLogged: number;
+      highlights: { type: 'positive' | 'negative'; text: string }[];
+      averages: {
+        glucose: number | null;
+        glucoseVsPrev: number | null;
+        ketones: number | null;
+        ketonesVsPrev: number | null;
+        weightChange: number | null;
+      };
+      nextFocus: string;
+      metricsCount: {
+        glucose: number;
+        ketones: number;
+        weight: number;
+        meals: number;
+      };
+    }>("/reports/weekly");
   }
 }
 

@@ -28,10 +28,20 @@ import type {
   InsertMacroTarget,
   Prompt,
   PromptRule,
+  AuditLog,
+  AuditAction,
+  AuditResourceType,
 } from "@shared/schema";
 
-const pool = new pg.Pool({
+// Configure PostgreSQL pool with SSL in production
+export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
+  // Enable SSL in production for encrypted database connections
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: true }
+    : process.env.DATABASE_URL?.includes("ssl=true")
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
 export const db = drizzle(pool, { schema });
@@ -48,7 +58,7 @@ export interface IStorage {
   createMetricEntry(entry: InsertMetricEntry): Promise<MetricEntry>;
   getMetricEntryById(id: string): Promise<MetricEntry | undefined>;
   getMetricEntries(userId: string, type?: string, from?: Date, to?: Date): Promise<MetricEntry[]>;
-  updateMetricEntry(id: string, data: Partial<InsertMetricEntry>): Promise<MetricEntry | undefined>;
+  updateMetricEntry(id: string, data: Partial<InsertMetricEntry>, editedBy?: string): Promise<MetricEntry | undefined>;
   deleteMetricEntry(id: string): Promise<boolean>;
 
   // Food
@@ -58,6 +68,8 @@ export interface IStorage {
   getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]>;
   updateFoodEntry(id: string, data: Partial<InsertFoodEntry>): Promise<FoodEntry | undefined>;
   deleteFoodEntry(id: string): Promise<boolean>;
+  toggleFoodEntryFavorite(id: string): Promise<FoodEntry | undefined>;
+  getFavoriteFoodEntries(userId: string): Promise<FoodEntry[]>;
 
   // Macro Targets
   getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
@@ -91,6 +103,43 @@ export interface IStorage {
 
   // Admin - Prompt Deliveries
   getPromptDeliveries(limit?: number): Promise<any[]>;
+
+  // Audit Logs (read-only - no create/update/delete methods here; use auditLogger service)
+  getAuditLogs(filters: AuditLogFilters): Promise<{ logs: AuditLog[]; total: number }>;
+  getAuditLogById(id: string): Promise<AuditLog | undefined>;
+  getAuditLogStats(days: number): Promise<AuditLogStats>;
+}
+
+export interface AuditLogFilters {
+  /** Filter by user ID */
+  userId?: string;
+  /** Filter by target user ID */
+  targetUserId?: string;
+  /** Filter by action type(s) */
+  actions?: AuditAction[];
+  /** Filter by resource type(s) */
+  resourceTypes?: AuditResourceType[];
+  /** Filter by result (SUCCESS, FAILURE, DENIED) */
+  result?: "SUCCESS" | "FAILURE" | "DENIED";
+  /** Filter by start date */
+  from?: Date;
+  /** Filter by end date */
+  to?: Date;
+  /** Filter by IP address (partial match) */
+  ipAddress?: string;
+  /** Pagination: limit */
+  limit?: number;
+  /** Pagination: offset */
+  offset?: number;
+}
+
+export interface AuditLogStats {
+  totalEvents: number;
+  byAction: Record<string, number>;
+  byResult: Record<string, number>;
+  byResourceType: Record<string, number>;
+  uniqueUsers: number;
+  uniqueIps: number;
 }
 
 export class PostgresStorage implements IStorage {
@@ -159,10 +208,35 @@ export class PostgresStorage implements IStorage {
       .orderBy(desc(schema.metricEntries.timestamp));
   }
 
-  async updateMetricEntry(id: string, data: Partial<InsertMetricEntry>): Promise<MetricEntry | undefined> {
+  async updateMetricEntry(id: string, data: Partial<InsertMetricEntry>, editedBy?: string): Promise<MetricEntry | undefined> {
+    // Get existing entry to store previous value for audit trail
+    const existing = await this.getMetricEntryById(id);
+    if (!existing) {
+      return undefined;
+    }
+
+    // Prepare update with edit tracking
+    const updateData: Partial<InsertMetricEntry> & {
+      editedAt?: Date;
+      editedBy?: string;
+      previousValueJson?: unknown;
+    } = {
+      ...data,
+    };
+
+    // If we have an editor and the value is changing, track the edit
+    if (editedBy) {
+      updateData.editedAt = new Date();
+      updateData.editedBy = editedBy;
+      // Store previous value if valueJson is being updated
+      if (data.valueJson) {
+        updateData.previousValueJson = existing.valueJson;
+      }
+    }
+
     const results = await db
       .update(schema.metricEntries)
-      .set(data)
+      .set(updateData)
       .where(eq(schema.metricEntries.id, id))
       .returning();
     return results[0];
@@ -219,6 +293,45 @@ export class PostgresStorage implements IStorage {
       .where(eq(schema.foodEntries.id, id))
       .returning();
     return results.length > 0;
+  }
+
+  async toggleFoodEntryFavorite(id: string): Promise<FoodEntry | undefined> {
+    const entry = await this.getFoodEntryById(id);
+    if (!entry) return undefined;
+
+    const currentTags = (entry.tags as Record<string, unknown>) || {};
+    const isFavorite = !currentTags.isFavorite;
+    const newTags = { ...currentTags, isFavorite };
+
+    const results = await db
+      .update(schema.foodEntries)
+      .set({ tags: newTags })
+      .where(eq(schema.foodEntries.id, id))
+      .returning();
+    return results[0];
+  }
+
+  async getFavoriteFoodEntries(userId: string): Promise<FoodEntry[]> {
+    // Get all favorite entries, most recent first
+    const entries = await db
+      .select()
+      .from(schema.foodEntries)
+      .where(
+        and(
+          eq(schema.foodEntries.userId, userId),
+          sql`${schema.foodEntries.tags}->>'isFavorite' = 'true'`
+        )
+      )
+      .orderBy(desc(schema.foodEntries.timestamp));
+
+    // Deduplicate by rawText — keep most recent of each unique meal
+    const seen = new Set<string>();
+    return entries.filter((entry) => {
+      const key = (entry.rawText || '').toLowerCase().trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   async getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]> {
@@ -406,6 +519,148 @@ export class PostgresStorage implements IStorage {
       .from(schema.promptDeliveries)
       .orderBy(desc(schema.promptDeliveries.firedAt))
       .limit(limit);
+  }
+
+  // Audit Logs (read-only queries)
+  async getAuditLogs(filters: AuditLogFilters): Promise<{ logs: AuditLog[]; total: number }> {
+    const conditions: any[] = [];
+
+    if (filters.userId) {
+      conditions.push(eq(schema.auditLogs.userId, filters.userId));
+    }
+    if (filters.targetUserId) {
+      conditions.push(eq(schema.auditLogs.targetUserId, filters.targetUserId));
+    }
+    if (filters.actions && filters.actions.length > 0) {
+      conditions.push(sql`${schema.auditLogs.action} = ANY(${filters.actions})`);
+    }
+    if (filters.resourceTypes && filters.resourceTypes.length > 0) {
+      conditions.push(sql`${schema.auditLogs.resourceType} = ANY(${filters.resourceTypes})`);
+    }
+    if (filters.result) {
+      conditions.push(eq(schema.auditLogs.result, filters.result));
+    }
+    if (filters.from) {
+      conditions.push(gte(schema.auditLogs.timestamp, filters.from));
+    }
+    if (filters.to) {
+      conditions.push(lte(schema.auditLogs.timestamp, filters.to));
+    }
+    if (filters.ipAddress) {
+      conditions.push(sql`${schema.auditLogs.ipAddress} LIKE ${`%${filters.ipAddress}%`}`);
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Get total count
+    const countResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.auditLogs)
+      .where(whereClause);
+    const total = countResult[0]?.count || 0;
+
+    // Get paginated results
+    let query = db
+      .select()
+      .from(schema.auditLogs)
+      .where(whereClause)
+      .orderBy(desc(schema.auditLogs.timestamp));
+
+    if (filters.limit) {
+      query = query.limit(filters.limit) as typeof query;
+    }
+    if (filters.offset) {
+      query = query.offset(filters.offset) as typeof query;
+    }
+
+    const logs = await query;
+
+    return { logs, total };
+  }
+
+  async getAuditLogById(id: string): Promise<AuditLog | undefined> {
+    const results = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(eq(schema.auditLogs.id, id));
+    return results[0];
+  }
+
+  async getAuditLogStats(days: number): Promise<AuditLogStats> {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    // Total events
+    const totalResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since));
+    const totalEvents = totalResult[0]?.count || 0;
+
+    // By action
+    const byActionResult = await db
+      .select({
+        action: schema.auditLogs.action,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since))
+      .groupBy(schema.auditLogs.action);
+    const byAction: Record<string, number> = {};
+    for (const row of byActionResult) {
+      byAction[row.action] = row.count;
+    }
+
+    // By result
+    const byResultResult = await db
+      .select({
+        result: schema.auditLogs.result,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since))
+      .groupBy(schema.auditLogs.result);
+    const byResult: Record<string, number> = {};
+    for (const row of byResultResult) {
+      byResult[row.result] = row.count;
+    }
+
+    // By resource type
+    const byResourceResult = await db
+      .select({
+        resourceType: schema.auditLogs.resourceType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since))
+      .groupBy(schema.auditLogs.resourceType);
+    const byResourceType: Record<string, number> = {};
+    for (const row of byResourceResult) {
+      byResourceType[row.resourceType] = row.count;
+    }
+
+    // Unique users
+    const uniqueUsersResult = await db
+      .select({ count: sql<number>`count(DISTINCT user_id)::int` })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since));
+    const uniqueUsers = uniqueUsersResult[0]?.count || 0;
+
+    // Unique IPs
+    const uniqueIpsResult = await db
+      .select({ count: sql<number>`count(DISTINCT ip_address)::int` })
+      .from(schema.auditLogs)
+      .where(gte(schema.auditLogs.timestamp, since));
+    const uniqueIps = uniqueIpsResult[0]?.count || 0;
+
+    return {
+      totalEvents,
+      byAction,
+      byResult,
+      byResourceType,
+      uniqueUsers,
+      uniqueIps,
+    };
   }
 }
 

@@ -4,6 +4,28 @@ import { Button } from '@/components/ui/button';
 import { Plus, TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MetricType } from '@/lib/dataAdapter';
+import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
+
+/**
+ * Format timestamp with appropriate date context
+ * - Today: "8:30 AM"
+ * - Yesterday: "Yesterday 8:30 AM"
+ * - This week: "Mon 8:30 AM"
+ * - Older: "Jan 5, 8:30 AM"
+ */
+function formatRelativeTimestamp(date: Date): string {
+  if (isToday(date)) {
+    return format(date, 'h:mm a');
+  }
+  if (isYesterday(date)) {
+    return `Yesterday ${format(date, 'h:mm a')}`;
+  }
+  const daysAgo = differenceInDays(new Date(), date);
+  if (daysAgo < 7) {
+    return format(date, 'EEE h:mm a'); // "Mon 8:30 AM"
+  }
+  return format(date, 'MMM d, h:mm a'); // "Jan 5, 8:30 AM"
+}
 
 interface MetricCardProps {
   title: string;
@@ -15,7 +37,7 @@ interface MetricCardProps {
   color: string;
   icon: React.ElementType;
   onAdd: () => void;
-  lastUpdated?: string;
+  lastUpdated?: Date; // Changed from string to Date
 }
 
 export default function MetricCard({
@@ -62,7 +84,7 @@ export default function MetricCard({
         
         <div className="mt-4 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {lastUpdated ? `Last: ${lastUpdated}` : 'No entry today'}
+            {lastUpdated ? `Last: ${formatRelativeTimestamp(lastUpdated)}` : 'No entry today'}
           </p>
           <Button 
             variant="ghost" 
