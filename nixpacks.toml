@@ -5,4 +5,4 @@ cmds = ["npm install"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npx drizzle-kit push --force && npm start"
+cmd = "NODE_TLS_REJECT_UNAUTHORIZED=0 npx drizzle-kit push --force && npm start"
