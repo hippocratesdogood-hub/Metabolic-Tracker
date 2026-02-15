@@ -5,4 +5,4 @@ cmds = ["npm install"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npx drizzle-kit push && npm start"
+cmd = "npx drizzle-kit push --force && npm start"

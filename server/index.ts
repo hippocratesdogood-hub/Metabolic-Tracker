@@ -88,6 +88,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
   await seedIfEmpty();
   await registerRoutes(httpServer, app);
 
@@ -175,4 +176,8 @@ app.use((req, res, next) => {
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  } catch (err) {
+    console.error("FATAL: Server failed to start:", err);
+    process.exit(1);
+  }
 })();
