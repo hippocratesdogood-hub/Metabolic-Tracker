@@ -21,6 +21,19 @@ export async function runMigrations() {
       );
     `);
 
+    // Always ensure session table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "user_sessions" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+      );
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
+    `);
+
     if (result.rows[0].exists) {
       console.log("[migrate] Database tables already exist, skipping migration.");
       return;
@@ -35,6 +48,19 @@ export async function runMigrations() {
     for (const statement of statements) {
       await pool.query(statement);
     }
+
+    // Create session table for connect-pg-simple
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "user_sessions" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+      );
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "user_sessions" ("expire");
+    `);
 
     console.log("[migrate] Migration completed successfully — all tables created.");
   } catch (err) {
