@@ -38,7 +38,7 @@ export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
   // Enable SSL in production for encrypted database connections
   ssl: process.env.NODE_ENV === "production"
-    ? { rejectUnauthorized: true }
+    ? { rejectUnauthorized: false }
     : process.env.DATABASE_URL?.includes("ssl=true")
       ? { rejectUnauthorized: false }
       : false,
