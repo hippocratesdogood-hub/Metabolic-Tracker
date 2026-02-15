@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedIfEmpty } from "./seedIfEmpty";
+import { runMigrations } from "./migrate";
 import { forceHttps, securityHeaders, sanitizeForLogging } from "./middleware/security";
 import {
   initializeErrorMonitoring,
@@ -89,6 +90,7 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+  await runMigrations();
   await seedIfEmpty();
   await registerRoutes(httpServer, app);
 
