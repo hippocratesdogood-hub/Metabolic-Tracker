@@ -55,7 +55,9 @@ declare global {
       email: string;
       role: string;
       name: string;
+      coachId?: string | null;
       forcePasswordReset: boolean;
+      aiConsentGiven: boolean;
     }
   }
 }
@@ -181,6 +183,7 @@ export function setupAuth(app: Express) {
             role: user.role,
             name: user.name,
             forcePasswordReset: user.forcePasswordReset,
+            aiConsentGiven: user.aiConsentGiven ?? false,
           });
         } catch (err) {
           // Don't expose internal errors
@@ -214,6 +217,7 @@ export function setupAuth(app: Express) {
         name: user.name,
         coachId: user.coachId,
         forcePasswordReset: user.forcePasswordReset,
+        aiConsentGiven: user.aiConsentGiven ?? false,
       });
     } catch (err) {
       console.error("Deserialize error:", err);

@@ -165,6 +165,13 @@ class ApiClient {
     return response.json();
   }
 
+  // AI Consent
+  async acceptAiConsent() {
+    return this.request<{ success: boolean }>("/user/ai-consent", {
+      method: "PATCH",
+    });
+  }
+
   // Macro Targets
   async getMacroTargets() {
     return this.request<any>("/macro-targets");

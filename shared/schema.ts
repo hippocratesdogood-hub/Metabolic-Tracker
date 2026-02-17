@@ -82,6 +82,7 @@ export const users = pgTable("users", {
   notificationPreferencesJson: jsonb("notification_preferences_json"),
   status: userStatusEnum("status").default("active").notNull(),
   forcePasswordReset: boolean("force_password_reset").default(false).notNull(),
+  aiConsentGiven: boolean("ai_consent_given").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

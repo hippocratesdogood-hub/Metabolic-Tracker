@@ -4,8 +4,13 @@ import { crypto } from "./auth";
 import { eq, count } from "drizzle-orm";
 
 export async function seedIfEmpty() {
+  // Never seed test accounts in production
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
   const [{ count: userCount }] = await db.select({ count: count() }).from(users);
-  
+
   if (userCount > 0) {
     console.log(`Database already has ${userCount} users, skipping seed.`);
     return;

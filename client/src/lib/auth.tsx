@@ -9,6 +9,7 @@ type AuthUser = {
   name: string;
   coachId?: string | null;
   forcePasswordReset?: boolean;
+  aiConsentGiven?: boolean;
 } | null;
 
 type AuthContextType = {

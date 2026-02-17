@@ -1,8 +1,18 @@
 import pg from "pg";
+import { scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
+
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
 
 /**
  * Run database migrations at startup.
- * Safe to run multiple times — checks if tables exist first.
+ * Safe to run multiple times — all operations are idempotent.
  */
 export async function runMigrations() {
   const pool = new pg.Pool({
@@ -35,7 +45,8 @@ export async function runMigrations() {
     `);
 
     if (result.rows[0].exists) {
-      console.log("[migrate] Database tables already exist, skipping migration.");
+      console.log("[migrate] Database tables already exist, running incremental migrations...");
+      await runIncrementalMigrations(pool);
       return;
     }
 
@@ -63,12 +74,62 @@ export async function runMigrations() {
     `);
 
     console.log("[migrate] Migration completed successfully — all tables created.");
+    await runIncrementalMigrations(pool);
   } catch (err) {
     console.error("[migrate] Migration failed:", err);
     throw err;
   } finally {
     await pool.end();
   }
+}
+
+/**
+ * Incremental migrations that run every startup (all idempotent).
+ */
+async function runIncrementalMigrations(pool: pg.Pool) {
+  // Migration: Add ai_consent_given column
+  await pool.query(`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_consent_given" boolean DEFAULT false;
+  `);
+
+  // Migration: Deactivate test accounts in production
+  if (process.env.NODE_ENV === "production") {
+    const testEmails = [
+      "alex@example.com",
+      "jordan@example.com",
+      "coach@example.com",
+      "admin@example.com",
+    ];
+    const deactivated = await pool.query(`
+      UPDATE "users" SET "status" = 'inactive'
+      WHERE "email" = ANY($1) AND "status" = 'active'
+    `, [testEmails]);
+    if (deactivated.rowCount && deactivated.rowCount > 0) {
+      console.log(`[migrate] Deactivated ${deactivated.rowCount} test account(s).`);
+    }
+
+    // Migration: Create production admin account (one-time)
+    const adminCheck = await pool.query(
+      `SELECT id FROM "users" WHERE "email" = $1`,
+      ["drchad@theadaptlab.com"]
+    );
+    if (adminCheck.rows.length === 0) {
+      const tempPassword = randomBytes(16).toString("hex");
+      const hashedPassword = await hashPassword(tempPassword);
+      await pool.query(`
+        INSERT INTO "users" ("id", "role", "name", "email", "password_hash", "status", "force_password_reset")
+        VALUES (gen_random_uuid(), 'admin', 'Dr. Chad Larson', $1, $2, 'active', true)
+      `, ["drchad@theadaptlab.com", hashedPassword]);
+      console.log("[migrate] ========================================");
+      console.log("[migrate] ADMIN ACCOUNT CREATED");
+      console.log("[migrate] Email: drchad@theadaptlab.com");
+      console.log(`[migrate] Temporary password: ${tempPassword}`);
+      console.log("[migrate] Please change this password after first login.");
+      console.log("[migrate] ========================================");
+    }
+  }
+
+  console.log("[migrate] Incremental migrations complete.");
 }
 
 const MIGRATION_SQL = `

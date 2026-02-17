@@ -117,13 +117,13 @@ export async function registerRoutes(
       });
 
       // Auto login
-      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset }, async (err) => {
+      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false }, async (err) => {
         if (err) return next(err);
 
         // Audit: User self-registration
         await auditLoginSuccess({ id: user.id, role: user.role }, req);
 
-        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset } });
+        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false } });
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -235,6 +235,16 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       res.json(user);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // AI consent endpoint
+  app.patch("/api/user/ai-consent", requireAuth, async (req, res) => {
+    try {
+      await storage.updateUser(req.user!.id, { aiConsentGiven: true });
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -486,6 +496,12 @@ export async function registerRoutes(
 
   app.post("/api/food/analyze", requireAuth, async (req, res) => {
     try {
+      // Check AI consent
+      const consentUser = await storage.getUser(req.user!.id);
+      if (!consentUser?.aiConsentGiven) {
+        return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
+      }
+
       if (!openai) {
         return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
       }
@@ -529,6 +545,12 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
 
   app.post("/api/food/analyze-image", requireAuth, upload.single('image'), async (req, res) => {
     try {
+      // Check AI consent
+      const consentUser = await storage.getUser(req.user!.id);
+      if (!consentUser?.aiConsentGiven) {
+        return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
+      }
+
       if (!openai) {
         return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
       }

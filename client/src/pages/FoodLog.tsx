@@ -13,6 +13,8 @@ import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Mo
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth';
+import { DialogFooter } from '@/components/ui/dialog';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
 
@@ -282,6 +284,7 @@ function FoodEditModal({
 
 export default function FoodLog() {
   const queryClient = useQueryClient();
+  const { user, refreshUser } = useAuth();
   const [input, setInput] = useState('');
   const [mealType, setMealType] = useState<MealType>(suggestMealType());
   const [entryDate, setEntryDate] = useState<Date>(new Date());
@@ -293,6 +296,8 @@ export default function FoodLog() {
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [personalNote, setPersonalNote] = useState('');
   const [editingEntry, setEditingEntry] = useState<any>(null);
+  const [showConsentDialog, setShowConsentDialog] = useState(false);
+  const [consentPending, setConsentPending] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -495,12 +500,37 @@ export default function FoodLog() {
     }
   });
 
+  const handleAcceptConsent = async () => {
+    setConsentPending(true);
+    try {
+      await api.acceptAiConsent();
+      await refreshUser();
+      setShowConsentDialog(false);
+      // Proceed with analysis after consent
+      doAnalyze();
+    } catch (err: any) {
+      toast.error('Failed to save consent. Please try again.');
+    } finally {
+      setConsentPending(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!input.trim() && !selectedImage) {
       toast.error('Please add a photo or describe your meal');
       return;
     }
-    
+
+    // Check AI consent before analysis
+    if (!user?.aiConsentGiven) {
+      setShowConsentDialog(true);
+      return;
+    }
+
+    doAnalyze();
+  };
+
+  const doAnalyze = async () => {
     setIsAnalyzing(true);
     toast.info('Analyzing your meal...');
     
@@ -1006,6 +1036,38 @@ export default function FoodLog() {
           }}
         />
       )}
+
+      <Dialog open={showConsentDialog} onOpenChange={setShowConsentDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>AI-Powered Meal Analysis</DialogTitle>
+            <DialogDescription>
+              This feature uses AI to estimate nutritional content from your meal descriptions and photos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-2 py-2">
+            <p>Your food descriptions and photos will be sent to OpenAI's API for analysis. This means:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Meal text and images are processed by a third-party AI service</li>
+              <li>Data is sent securely and not used to train AI models</li>
+              <li>No personal identifiers are included in the requests</li>
+            </ul>
+            <p>You can skip AI analysis and enter nutritional data manually at any time.</p>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowConsentDialog(false)}>
+              No Thanks
+            </Button>
+            <Button onClick={handleAcceptConsent} disabled={consentPending}>
+              {consentPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+              ) : (
+                'I Agree'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

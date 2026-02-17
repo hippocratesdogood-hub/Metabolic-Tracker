@@ -32,8 +32,16 @@ export default function Onboarding() {
   }, [user]);
 
   const handleNext = async () => {
-    if (step === 'consent' && agreed) setStep('profile');
-    else if (step === 'profile' && name) {
+    if (step === 'consent' && agreed) {
+      // Record AI consent when user agrees to terms
+      try {
+        await api.acceptAiConsent();
+        await refreshUser();
+      } catch {
+        // Non-blocking — consent will be prompted again in FoodLog if needed
+      }
+      setStep('profile');
+    } else if (step === 'profile' && name) {
       // Save profile data before showing completion
       setSaving(true);
       setError('');
@@ -90,11 +98,11 @@ export default function Onboarding() {
               <CardDescription>Please review our privacy and safety policy.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-2 h-48 overflow-y-auto border border-border">
-                <p><strong>1. Not Medical Advice:</strong> This application is for tracking purposes only. It does not replace professional medical advice.</p>
-                <p><strong>2. Data Privacy:</strong> Your data is encrypted and shared only with your assigned coach.</p>
-                <p><strong>3. Emergency:</strong> If you are experiencing a medical emergency, call 911 immediately.</p>
-                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+              <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-3 h-56 overflow-y-auto border border-border">
+                <p><strong>1. Not Medical Advice:</strong> This application is for health tracking purposes only. It does not replace professional medical advice, diagnosis, or treatment. Always consult your healthcare provider with questions about your health.</p>
+                <p><strong>2. Data Privacy & AI Processing:</strong> Your data is encrypted and shared only with your assigned coach. Food descriptions and photos you log may be analyzed by a third-party AI service (OpenAI) to estimate nutritional content. This data is sent securely but is processed externally. No personal identifiers are included in AI requests.</p>
+                <p><strong>3. AI-Powered Features:</strong> This app uses AI to analyze your meals and estimate macronutrient content. By agreeing below, you consent to your food log data being processed by OpenAI's API for nutritional analysis. You may decline AI analysis at any time and enter nutritional data manually.</p>
+                <p><strong>4. Emergency:</strong> If you are experiencing a medical emergency, call 911 immediately. This app is not designed for emergency situations.</p>
               </div>
               <div className="flex items-center space-x-2 pt-2">
                 <Checkbox id="terms" checked={agreed} onCheckedChange={(c) => setAgreed(c as boolean)} />
