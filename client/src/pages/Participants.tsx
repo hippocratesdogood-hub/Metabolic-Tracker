@@ -118,6 +118,7 @@ export default function Participants() {
   const [showPassword, setShowPassword] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
+  const isCoach = currentUser?.role === 'coach';
 
   const { data: participants = [], isLoading } = useQuery({
     queryKey: ['participants'],
@@ -127,6 +128,7 @@ export default function Participants() {
   const { data: coaches = [] } = useQuery({
     queryKey: ['coaches'],
     queryFn: () => api.getCoaches(),
+    enabled: isAdmin,
   });
 
   const filteredParticipants = participants.filter((p: any) => {
@@ -201,10 +203,10 @@ export default function Participants() {
     return coach?.name || '—';
   };
 
-  if (!isAdmin) {
+  if (!isAdmin && !isCoach) {
     return (
       <div className="p-8 text-center text-muted-foreground">
-        Admin access required
+        Access restricted
       </div>
     );
   }
@@ -218,10 +220,12 @@ export default function Participants() {
             Participants
           </h1>
         </div>
-        <Button onClick={() => setShowAddModal(true)} className="gap-2" data-testid="button-add-participant">
-          <Plus className="w-4 h-4" />
-          Add Participant
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => setShowAddModal(true)} className="gap-2" data-testid="button-add-participant">
+            <Plus className="w-4 h-4" />
+            Add Participant
+          </Button>
+        )}
       </div>
 
       <div className="relative">
@@ -251,11 +255,17 @@ export default function Participants() {
               <>
                 <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                 <p className="text-lg font-medium mb-2">No participants yet</p>
-                <p className="text-muted-foreground mb-4">Add your first participant to start tracking metrics and sending prompts.</p>
-                <Button onClick={() => setShowAddModal(true)} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Add Participant
-                </Button>
+                <p className="text-muted-foreground mb-4">
+                  {isAdmin
+                    ? 'Add your first participant to start tracking metrics and sending prompts.'
+                    : 'No participants have been assigned to you yet.'}
+                </p>
+                {isAdmin && (
+                  <Button onClick={() => setShowAddModal(true)} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    Add Participant
+                  </Button>
+                )}
               </>
             )}
           </CardContent>
@@ -269,7 +279,7 @@ export default function Participants() {
                 <TableHead>DOB</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Coach</TableHead>
+                {isAdmin && <TableHead>Coach</TableHead>}
                 <TableHead>Created</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -282,7 +292,7 @@ export default function Participants() {
                   <TableCell>{p.dateOfBirth ? format(new Date(p.dateOfBirth), 'MM/dd/yyyy') : '—'}</TableCell>
                   <TableCell>{p.email}</TableCell>
                   <TableCell>{p.phone || '—'}</TableCell>
-                  <TableCell>{getCoachName(p.coachId)}</TableCell>
+                  {isAdmin && <TableCell>{getCoachName(p.coachId)}</TableCell>}
                   <TableCell>{format(new Date(p.createdAt), 'MMM d, yyyy')}</TableCell>
                   <TableCell>
                     <Badge variant={p.status === 'active' ? 'default' : 'secondary'}>
@@ -305,32 +315,36 @@ export default function Participants() {
                           </TooltipTrigger>
                           <TooltipContent>View profile</TooltipContent>
                         </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}
-                              data-testid={`button-edit-${p.id}`}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Edit profile</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}
-                              data-testid={`button-reset-${p.id}`}
-                            >
-                              <KeyRound className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Reset password</TooltipContent>
-                        </Tooltip>
+                        {isAdmin && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}
+                                data-testid={`button-edit-${p.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit profile</TooltipContent>
+                          </Tooltip>
+                        )}
+                        {isAdmin && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}
+                                data-testid={`button-reset-${p.id}`}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Reset password</TooltipContent>
+                          </Tooltip>
+                        )}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button

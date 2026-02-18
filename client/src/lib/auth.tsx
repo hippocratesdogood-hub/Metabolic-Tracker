@@ -10,6 +10,7 @@ type AuthUser = {
   coachId?: string | null;
   forcePasswordReset?: boolean;
   aiConsentGiven?: boolean;
+  unitsPreference?: "US" | "Metric";
 } | null;
 
 type AuthContextType = {

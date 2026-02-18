@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -343,16 +344,18 @@ function InputField({
 // --- Main Page ---
 
 export default function MetabolicAge() {
+  const { user } = useAuth();
   const [result, setResult] = useState<CalculatorResult | null>(null);
+  const defaultLengthUnit = user?.unitsPreference === 'Metric' ? 'cm' : 'in';
 
   const form = useForm<FormValues>({
     resolver: zodResolver(calculatorFormSchema),
     defaultValues: {
       calendarAgeYears: "" as unknown as number,
       waistValue: "" as unknown as number,
-      waistUnit: "in",
+      waistUnit: defaultLengthUnit,
       heightValue: "" as unknown as number,
-      heightUnit: "in",
+      heightUnit: defaultLengthUnit,
       fastingInsulin: "" as unknown as number,
       triglyceridesValue: "" as unknown as number,
       triglyceridesUnit: "mg/dL",

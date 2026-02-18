@@ -1,26 +1,49 @@
 import React, { useState } from 'react';
 import { useData, MetricType } from '@/lib/dataAdapter';
+import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { TrendingUp } from 'lucide-react';
+import { getUnitLabels, fromKg, fromCm, fromMgdl, type UnitsPreference } from '@shared/units';
 
 export default function Trends() {
   const { getMetricsByType } = useData();
+  const { user } = useAuth();
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('WEIGHT');
   const [range, setRange] = useState('30');
+  const unitsPref = (user?.unitsPreference ?? "US") as UnitsPreference;
+  const unitLabels = getUnitLabels(unitsPref);
 
   const metrics = getMetricsByType(selectedMetric);
-  
+
+  // Extract display value from a metric entry, converting from storage units if needed
+  const extractValue = (m: any): number | null => {
+    const vj = m.valueJson as Record<string, any>;
+    if (m.normalizedValue != null) {
+      // New data: normalizedValue is in storage units, convert for display
+      switch (selectedMetric) {
+        case 'WEIGHT': return Math.round(fromKg(m.normalizedValue, unitsPref === 'Metric' ? 'kg' : 'lbs') * 10) / 10;
+        case 'WAIST': return Math.round(fromCm(m.normalizedValue, unitsPref === 'Metric' ? 'cm' : 'inches') * 10) / 10;
+        case 'GLUCOSE': return Math.round(fromMgdl(m.normalizedValue, unitsPref === 'Metric' ? 'mmol/L' : 'mg/dL') * 10) / 10;
+        case 'KETONES': return Math.round(m.normalizedValue * 10) / 10;
+        default: return m.normalizedValue;
+      }
+    }
+    // Legacy data: use raw valueJson
+    return vj?.value ?? null;
+  };
+
   // Process data for charts
   const chartData = metrics
     .filter(m => m.timestamp >= subDays(new Date(), parseInt(range)))
     .map(m => ({
       date: format(m.timestamp, 'MMM d'),
-      value: m.value,
+      value: extractValue(m),
     }))
+    .filter(d => d.value != null)
     .reverse();
 
   return (
@@ -56,10 +79,10 @@ export default function Trends() {
         <Card className="mt-6 border-none shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-medium">
-              {selectedMetric === 'WEIGHT' && 'Weight History'}
-              {selectedMetric === 'GLUCOSE' && 'Glucose History'}
-              {selectedMetric === 'KETONES' && 'Ketone Levels'}
-              {selectedMetric === 'WAIST' && 'Waist Circumference'}
+              {selectedMetric === 'WEIGHT' && `Weight (${unitLabels.weight})`}
+              {selectedMetric === 'GLUCOSE' && `Glucose (${unitLabels.glucose})`}
+              {selectedMetric === 'KETONES' && `Ketones (${unitLabels.ketones})`}
+              {selectedMetric === 'WAIST' && `Waist (${unitLabels.waist})`}
             </CardTitle>
           </CardHeader>
           <CardContent>

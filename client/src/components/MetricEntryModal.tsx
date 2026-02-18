@@ -11,10 +11,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MetricType, useData } from '@/lib/dataAdapter';
+import { useAuth } from '@/lib/auth';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { CalendarIcon, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { getUnitLabels, normalizeMetricForStorage, type UnitsPreference } from '@shared/units';
 
 interface MetricEntryModalProps {
   isOpen: boolean;
@@ -62,7 +64,10 @@ const bpSchema = z.object({
 
 export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryModalProps) {
   const { addMetric } = useData();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const unitsPref = (user?.unitsPreference ?? "US") as UnitsPreference;
+  const unitLabels = getUnitLabels(unitsPref);
   const [systolic, setSystolic] = React.useState('');
   const [diastolic, setDiastolic] = React.useState('');
   const [value, setValue] = React.useState('');
@@ -140,15 +145,30 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
 
     try {
       if (type === 'BP') {
+        const normalized = normalizeMetricForStorage({
+          type: 'BP',
+          systolic: Number(systolic),
+          diastolic: Number(diastolic),
+          userPreference: unitsPref,
+        });
         await addMetric({
           type,
-          valueJson: { systolic: Number(systolic), diastolic: Number(diastolic) },
+          normalizedValue: normalized.normalizedValue,
+          rawUnit: normalized.rawUnit,
+          valueJson: { ...normalized.valueJson, context: undefined },
           timestamp: entryDate,
         });
       } else {
+        const normalized = normalizeMetricForStorage({
+          type: type as any,
+          value: Number(value),
+          userPreference: unitsPref,
+        });
         await addMetric({
           type,
-          valueJson: { value: Number(value), context: type === 'GLUCOSE' ? context : undefined },
+          normalizedValue: normalized.normalizedValue,
+          rawUnit: normalized.rawUnit,
+          valueJson: { ...normalized.valueJson, context: type === 'GLUCOSE' ? context : undefined },
           timestamp: entryDate,
         });
       }
@@ -191,11 +211,11 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
   };
 
   const units: Record<MetricType, string> = {
-    BP: 'mmHg',
-    WAIST: 'inches',
-    GLUCOSE: 'mg/dL',
-    KETONES: 'mmol/L',
-    WEIGHT: 'lbs',
+    BP: unitLabels.bp,
+    WAIST: unitLabels.waist,
+    GLUCOSE: unitLabels.glucose,
+    KETONES: unitLabels.ketones,
+    WEIGHT: unitLabels.weight,
   };
 
   return (

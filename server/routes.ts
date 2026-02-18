@@ -117,13 +117,13 @@ export async function registerRoutes(
       });
 
       // Auto login
-      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false }, async (err) => {
+      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, unitsPreference: user.unitsPreference ?? "US" }, async (err) => {
         if (err) return next(err);
 
         // Audit: User self-registration
         await auditLoginSuccess({ id: user.id, role: user.role }, req);
 
-        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false } });
+        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, unitsPreference: user.unitsPreference ?? "US" } });
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -626,11 +626,20 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
     }
   });
 
-  // Admin routes - list all participants (PHI access)
+  // Admin/Coach routes - list participants (PHI access)
   app.get("/api/admin/participants", requireAuth, requireCoachOrAdmin, auditPhiRead("USER"), async (req, res) => {
     try {
       const participants = await storage.getAllParticipants();
       const sanitized = participants.map(({ passwordHash, ...rest }) => rest);
+
+      // Coaches only see their assigned participants
+      if (req.user!.role === "coach") {
+        const coachParticipants = sanitized.filter(
+          (p: any) => p.coachId === req.user!.id
+        );
+        return res.json(coachParticipants);
+      }
+
       res.json(sanitized);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

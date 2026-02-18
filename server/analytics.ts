@@ -309,7 +309,34 @@ export class AnalyticsService {
         });
       }
 
-      const allUserLogs = [...userMetrics, ...userFood].sort((a, b) => 
+      // Check for low ketones (<0.1 mmol/L on 3+ days in 3-day window)
+      const ketoneEntries = userMetrics
+        .filter(e => e.type === "KETONES" && e.timestamp >= threeDaysAgo)
+        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+      const lowKetoneDays = new Set<string>();
+      ketoneEntries.forEach(e => {
+        const val = e.valueJson as any;
+        const value = val?.value ?? (e.normalizedValue ?? 0);
+        if (value < 0.1) {
+          lowKetoneDays.add(e.timestamp.toISOString().split('T')[0]);
+        }
+      });
+
+      if (lowKetoneDays.size >= 3) {
+        flags.push({
+          type: "low_ketones",
+          participantId: userId,
+          participantName: participant.name,
+          participantEmail: participant.email,
+          coachId: participant.coachId,
+          coachName: participant.coachId ? coachMap.get(participant.coachId) || null : null,
+          lastLogDate: ketoneEntries[0]?.timestamp.toISOString().split('T')[0] || null,
+          details: `Low ketones (<0.1 mmol/L) on ${lowKetoneDays.size} days`,
+        });
+      }
+
+      const allUserLogs = [...userMetrics, ...userFood].sort((a, b) =>
         b.timestamp.getTime() - a.timestamp.getTime()
       );
       

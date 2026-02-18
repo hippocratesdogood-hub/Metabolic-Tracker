@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useData, MetricType } from '@/lib/dataAdapter';
+import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
@@ -9,11 +10,15 @@ import { Progress } from '@/components/ui/progress';
 import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
+import { getUnitLabels, formatMetricForDisplay, type UnitsPreference } from '@shared/units';
 
 export default function Dashboard() {
   const { user, getMetricsByType } = useData();
+  const { user: authUser } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<MetricType | null>(null);
+  const unitsPref = (authUser?.unitsPreference ?? "US") as UnitsPreference;
+  const unitLabels = getUnitLabels(unitsPref);
 
   const { data: macroProgress } = useQuery({
     queryKey: ['macro-progress'],
@@ -34,6 +39,22 @@ export default function Dashboard() {
     const metrics = getMetricsByType(type);
     if (metrics.length === 0) return null;
     return metrics[0];
+  };
+
+  const getMetricDisplay = (metric: any, type: "WEIGHT" | "WAIST" | "GLUCOSE" | "KETONES" | "BP"): string => {
+    if (!metric) return '--';
+    // Use formatMetricForDisplay if normalizedValue is available (new entries)
+    if (metric.normalizedValue != null) {
+      return formatMetricForDisplay(type, metric.normalizedValue, metric.valueJson || {}, unitsPref);
+    }
+    // Legacy data: display raw valueJson (already in user's units)
+    if (type === 'BP') {
+      const vj = metric.valueJson as { systolic?: number; diastolic?: number };
+      return vj ? `${vj.systolic}/${vj.diastolic} mmHg` : '--/--';
+    }
+    const val = (metric.valueJson as { value?: number })?.value;
+    if (val == null) return '--';
+    return type === 'GLUCOSE' ? val.toFixed(0) : val.toFixed(1);
   };
 
   const weight = getLatestMetric('WEIGHT');
@@ -134,8 +155,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <MetricCard
           title="Weight"
-          value={(weight?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
-          unit="lbs"
+          value={getMetricDisplay(weight, 'WEIGHT')}
+          unit={unitLabels.weight}
           type="WEIGHT"
           trend={weightTrend ? getTrendDirection(weightTrend) : undefined}
           trendValue={weightTrend?.value || undefined}
@@ -146,8 +167,8 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Glucose (Fasting)"
-          value={(glucose?.valueJson as { value?: number })?.value?.toFixed(0) || '--'}
-          unit="mg/dL"
+          value={getMetricDisplay(glucose, 'GLUCOSE')}
+          unit={unitLabels.glucose}
           type="GLUCOSE"
           trend={glucoseTrend ? getTrendDirection(glucoseTrend) : undefined}
           trendValue={glucoseTrend?.value || undefined}
@@ -158,8 +179,8 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Ketones"
-          value={(ketones?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
-          unit="mmol/L"
+          value={getMetricDisplay(ketones, 'KETONES')}
+          unit={unitLabels.ketones}
           type="KETONES"
           trend={ketonesTrend ? getTrendDirection(ketonesTrend, true) : undefined}
           trendValue={ketonesTrend?.value || undefined}
@@ -170,8 +191,8 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Blood Pressure"
-          value={bp?.valueJson ? `${(bp.valueJson as { systolic?: number; diastolic?: number }).systolic}/${(bp.valueJson as { systolic?: number; diastolic?: number }).diastolic}` : '--/--'}
-          unit="mmHg"
+          value={getMetricDisplay(bp, 'BP')}
+          unit={unitLabels.bp}
           type="BP"
           trend="neutral"
           color="bg-red-500"
@@ -181,8 +202,8 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Waist"
-          value={(waist?.valueJson as { value?: number })?.value?.toFixed(1) || '--'}
-          unit="in"
+          value={getMetricDisplay(waist, 'WAIST')}
+          unit={unitLabels.waist}
           type="WAIST"
           trend={waistTrend ? getTrendDirection(waistTrend) : undefined}
           trendValue={waistTrend?.value || undefined}

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus } from 'lucide-react';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -301,6 +301,8 @@ export default function FoodLog() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const analysisRef = useRef<HTMLDivElement>(null);
+  const hasSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
   
   const minDate = subDays(startOfDay(new Date()), 7);
   const maxDate = new Date();
@@ -487,6 +489,30 @@ export default function FoodLog() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleQuickLog = async (entry: any) => {
+    const macros = entry.userCorrectionsJson?.macros || entry.aiOutputJson?.macros;
+    if (!macros) {
+      handleUseFavorite(entry);
+      return;
+    }
+    try {
+      await createFoodMutation.mutateAsync({
+        inputType: 'text',
+        mealType: entry.mealType || suggestMealType(),
+        rawText: entry.rawText || 'Favorite meal',
+        timestamp: new Date(),
+        aiOutputJson: {
+          foods_detected: entry.userCorrectionsJson?.foods_detected || entry.aiOutputJson?.foods_detected,
+          macros,
+          qualityScore: entry.userCorrectionsJson?.qualityScore || entry.aiOutputJson?.qualityScore,
+          notes: entry.userCorrectionsJson?.notes || entry.aiOutputJson?.notes,
+        },
+      });
+    } catch {
+      // Error toast handled by mutation onError
+    }
+  };
+
   const createFoodMutation = useMutation({
     mutationFn: (entry: any) => api.createFoodEntry(entry),
     onSuccess: () => {
@@ -556,6 +582,10 @@ export default function FoodLog() {
         setMealType(result.suggestedMealType as MealType);
       }
       toast.success('Analysis complete!');
+      // Auto-scroll to analysis results
+      setTimeout(() => {
+        analysisRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
     } catch (error: any) {
       console.error('Food analysis error:', error);
       toast.error(error.message || 'Failed to analyze meal. Please try again.');
@@ -686,17 +716,26 @@ export default function FoodLog() {
               const macros = fav.userCorrectionsJson?.macros || fav.aiOutputJson?.macros;
               const FavIcon = mealIcons[fav.mealType as MealType] || Cookie;
               return (
-                <button
-                  key={fav.id}
-                  onClick={() => handleUseFavorite(fav)}
-                  className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border bg-background hover:bg-accent transition-colors text-sm max-w-[220px]"
-                >
-                  <FavIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="truncate font-medium">{fav.rawText || 'Meal'}</span>
-                  {macros && (
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">{macros.calories} cal</span>
-                  )}
-                </button>
+                <div key={fav.id} className="flex-shrink-0 flex items-center gap-1">
+                  <button
+                    onClick={() => handleUseFavorite(fav)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-l-full border border-r-0 bg-background hover:bg-accent transition-colors text-sm max-w-[180px]"
+                  >
+                    <FavIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate font-medium">{fav.rawText || 'Meal'}</span>
+                    {macros && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{macros.calories} cal</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleQuickLog(fav)}
+                    disabled={createFoodMutation.isPending}
+                    className="px-2 py-2 rounded-r-full border border-l-0 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium transition-colors"
+                    title="Quick log this meal"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -829,20 +868,22 @@ export default function FoodLog() {
                 >
                   {selectedImage ? <Image className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "rounded-full text-muted-foreground hover:text-primary",
-                    isRecording && "text-red-500 animate-pulse"
-                  )}
-                  onClick={handleVoiceClick}
-                  aria-label={isRecording ? "Stop recording" : "Describe meal with voice"}
-                  aria-pressed={isRecording}
-                  data-testid="button-voice"
-                >
-                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                </Button>
+                {hasSpeechRecognition && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "rounded-full text-muted-foreground hover:text-primary",
+                      isRecording && "text-red-500 animate-pulse"
+                    )}
+                    onClick={handleVoiceClick}
+                    aria-label={isRecording ? "Stop recording" : "Describe meal with voice"}
+                    aria-pressed={isRecording}
+                    data-testid="button-voice"
+                  >
+                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </Button>
+                )}
               </div>
               <Button 
                 onClick={handleAnalyze} 
@@ -863,7 +904,7 @@ export default function FoodLog() {
           </div>
 
           {analysisResult && (
-            <div className="bg-secondary/10 p-4 border-t border-secondary/20 animate-in slide-in-from-top-4 fade-in duration-300">
+            <div ref={analysisRef} className="bg-secondary/10 p-4 border-t border-secondary/20 animate-in slide-in-from-top-4 fade-in duration-300">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
