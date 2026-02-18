@@ -41,6 +41,20 @@ function ChatView({
     },
   });
 
+  // Auto-mark unread messages from other user as read
+  useEffect(() => {
+    if (!messages.length) return;
+    const unread = messages.filter(
+      (msg: Message) => msg.senderId !== currentUserId && !msg.readAt
+    );
+    if (unread.length === 0) return;
+    Promise.all(unread.map((msg) => api.markMessageRead(msg.id).catch(() => {})))
+      .then(() => {
+        // Refresh conversations list to update unread counts
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      });
+  }, [messages, currentUserId, queryClient]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -316,9 +330,10 @@ function CoachMessages() {
             selectedConversationId ? 'hidden md:block' : 'block'
           )}
         >
-          {conversations.map((conv: Conversation) => {
+          {conversations.map((conv: Conversation & { unreadCount?: number }) => {
             const name = participantMap[conv.participantId] || 'Participant';
             const isSelected = conv.id === selectedConversationId;
+            const hasUnread = (conv.unreadCount || 0) > 0;
             return (
               <button
                 key={conv.id}
@@ -329,15 +344,23 @@ function CoachMessages() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                  <div className="relative w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center shrink-0">
                     <UserIcon className="w-4 h-4" />
+                    {hasUnread && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-card" />
+                    )}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("text-sm truncate", hasUnread ? "font-semibold" : "font-medium")}>{name}</p>
                     <p className="text-xs text-muted-foreground">
                       {format(new Date(conv.createdAt), 'MMM d')}
                     </p>
                   </div>
+                  {hasUnread && (
+                    <span className="text-[10px] font-bold bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center shrink-0">
+                      {conv.unreadCount}
+                    </span>
+                  )}
                 </div>
               </button>
             );

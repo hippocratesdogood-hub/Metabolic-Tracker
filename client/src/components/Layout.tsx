@@ -1,13 +1,15 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
 
   // Fullscreen pages (no layout)
   if (location === '/login' || location === '/onboarding') {
@@ -44,11 +46,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <span className="font-heading font-bold text-lg">Metabolic</span>
           <span className="inline-flex items-center justify-center bg-[#F07D1A] text-white font-heading font-bold text-xs px-1.5 py-0.5 rounded-md leading-none">OS</span>
         </div>
-        <Link href="/login">
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <User className="w-5 h-5 text-muted-foreground" />
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full"
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle theme"
+          >
+            {resolvedTheme === 'dark' ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
           </Button>
-        </Link>
+          <Link href="/login">
+            <Button variant="ghost" size="icon" className="rounded-full">
+              <User className="w-5 h-5 text-muted-foreground" />
+            </Button>
+          </Link>
+        </div>
       </header>
 
       {/* Desktop Sidebar */}
@@ -76,8 +89,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <div 
+        <div className="p-4 border-t border-sidebar-border space-y-2">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-xs text-muted-foreground">Theme</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2 text-xs"
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            >
+              {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {resolvedTheme === 'dark' ? 'Light' : 'Dark'}
+            </Button>
+          </div>
+          <div
             onClick={logout}
             className="flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-sidebar-accent rounded-lg transition-colors"
           >

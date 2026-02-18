@@ -253,14 +253,30 @@ export async function registerRoutes(
   // Metrics routes (PHI data - audit all access)
   app.post("/api/metrics", requireAuth, auditCreate("METRIC_ENTRY"), async (req, res) => {
     try {
+      const timestamp = req.body.timestamp ? new Date(req.body.timestamp) : new Date();
+
+      // Server-side timestamp validation
+      if (isNaN(timestamp.getTime())) {
+        return res.status(400).json({ message: "Invalid timestamp format" });
+      }
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const oneMinuteFromNow = new Date(now.getTime() + 60 * 1000);
+      if (timestamp > oneMinuteFromNow) {
+        return res.status(400).json({ message: "Timestamp cannot be in the future" });
+      }
+      if (timestamp < thirtyDaysAgo) {
+        return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
+      }
+
       const data = {
         ...req.body,
         userId: req.user!.id,
-        timestamp: req.body.timestamp ? new Date(req.body.timestamp) : new Date(),
+        timestamp,
       };
-      
+
       const result = insertMetricEntrySchema.safeParse(data);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: fromZodError(result.error).message });
       }
@@ -345,14 +361,30 @@ export async function registerRoutes(
   // Food routes (PHI data - audit all access)
   app.post("/api/food", requireAuth, auditCreate("FOOD_ENTRY"), async (req, res) => {
     try {
+      const timestamp = req.body.timestamp ? new Date(req.body.timestamp) : new Date();
+
+      // Server-side timestamp validation
+      if (isNaN(timestamp.getTime())) {
+        return res.status(400).json({ message: "Invalid timestamp format" });
+      }
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const oneMinuteFromNow = new Date(now.getTime() + 60 * 1000);
+      if (timestamp > oneMinuteFromNow) {
+        return res.status(400).json({ message: "Timestamp cannot be in the future" });
+      }
+      if (timestamp < thirtyDaysAgo) {
+        return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
+      }
+
       const data = {
         ...req.body,
         userId: req.user!.id,
-        timestamp: req.body.timestamp ? new Date(req.body.timestamp) : new Date(),
+        timestamp,
       };
-      
+
       const result = insertFoodEntrySchema.safeParse(data);
-      
+
       if (!result.success) {
         return res.status(400).json({ message: fromZodError(result.error).message });
       }
@@ -1600,7 +1632,17 @@ GUIDELINES:
   app.get("/api/conversations", requireAuth, auditPhiRead("CONVERSATION"), async (req, res) => {
     try {
       const conversations = await storage.getConversationsForUser(req.user!.id);
-      res.json(conversations);
+      // Attach unread count for each conversation
+      const enriched = await Promise.all(
+        conversations.map(async (conv) => {
+          const msgs = await storage.getMessages(conv.id);
+          const unreadCount = msgs.filter(
+            (m) => m.senderId !== req.user!.id && !m.readAt
+          ).length;
+          return { ...conv, unreadCount };
+        })
+      );
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1662,6 +1704,15 @@ GUIDELINES:
 
       const message = await storage.createMessage(result.data);
       res.json(message);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/messages/:id/read", requireAuth, async (req, res) => {
+    try {
+      await storage.markMessageRead(req.params.id);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

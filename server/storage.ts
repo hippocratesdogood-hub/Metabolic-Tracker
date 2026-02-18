@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
+import { encryptPHI, decryptPHI } from "./utils/encryption";
 
 /**
  * Determines if an entry is backfilled by comparing timestamp to createdAt.
@@ -173,14 +174,20 @@ export class PostgresStorage implements IStorage {
   }
 
   // Metrics
+  private decryptMetricNotes(entry: MetricEntry): MetricEntry {
+    if (entry.notes) return { ...entry, notes: decryptPHI(entry.notes) };
+    return entry;
+  }
+
   async createMetricEntry(entry: InsertMetricEntry): Promise<MetricEntry> {
-    const results = await db.insert(schema.metricEntries).values(entry).returning();
-    return results[0];
+    const encrypted = entry.notes ? { ...entry, notes: encryptPHI(entry.notes) } : entry;
+    const results = await db.insert(schema.metricEntries).values(encrypted).returning();
+    return this.decryptMetricNotes(results[0]);
   }
 
   async getMetricEntryById(id: string): Promise<MetricEntry | undefined> {
     const results = await db.select().from(schema.metricEntries).where(eq(schema.metricEntries.id, id));
-    return results[0];
+    return results[0] ? this.decryptMetricNotes(results[0]) : undefined;
   }
 
   async getMetricEntries(
@@ -190,7 +197,7 @@ export class PostgresStorage implements IStorage {
     to?: Date
   ): Promise<MetricEntry[]> {
     const conditions = [eq(schema.metricEntries.userId, userId)];
-    
+
     if (type) {
       conditions.push(eq(schema.metricEntries.type, type as any));
     }
@@ -201,11 +208,12 @@ export class PostgresStorage implements IStorage {
       conditions.push(lte(schema.metricEntries.timestamp, to));
     }
 
-    return db
+    const entries = await db
       .select()
       .from(schema.metricEntries)
       .where(and(...conditions))
       .orderBy(desc(schema.metricEntries.timestamp));
+    return entries.map((e) => this.decryptMetricNotes(e));
   }
 
   async updateMetricEntry(id: string, data: Partial<InsertMetricEntry>, editedBy?: string): Promise<MetricEntry | undefined> {
@@ -234,12 +242,17 @@ export class PostgresStorage implements IStorage {
       }
     }
 
+    // Encrypt notes if being updated
+    if (updateData.notes) {
+      updateData.notes = encryptPHI(updateData.notes);
+    }
+
     const results = await db
       .update(schema.metricEntries)
       .set(updateData)
       .where(eq(schema.metricEntries.id, id))
       .returning();
-    return results[0];
+    return results[0] ? this.decryptMetricNotes(results[0]) : undefined;
   }
 
   async deleteMetricEntry(id: string): Promise<boolean> {
@@ -251,19 +264,25 @@ export class PostgresStorage implements IStorage {
   }
 
   // Food
+  private decryptFoodRawText(entry: FoodEntry): FoodEntry {
+    if (entry.rawText) return { ...entry, rawText: decryptPHI(entry.rawText) };
+    return entry;
+  }
+
   async createFoodEntry(entry: InsertFoodEntry): Promise<FoodEntry> {
-    const results = await db.insert(schema.foodEntries).values(entry).returning();
-    return results[0];
+    const encrypted = entry.rawText ? { ...entry, rawText: encryptPHI(entry.rawText) } : entry;
+    const results = await db.insert(schema.foodEntries).values(encrypted).returning();
+    return this.decryptFoodRawText(results[0]);
   }
 
   async getFoodEntryById(id: string): Promise<FoodEntry | undefined> {
     const results = await db.select().from(schema.foodEntries).where(eq(schema.foodEntries.id, id));
-    return results[0];
+    return results[0] ? this.decryptFoodRawText(results[0]) : undefined;
   }
 
   async getFoodEntries(userId: string, from?: Date, to?: Date): Promise<FoodEntry[]> {
     const conditions = [eq(schema.foodEntries.userId, userId)];
-    
+
     if (from) {
       conditions.push(gte(schema.foodEntries.timestamp, from));
     }
@@ -271,20 +290,22 @@ export class PostgresStorage implements IStorage {
       conditions.push(lte(schema.foodEntries.timestamp, to));
     }
 
-    return db
+    const entries = await db
       .select()
       .from(schema.foodEntries)
       .where(and(...conditions))
       .orderBy(desc(schema.foodEntries.timestamp));
+    return entries.map((e) => this.decryptFoodRawText(e));
   }
 
   async updateFoodEntry(id: string, data: Partial<InsertFoodEntry>): Promise<FoodEntry | undefined> {
+    const encrypted = data.rawText ? { ...data, rawText: encryptPHI(data.rawText) } : data;
     const results = await db
       .update(schema.foodEntries)
-      .set(data)
+      .set(encrypted)
       .where(eq(schema.foodEntries.id, id))
       .returning();
-    return results[0];
+    return results[0] ? this.decryptFoodRawText(results[0]) : undefined;
   }
 
   async deleteFoodEntry(id: string): Promise<boolean> {
@@ -308,7 +329,7 @@ export class PostgresStorage implements IStorage {
       .set({ tags: newTags })
       .where(eq(schema.foodEntries.id, id))
       .returning();
-    return results[0];
+    return results[0] ? this.decryptFoodRawText(results[0]) : undefined;
   }
 
   async getFavoriteFoodEntries(userId: string): Promise<FoodEntry[]> {
@@ -324,9 +345,12 @@ export class PostgresStorage implements IStorage {
       )
       .orderBy(desc(schema.foodEntries.timestamp));
 
+    // Decrypt rawText before deduplication
+    const decrypted = entries.map((e) => this.decryptFoodRawText(e));
+
     // Deduplicate by rawText — keep most recent of each unique meal
     const seen = new Set<string>();
-    return entries.filter((entry) => {
+    return decrypted.filter((entry) => {
       const key = (entry.rawText || '').toLowerCase().trim();
       if (!key || seen.has(key)) return false;
       seen.add(key);
@@ -340,7 +364,7 @@ export class PostgresStorage implements IStorage {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    return db
+    const entries = await db
       .select()
       .from(schema.foodEntries)
       .where(
@@ -351,6 +375,7 @@ export class PostgresStorage implements IStorage {
         )
       )
       .orderBy(schema.foodEntries.timestamp);
+    return entries.map((e) => this.decryptFoodRawText(e));
   }
 
   // Macro Targets
@@ -422,16 +447,18 @@ export class PostgresStorage implements IStorage {
   }
 
   async createMessage(message: InsertMessage): Promise<Message> {
-    const results = await db.insert(schema.messages).values(message).returning();
-    return results[0];
+    const encrypted = { ...message, body: encryptPHI(message.body) };
+    const results = await db.insert(schema.messages).values(encrypted).returning();
+    return { ...results[0], body: decryptPHI(results[0].body) };
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {
-    return db
+    const messages = await db
       .select()
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
       .orderBy(schema.messages.createdAt);
+    return messages.map((m) => ({ ...m, body: decryptPHI(m.body) }));
   }
 
   async markMessageRead(messageId: string): Promise<void> {

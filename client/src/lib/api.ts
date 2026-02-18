@@ -388,6 +388,12 @@ class ApiClient {
     });
   }
 
+  async markMessageRead(messageId: string) {
+    return this.request<{ success: boolean }>(`/messages/${messageId}/read`, {
+      method: "PATCH",
+    });
+  }
+
   // Dashboard Stats (streak, trends)
   async getDashboardStats() {
     return this.request<{

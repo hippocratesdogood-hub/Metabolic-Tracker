@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './auth';
 import { api } from './api';
+import { queryClient } from './queryClient';
 import type { MetricEntry, FoodEntry } from '@shared/schema';
 
 export type MetricType = 'BP' | 'WAIST' | 'GLUCOSE' | 'KETONES' | 'WEIGHT';
@@ -58,11 +59,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const addMetric = async (entry: any) => {
     await api.createMetricEntry(entry);
     await refreshMetrics();
+    // Invalidate React Query caches so Dashboard stats and charts update
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
   };
 
   const addFoodEntry = async (entry: any) => {
     await api.createFoodEntry(entry);
     await refreshFood();
+    // Invalidate React Query caches so Dashboard stats update
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
   };
 
   return (
