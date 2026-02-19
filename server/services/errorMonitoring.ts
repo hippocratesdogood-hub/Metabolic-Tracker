@@ -173,7 +173,7 @@ export function initializeErrorMonitoring(): void {
     return;
   }
 
-  const dsn = process.env.SENTRY_DSN;
+  const dsn = process.env.SENTRY_DSN || "https://c6affe32264ac72d5bb3ad37462f400e@o4510829883555840.ingest.us.sentry.io/4510829891944448";
   const environment = process.env.NODE_ENV || "development";
 
   if (!dsn) {

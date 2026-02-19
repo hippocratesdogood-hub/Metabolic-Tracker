@@ -19,7 +19,7 @@ import * as Sentry from "@sentry/react";
  * Call this once during app initialization.
  */
 export function initializeErrorTracking(): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN;
+  const dsn = import.meta.env.VITE_SENTRY_DSN || "https://c6affe32264ac72d5bb3ad37462f400e@o4510829883555840.ingest.us.sentry.io/4510829891944448";
   const environment = import.meta.env.MODE || "development";
 
   if (!dsn) {
