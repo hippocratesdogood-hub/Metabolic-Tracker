@@ -126,11 +126,11 @@ export default function Login() {
         <CardFooter className="justify-center border-t border-border/50 pt-6">
           <p className="text-sm text-muted-foreground">
             Don't have an account?{' '}
-            <span 
+            <span
               className="text-primary hover:underline cursor-pointer font-medium"
-              onClick={() => setLocation('/onboarding')}
+              onClick={() => toast.info('Please contact Dr. Larson to get set up.', { duration: 5000 })}
             >
-              Start your program
+              Get started
             </span>
           </p>
         </CardFooter>
