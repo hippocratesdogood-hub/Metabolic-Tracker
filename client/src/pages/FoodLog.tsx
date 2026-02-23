@@ -696,6 +696,52 @@ export default function FoodLog() {
   
   const isBackfill = !isToday(entryDate);
 
+  // Build per-item macro breakdown from today's food entries (for tooltip)
+  const macroBreakdown = React.useMemo(() => {
+    const todayEntries = foodEntries.filter((e: any) => {
+      if (e.parentMealId) return false; // skip children
+      return isToday(new Date(e.timestamp));
+    });
+
+    type BreakdownItem = { name: string; qty: string; value: number };
+    const breakdown: Record<string, BreakdownItem[]> = {
+      Calories: [], Protein: [], Fat: [], 'Net Carbs': [], Fiber: [],
+    };
+
+    for (const entry of todayEntries) {
+      const foods = (entry as any).aiOutputJson?.foods_detected as any[] | undefined;
+      const macros = (entry as any).userCorrectionsJson?.macros || (entry as any).aiOutputJson?.macros;
+
+      if (foods && foods.length > 0) {
+        for (const item of foods) {
+          const name = item.name || 'Unknown';
+          const qty = item.quantity && item.unit ? `${item.quantity} ${item.unit}` : '';
+          breakdown.Calories.push({ name, qty, value: item.calories || 0 });
+          breakdown.Protein.push({ name, qty, value: item.protein || 0 });
+          breakdown.Fat.push({ name, qty, value: item.fat || 0 });
+          breakdown['Net Carbs'].push({ name, qty, value: item.netCarbs ?? item.carbs ?? 0 });
+          breakdown.Fiber.push({ name, qty, value: item.fiber || 0 });
+        }
+      } else if (macros) {
+        // Legacy entry — show as single item
+        const name = (entry as any).rawText || 'Meal';
+        const qty = '';
+        breakdown.Calories.push({ name, qty, value: macros.calories || 0 });
+        breakdown.Protein.push({ name, qty, value: macros.protein || 0 });
+        breakdown.Fat.push({ name, qty, value: macros.fat || 0 });
+        breakdown['Net Carbs'].push({ name, qty, value: macros.netCarbs ?? macros.carbs ?? 0 });
+        breakdown.Fiber.push({ name, qty, value: macros.fiber || 0 });
+      }
+    }
+
+    // Sort each macro's items by contribution (highest first)
+    for (const key of Object.keys(breakdown)) {
+      breakdown[key].sort((a, b) => b.value - a.value);
+    }
+
+    return breakdown;
+  }, [foodEntries]);
+
   const MealIcon = mealIcons[mealType];
 
   return (
@@ -721,23 +767,57 @@ export default function FoodLog() {
                 { label: 'Fiber', consumed: macroProgress.consumed.fiber, target: macroProgress.target?.fiber || 0, color: 'bg-green-500', unit: 'g' },
               ].map(({ label, consumed, target, color, unit }) => {
                 const pct = target > 0 ? Math.min((consumed / target) * 100, 100) : 0;
+                const items = macroBreakdown[label] || [];
                 return (
-                  <div key={label}>
-                    <div className="flex items-center justify-between text-xs mb-0.5">
-                      <span className="font-medium">{label}</span>
-                      <span className="text-muted-foreground">
-                        {Math.round(consumed)}{unit}{target > 0 ? ` / ${target}${unit}` : ''}
-                      </span>
-                    </div>
-                    {target > 0 && (
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={cn("h-full rounded-full transition-all duration-500", color)}
-                          style={{ width: `${pct}%` }}
-                        />
+                  <Popover key={label}>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="w-full text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded">
+                        <div className="flex items-center justify-between text-xs mb-0.5">
+                          <span className="font-medium">{label}</span>
+                          <span className="text-muted-foreground">
+                            {Math.round(consumed)}{unit}{target > 0 ? ` / ${target}${unit}` : ''}
+                          </span>
+                        </div>
+                        {target > 0 && (
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full transition-all duration-500", color)}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="start" side="bottom">
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold">{label} Breakdown</span>
+                          <div className={cn("w-2 h-2 rounded-full", color)} />
+                        </div>
+                        {items.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">No items logged today</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {items.map((item, i) => (
+                              <div key={i} className="flex items-center justify-between text-xs">
+                                <div className="flex-1 min-w-0 mr-2">
+                                  <span className="font-medium truncate block">{item.name}</span>
+                                  {item.qty && <span className="text-muted-foreground text-[10px]">{item.qty}</span>}
+                                </div>
+                                <span className="font-medium shrink-0">
+                                  {Math.round(item.value)}{unit}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="border-t mt-2 pt-2 flex items-center justify-between text-xs font-semibold">
+                          <span>Total</span>
+                          <span>{Math.round(consumed)}{unit}{target > 0 ? ` / ${target}${unit}` : ''}</span>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    </PopoverContent>
+                  </Popover>
                 );
               })}
             </div>
