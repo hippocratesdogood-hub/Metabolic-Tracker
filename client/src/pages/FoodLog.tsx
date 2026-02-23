@@ -705,7 +705,7 @@ export default function FoodLog() {
         <p className="text-muted-foreground">Snap a photo or describe your meal.</p>
       </div>
 
-      {macroProgress?.target && (
+      {macroProgress && (
         <Card className="border-none shadow-md bg-gradient-to-r from-primary/5 to-secondary/5">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -714,11 +714,11 @@ export default function FoodLog() {
             </div>
             <div className="space-y-2.5">
               {[
-                { label: 'Calories', consumed: macroProgress.consumed.calories, target: macroProgress.target.calories || 0, color: 'bg-orange-500', unit: '' },
-                { label: 'Protein', consumed: macroProgress.consumed.protein, target: macroProgress.target.protein || 0, color: 'bg-blue-500', unit: 'g' },
-                { label: 'Fat', consumed: macroProgress.consumed.fat, target: macroProgress.target.fat || 0, color: 'bg-yellow-500', unit: 'g' },
-                { label: 'Net Carbs', consumed: macroProgress.consumed.netCarbs ?? macroProgress.consumed.carbs, target: macroProgress.target.carbs || 0, color: 'bg-red-500', unit: 'g' },
-                { label: 'Fiber', consumed: macroProgress.consumed.fiber, target: macroProgress.target.fiber || 0, color: 'bg-green-500', unit: 'g' },
+                { label: 'Calories', consumed: macroProgress.consumed.calories, target: macroProgress.target?.calories || 0, color: 'bg-orange-500', unit: '' },
+                { label: 'Protein', consumed: macroProgress.consumed.protein, target: macroProgress.target?.protein || 0, color: 'bg-blue-500', unit: 'g' },
+                { label: 'Fat', consumed: macroProgress.consumed.fat, target: macroProgress.target?.fat || 0, color: 'bg-yellow-500', unit: 'g' },
+                { label: 'Net Carbs', consumed: macroProgress.consumed.netCarbs ?? macroProgress.consumed.carbs, target: macroProgress.target?.carbs || 0, color: 'bg-red-500', unit: 'g' },
+                { label: 'Fiber', consumed: macroProgress.consumed.fiber, target: macroProgress.target?.fiber || 0, color: 'bg-green-500', unit: 'g' },
               ].map(({ label, consumed, target, color, unit }) => {
                 const pct = target > 0 ? Math.min((consumed / target) * 100, 100) : 0;
                 return (
@@ -726,19 +726,24 @@ export default function FoodLog() {
                     <div className="flex items-center justify-between text-xs mb-0.5">
                       <span className="font-medium">{label}</span>
                       <span className="text-muted-foreground">
-                        {Math.round(consumed)}{unit} / {target}{unit}
+                        {Math.round(consumed)}{unit}{target > 0 ? ` / ${target}${unit}` : ''}
                       </span>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full transition-all duration-500", color)}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
+                    {target > 0 && (
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all duration-500", color)}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
+            {!macroProgress.target && (
+              <p className="text-xs text-muted-foreground mt-3 italic">Set macro targets in your profile to see progress bars.</p>
+            )}
           </CardContent>
         </Card>
       )}
