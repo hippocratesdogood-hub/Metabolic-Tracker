@@ -29,8 +29,13 @@ export default function Trends() {
         case 'WAIST': return Math.round(fromCm(m.normalizedValue, unitsPref === 'Metric' ? 'cm' : 'inches') * 10) / 10;
         case 'GLUCOSE': return Math.round(fromMgdl(m.normalizedValue, unitsPref === 'Metric' ? 'mmol/L' : 'mg/dL') * 10) / 10;
         case 'KETONES': return Math.round(m.normalizedValue * 10) / 10;
+        case 'BP': return null; // BP uses valueJson, handled below
         default: return m.normalizedValue;
       }
+    }
+    // BP always uses valueJson (systolic for trending)
+    if (selectedMetric === 'BP') {
+      return vj?.systolic ?? null;
     }
     // Legacy data: use raw valueJson
     return vj?.value ?? null;
@@ -64,6 +69,7 @@ export default function Trends() {
               <SelectItem value="GLUCOSE">Glucose</SelectItem>
               <SelectItem value="KETONES">Ketones</SelectItem>
               <SelectItem value="WAIST">Waist</SelectItem>
+              <SelectItem value="BP">Blood Pressure</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -83,6 +89,7 @@ export default function Trends() {
               {selectedMetric === 'GLUCOSE' && `Glucose (${unitLabels.glucose})`}
               {selectedMetric === 'KETONES' && `Ketones (${unitLabels.ketones})`}
               {selectedMetric === 'WAIST' && `Waist (${unitLabels.waist})`}
+              {selectedMetric === 'BP' && `Blood Pressure — Systolic (${unitLabels.bp})`}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -92,7 +99,7 @@ export default function Trends() {
                   <TrendingUp className="w-12 h-12 mb-3 opacity-30" />
                   <p className="font-medium">No data yet</p>
                   <p className="text-sm mt-1">
-                    Log {selectedMetric === 'WEIGHT' ? 'your weight' : selectedMetric === 'GLUCOSE' ? 'your glucose' : selectedMetric === 'KETONES' ? 'your ketones' : 'your waist measurement'} from the Dashboard to see trends here.
+                    Log {selectedMetric === 'WEIGHT' ? 'your weight' : selectedMetric === 'GLUCOSE' ? 'your glucose' : selectedMetric === 'KETONES' ? 'your ketones' : selectedMetric === 'BP' ? 'your blood pressure' : 'your waist measurement'} from the Dashboard to see trends here.
                   </p>
                 </div>
               ) : (
