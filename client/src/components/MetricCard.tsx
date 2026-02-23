@@ -58,8 +58,8 @@ export default function MetricCard({
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
-        <div className={cn("p-2 rounded-full bg-opacity-10", color)}>
-          <Icon className={cn("h-4 w-4", color.replace('bg-', 'text-'))} />
+        <div className={cn("p-2 rounded-full", color)}>
+          <Icon className="h-4 w-4 text-white" />
         </div>
       </CardHeader>
       <CardContent>
