@@ -829,7 +829,7 @@ export default function FoodLog() {
       )}
 
       {foodStreak && (
-        <Card className="border-none shadow-sm bg-gradient-to-r from-orange-50/50 to-amber-50/50">
+        <Card className="border-none shadow-sm bg-gradient-to-r from-orange-50/50 to-amber-50/50 dark:from-orange-950/30 dark:to-amber-950/30">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
