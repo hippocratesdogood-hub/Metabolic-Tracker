@@ -595,19 +595,35 @@ export default function FoodLog() {
       });
       // Populate editable items from AI response
       if (result.foods_detected && Array.isArray(result.foods_detected)) {
-        setEditableItems(result.foods_detected.map((item: any, i: number) => ({
-          id: `item-${Date.now()}-${i}`,
-          name: item.name || 'Unknown item',
-          quantity: item.quantity || 1,
-          unit: item.unit || 'serving',
-          calories: item.calories || 0,
-          protein: item.protein || 0,
-          fat: item.fat || 0,
-          totalCarbs: item.totalCarbs || item.carbs || 0,
-          fiber: item.fiber || 0,
-          netCarbs: item.netCarbs || item.carbs || 0,
-          confidence: item.confidence || 0.8,
-        })));
+        setEditableItems(result.foods_detected.map((item: any, i: number) => {
+          const qty = item.quantity || 1;
+          const cals = item.calories || 0;
+          const pro = item.protein || 0;
+          const fat = item.fat || 0;
+          const tc = item.totalCarbs || item.carbs || 0;
+          const fib = item.fiber || 0;
+          const nc = item.netCarbs || item.carbs || 0;
+          return {
+            id: `item-${Date.now()}-${i}`,
+            name: item.name || 'Unknown item',
+            quantity: qty,
+            unit: item.unit || 'serving',
+            calories: cals,
+            protein: pro,
+            fat,
+            totalCarbs: tc,
+            fiber: fib,
+            netCarbs: nc,
+            // Per-single-unit base values for scaling when quantity changes
+            _baseCal: Math.round(cals / qty),
+            _basePro: Math.round((pro / qty) * 10) / 10,
+            _baseFat: Math.round((fat / qty) * 10) / 10,
+            _baseTotalCarbs: Math.round((tc / qty) * 10) / 10,
+            _baseFiber: Math.round((fib / qty) * 10) / 10,
+            _baseNetCarbs: Math.round((nc / qty) * 10) / 10,
+            confidence: item.confidence || 0.8,
+          };
+        }));
       }
       if (result.suggestedMealType) {
         setMealType(result.suggestedMealType as MealType);
@@ -987,7 +1003,7 @@ export default function FoodLog() {
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
-                      <div className="flex items-center gap-2 mb-2 pr-6">
+                      <div className="flex items-center gap-2 mb-1.5 pr-6">
                         <Input
                           value={item.name}
                           onChange={(e) => {
@@ -997,6 +1013,54 @@ export default function FoodLog() {
                           }}
                           className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0"
                         />
+                      </div>
+                      {/* Quantity / serving row */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <button
+                          type="button"
+                          className="w-6 h-6 rounded-full bg-muted hover:bg-accent flex items-center justify-center text-sm font-medium transition-colors"
+                          onClick={() => {
+                            const updated = [...editableItems];
+                            const newQty = Math.max(0.5, (item.quantity || 1) - 0.5);
+                            updated[idx] = {
+                              ...updated[idx],
+                              quantity: newQty,
+                              calories: Math.round(item._baseCal * newQty),
+                              protein: Math.round(item._basePro * newQty * 10) / 10,
+                              fat: Math.round(item._baseFat * newQty * 10) / 10,
+                              totalCarbs: Math.round(item._baseTotalCarbs * newQty * 10) / 10,
+                              fiber: Math.round(item._baseFiber * newQty * 10) / 10,
+                              netCarbs: Math.round(item._baseNetCarbs * newQty * 10) / 10,
+                            };
+                            setEditableItems(updated);
+                          }}
+                        >
+                          -
+                        </button>
+                        <span className="text-sm font-medium min-w-[60px] text-center">
+                          {item.quantity} {item.unit}
+                        </span>
+                        <button
+                          type="button"
+                          className="w-6 h-6 rounded-full bg-muted hover:bg-accent flex items-center justify-center text-sm font-medium transition-colors"
+                          onClick={() => {
+                            const updated = [...editableItems];
+                            const newQty = (item.quantity || 1) + 0.5;
+                            updated[idx] = {
+                              ...updated[idx],
+                              quantity: newQty,
+                              calories: Math.round(item._baseCal * newQty),
+                              protein: Math.round(item._basePro * newQty * 10) / 10,
+                              fat: Math.round(item._baseFat * newQty * 10) / 10,
+                              totalCarbs: Math.round(item._baseTotalCarbs * newQty * 10) / 10,
+                              fiber: Math.round(item._baseFiber * newQty * 10) / 10,
+                              netCarbs: Math.round(item._baseNetCarbs * newQty * 10) / 10,
+                            };
+                            setEditableItems(updated);
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
                       <div className="grid grid-cols-5 gap-1.5 text-center">
                         {[
@@ -1014,9 +1078,22 @@ export default function FoodLog() {
                               onChange={(e) => {
                                 const updated = [...editableItems];
                                 const val = parseFloat(e.target.value) || 0;
+                                const qty = updated[idx].quantity || 1;
                                 updated[idx] = { ...updated[idx], [key]: val };
                                 if (key === 'netCarbs' || key === 'fiber') {
                                   updated[idx].totalCarbs = updated[idx].netCarbs + updated[idx].fiber;
+                                }
+                                // Recalculate base value so +/- buttons stay consistent
+                                const baseKey = '_base' + key.charAt(0).toUpperCase() + key.slice(1);
+                                const baseKeyMap: Record<string, string> = {
+                                  calories: '_baseCal', protein: '_basePro', fat: '_baseFat',
+                                  netCarbs: '_baseNetCarbs', fiber: '_baseFiber',
+                                };
+                                if (baseKeyMap[key]) {
+                                  updated[idx][baseKeyMap[key]] = Math.round((val / qty) * 10) / 10;
+                                }
+                                if (key === 'netCarbs' || key === 'fiber') {
+                                  updated[idx]._baseTotalCarbs = Math.round(((updated[idx].netCarbs + updated[idx].fiber) / qty) * 10) / 10;
                                 }
                                 setEditableItems(updated);
                               }}
@@ -1044,6 +1121,12 @@ export default function FoodLog() {
                       totalCarbs: 0,
                       fiber: 0,
                       netCarbs: 0,
+                      _baseCal: 0,
+                      _basePro: 0,
+                      _baseFat: 0,
+                      _baseTotalCarbs: 0,
+                      _baseFiber: 0,
+                      _baseNetCarbs: 0,
                     }])}
                   >
                     <Plus className="w-3.5 h-3.5" />
