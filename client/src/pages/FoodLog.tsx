@@ -27,10 +27,10 @@ const mealIcons: Record<MealType, any> = {
 
 function suggestMealType(): MealType {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 10) return 'Breakfast';
-  if (hour >= 10 && hour < 14) return 'Lunch';
-  if (hour >= 17 && hour < 21) return 'Dinner';
-  return 'Snack';
+  if (hour >= 5 && hour < 11) return 'Breakfast';
+  if (hour >= 11 && hour < 15) return 'Lunch';
+  if (hour >= 15 && hour < 21) return 'Dinner';
+  return 'Breakfast';
 }
 
 const SERVING_OPTIONS = [0.5, 1, 1.5, 2, 3];
@@ -748,10 +748,7 @@ export default function FoodLog() {
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Select value={mealType} onValueChange={(v) => setMealType(v as MealType)}>
                 <SelectTrigger className="w-[140px]" aria-label="Select meal type" data-testid="select-meal-type">
-                  <div className="flex items-center gap-2">
-                    <MealIcon className="w-4 h-4" />
-                    <SelectValue />
-                  </div>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Breakfast">
