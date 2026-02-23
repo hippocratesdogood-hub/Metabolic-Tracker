@@ -12,4 +12,6 @@ export default defineConfig({
     url: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
   },
+  // Only manage tables defined in our schema — don't touch session table
+  tablesFilter: ["!user_sessions"],
 });
