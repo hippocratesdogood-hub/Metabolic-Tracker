@@ -82,8 +82,8 @@ export default function Login() {
                   Password <span className="text-red-500">*</span>
                 </Label>
                 <span
-                  className="text-xs text-muted-foreground cursor-not-allowed"
-                  title="Contact your administrator to reset your password"
+                  className="text-xs text-primary hover:underline cursor-pointer"
+                  onClick={() => toast.info('Please contact Dr. Larson to reset your password.', { duration: 5000 })}
                 >
                   Forgot password?
                 </span>
@@ -110,9 +110,6 @@ export default function Login() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Contact your administrator if you need to reset your password.
-              </p>
             </div>
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
               {isLoading ? (
