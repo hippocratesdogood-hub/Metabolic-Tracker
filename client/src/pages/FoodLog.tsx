@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus } from 'lucide-react';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -297,6 +298,7 @@ export default function FoodLog() {
   const [personalNote, setPersonalNote] = useState('');
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
+  const [editableItems, setEditableItems] = useState<any[]>([]);
   const [consentPending, setConsentPending] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -526,6 +528,19 @@ export default function FoodLog() {
     }
   });
 
+  const createMealMutation = useMutation({
+    mutationFn: (data: any) => api.createFoodMeal(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['food'] });
+      queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['food-streak'] });
+      toast.success('Meal logged successfully!');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to log meal');
+    }
+  });
+
   const handleAcceptConsent = async () => {
     setConsentPending(true);
     try {
@@ -578,6 +593,22 @@ export default function FoodLog() {
         mealType: result.suggestedMealType || mealType,
         hasImage: !!selectedImage,
       });
+      // Populate editable items from AI response
+      if (result.foods_detected && Array.isArray(result.foods_detected)) {
+        setEditableItems(result.foods_detected.map((item: any, i: number) => ({
+          id: `item-${Date.now()}-${i}`,
+          name: item.name || 'Unknown item',
+          quantity: item.quantity || 1,
+          unit: item.unit || 'serving',
+          calories: item.calories || 0,
+          protein: item.protein || 0,
+          fat: item.fat || 0,
+          totalCarbs: item.totalCarbs || item.carbs || 0,
+          fiber: item.fiber || 0,
+          netCarbs: item.netCarbs || item.carbs || 0,
+          confidence: item.confidence || 0.8,
+        })));
+      }
       if (result.suggestedMealType) {
         setMealType(result.suggestedMealType as MealType);
       }
@@ -597,24 +628,49 @@ export default function FoodLog() {
   const handleSave = async () => {
     if (!analysisResult) return;
 
-    const savedMacros = scaleMacros(analysisResult.macros, servingMultiplier);
-
-    await createFoodMutation.mutateAsync({
-      inputType: selectedImage ? 'photo' : 'text',
-      mealType,
-      rawText: input || analysisResult.description || 'Photo analysis',
-      timestamp: entryDate,
-      aiOutputJson: {
-        foods_detected: analysisResult.foods_detected,
-        macros: savedMacros,
+    if (editableItems.length > 0) {
+      // New flow: save individual items via batch endpoint
+      await createMealMutation.mutateAsync({
+        items: editableItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          calories: item.calories,
+          protein: item.protein,
+          fat: item.fat,
+          totalCarbs: item.totalCarbs,
+          fiber: item.fiber,
+          netCarbs: item.netCarbs,
+        })),
+        mealType,
+        rawText: input || analysisResult.description || 'Photo analysis',
+        timestamp: entryDate,
         qualityScore: analysisResult.qualityScore,
         notes: analysisResult.notes,
-      },
-      tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
-    });
+        inputType: selectedImage ? 'photo' : 'text',
+        tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
+      });
+    } else {
+      // Legacy flow: save as single entry
+      const savedMacros = scaleMacros(analysisResult.macros, servingMultiplier);
+      await createFoodMutation.mutateAsync({
+        inputType: selectedImage ? 'photo' : 'text',
+        mealType,
+        rawText: input || analysisResult.description || 'Photo analysis',
+        timestamp: entryDate,
+        aiOutputJson: {
+          foods_detected: analysisResult.foods_detected,
+          macros: savedMacros,
+          qualityScore: analysisResult.qualityScore,
+          notes: analysisResult.notes,
+        },
+        tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
+      });
+    }
 
     setInput('');
     setAnalysisResult(null);
+    setEditableItems([]);
     setServingMultiplier(1);
     setPersonalNote('');
     setMealType(suggestMealType());
@@ -640,27 +696,32 @@ export default function FoodLog() {
               <h3 className="font-medium text-sm">Today's Progress</h3>
               <span className="text-xs text-muted-foreground">{macroProgress.entriesCount} meals logged</span>
             </div>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div>
-                <div className="text-xs text-muted-foreground">Protein</div>
-                <div className="font-bold text-primary">{macroProgress.consumed.protein}g</div>
-                <div className="text-xs text-muted-foreground">/ {macroProgress.target.protein || 0}g</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Carbs</div>
-                <div className="font-bold text-primary">{macroProgress.consumed.carbs}g</div>
-                <div className="text-xs text-muted-foreground">/ {macroProgress.target.carbs || 0}g</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Fat</div>
-                <div className="font-bold text-primary">{macroProgress.consumed.fat}g</div>
-                <div className="text-xs text-muted-foreground">/ {macroProgress.target.fat || 0}g</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Calories</div>
-                <div className="font-bold text-primary">{macroProgress.consumed.calories}</div>
-                <div className="text-xs text-muted-foreground">/ {macroProgress.target.calories || 0}</div>
-              </div>
+            <div className="space-y-2.5">
+              {[
+                { label: 'Calories', consumed: macroProgress.consumed.calories, target: macroProgress.target.calories || 0, color: 'bg-orange-500', unit: '' },
+                { label: 'Protein', consumed: macroProgress.consumed.protein, target: macroProgress.target.protein || 0, color: 'bg-blue-500', unit: 'g' },
+                { label: 'Fat', consumed: macroProgress.consumed.fat, target: macroProgress.target.fat || 0, color: 'bg-yellow-500', unit: 'g' },
+                { label: 'Net Carbs', consumed: macroProgress.consumed.netCarbs ?? macroProgress.consumed.carbs, target: macroProgress.target.carbs || 0, color: 'bg-red-500', unit: 'g' },
+                { label: 'Fiber', consumed: macroProgress.consumed.fiber, target: macroProgress.target.fiber || 0, color: 'bg-green-500', unit: 'g' },
+              ].map(({ label, consumed, target, color, unit }) => {
+                const pct = target > 0 ? Math.min((consumed / target) * 100, 100) : 0;
+                return (
+                  <div key={label}>
+                    <div className="flex items-center justify-between text-xs mb-0.5">
+                      <span className="font-medium">{label}</span>
+                      <span className="text-muted-foreground">
+                        {Math.round(consumed)}{unit} / {target}{unit}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all duration-500", color)}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -902,48 +963,146 @@ export default function FoodLog() {
 
           {analysisResult && (
             <div ref={analysisRef} className="bg-secondary/10 p-4 border-t border-secondary/20 animate-in slide-in-from-top-4 fade-in duration-300">
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">
                     Score: {analysisResult.qualityScore}/100
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    Confidence: {Math.round((analysisResult.confidence?.low || 0.7) * 100)}-{Math.round((analysisResult.confidence?.high || 0.9) * 100)}%
+                    {editableItems.length} item{editableItems.length !== 1 ? 's' : ''} detected
                   </span>
                 </div>
               </div>
 
-              {(() => {
-                const displayMacros = scaleMacros(analysisResult.macros, servingMultiplier);
-                return (
-                  <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-                    <div className="bg-background rounded-lg p-2 shadow-sm">
-                      <div className="text-xs text-muted-foreground font-medium">Cals</div>
-                      <div className="font-bold">{displayMacros.calories}</div>
+              {/* Editable item cards */}
+              {editableItems.length > 0 ? (
+                <div className="space-y-2 mb-3">
+                  {editableItems.map((item, idx) => (
+                    <div key={item.id} className="bg-background rounded-lg p-3 shadow-sm relative">
+                      <button
+                        type="button"
+                        className="absolute top-2 right-2 p-1 rounded-full hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+                        onClick={() => setEditableItems(prev => prev.filter((_, i) => i !== idx))}
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex items-center gap-2 mb-2 pr-6">
+                        <Input
+                          value={item.name}
+                          onChange={(e) => {
+                            const updated = [...editableItems];
+                            updated[idx] = { ...updated[idx], name: e.target.value };
+                            setEditableItems(updated);
+                          }}
+                          className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0"
+                        />
+                      </div>
+                      <div className="grid grid-cols-5 gap-1.5 text-center">
+                        {[
+                          { key: 'calories', label: 'Cal', suffix: '' },
+                          { key: 'protein', label: 'Pro', suffix: 'g' },
+                          { key: 'fat', label: 'Fat', suffix: 'g' },
+                          { key: 'netCarbs', label: 'Net C', suffix: 'g' },
+                          { key: 'fiber', label: 'Fiber', suffix: 'g' },
+                        ].map(({ key, label, suffix }) => (
+                          <div key={key}>
+                            <div className="text-[10px] text-muted-foreground">{label}</div>
+                            <Input
+                              type="number"
+                              value={item[key]}
+                              onChange={(e) => {
+                                const updated = [...editableItems];
+                                const val = parseFloat(e.target.value) || 0;
+                                updated[idx] = { ...updated[idx], [key]: val };
+                                if (key === 'netCarbs' || key === 'fiber') {
+                                  updated[idx].totalCarbs = updated[idx].netCarbs + updated[idx].fiber;
+                                }
+                                setEditableItems(updated);
+                              }}
+                              className="h-6 text-xs text-center p-0 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            {suffix && <span className="text-[9px] text-muted-foreground">{suffix}</span>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="bg-background rounded-lg p-2 shadow-sm">
-                      <div className="text-xs text-muted-foreground font-medium">Protein</div>
-                      <div className="font-bold">{displayMacros.protein}g</div>
-                    </div>
-                    <div className="bg-background rounded-lg p-2 shadow-sm">
-                      <div className="text-xs text-muted-foreground font-medium">Carbs</div>
-                      <div className="font-bold">{displayMacros.carbs}g</div>
-                    </div>
-                    <div className="bg-background rounded-lg p-2 shadow-sm">
-                      <div className="text-xs text-muted-foreground font-medium">Fat</div>
-                      <div className="font-bold">{displayMacros.fat}g</div>
-                    </div>
+                  ))}
+
+                  {/* Add item button */}
+                  <button
+                    type="button"
+                    className="w-full py-2 border border-dashed border-muted-foreground/30 rounded-lg text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1"
+                    onClick={() => setEditableItems(prev => [...prev, {
+                      id: `item-${Date.now()}`,
+                      name: '',
+                      quantity: 1,
+                      unit: 'serving',
+                      calories: 0,
+                      protein: 0,
+                      fat: 0,
+                      totalCarbs: 0,
+                      fiber: 0,
+                      netCarbs: 0,
+                    }])}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Item
+                  </button>
+
+                  {/* Running totals */}
+                  <div className="grid grid-cols-5 gap-1.5 text-center bg-muted/50 rounded-lg p-2">
+                    {[
+                      { label: 'Cal', value: editableItems.reduce((s, i) => s + (i.calories || 0), 0), suffix: '' },
+                      { label: 'Pro', value: editableItems.reduce((s, i) => s + (i.protein || 0), 0), suffix: 'g' },
+                      { label: 'Fat', value: editableItems.reduce((s, i) => s + (i.fat || 0), 0), suffix: 'g' },
+                      { label: 'Net C', value: editableItems.reduce((s, i) => s + (i.netCarbs || 0), 0), suffix: 'g' },
+                      { label: 'Fiber', value: editableItems.reduce((s, i) => s + (i.fiber || 0), 0), suffix: 'g' },
+                    ].map(({ label, value, suffix }) => (
+                      <div key={label}>
+                        <div className="text-[10px] text-muted-foreground font-medium">{label}</div>
+                        <div className="font-bold text-sm">{Math.round(value)}{suffix}</div>
+                      </div>
+                    ))}
                   </div>
-                );
-              })()}
+                </div>
+              ) : (
+                /* Legacy display for entries without per-item data */
+                (() => {
+                  const displayMacros = scaleMacros(analysisResult.macros, servingMultiplier);
+                  return (
+                    <>
+                      <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+                        <div className="bg-background rounded-lg p-2 shadow-sm">
+                          <div className="text-xs text-muted-foreground font-medium">Cals</div>
+                          <div className="font-bold">{displayMacros?.calories || 0}</div>
+                        </div>
+                        <div className="bg-background rounded-lg p-2 shadow-sm">
+                          <div className="text-xs text-muted-foreground font-medium">Protein</div>
+                          <div className="font-bold">{displayMacros?.protein || 0}g</div>
+                        </div>
+                        <div className="bg-background rounded-lg p-2 shadow-sm">
+                          <div className="text-xs text-muted-foreground font-medium">Carbs</div>
+                          <div className="font-bold">{displayMacros?.carbs || 0}g</div>
+                        </div>
+                        <div className="bg-background rounded-lg p-2 shadow-sm">
+                          <div className="text-xs text-muted-foreground font-medium">Fat</div>
+                          <div className="font-bold">{displayMacros?.fat || 0}g</div>
+                        </div>
+                      </div>
+                      <div className="mb-4">
+                        <ServingPills value={servingMultiplier} onChange={setServingMultiplier} />
+                      </div>
+                    </>
+                  );
+                })()
+              )}
 
-              <div className="mb-4">
-                <ServingPills value={servingMultiplier} onChange={setServingMultiplier} />
-              </div>
-
-              <p className="text-sm text-muted-foreground italic mb-4">
-                "{analysisResult.notes}"
-              </p>
+              {analysisResult.notes && (
+                <p className="text-sm text-muted-foreground italic mb-3">
+                  "{analysisResult.notes}"
+                </p>
+              )}
 
               <div className="mb-4">
                 <Textarea
@@ -956,14 +1115,14 @@ export default function FoodLog() {
               </div>
 
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setAnalysisResult(null)} data-testid="button-edit">Edit</Button>
-                <Button 
-                  onClick={handleSave} 
+                <Button variant="ghost" onClick={() => { setAnalysisResult(null); setEditableItems([]); }} data-testid="button-edit">Edit</Button>
+                <Button
+                  onClick={handleSave}
                   className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={createFoodMutation.isPending}
+                  disabled={createFoodMutation.isPending || createMealMutation.isPending || editableItems.length === 0 && !analysisResult.macros}
                   data-testid="button-confirm"
                 >
-                  {createFoodMutation.isPending ? (
+                  {(createFoodMutation.isPending || createMealMutation.isPending) ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
                     <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -982,17 +1141,18 @@ export default function FoodLog() {
           <div className="flex justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
-        ) : foodEntries.length === 0 ? (
+        ) : foodEntries.filter((e: any) => !e.parentMealId).length === 0 ? (
           <Card className="border-none shadow-sm">
             <CardContent className="p-8 text-center text-muted-foreground">
               No meals logged yet. Start by describing what you ate above!
             </CardContent>
           </Card>
         ) : (
-          foodEntries.map((entry: any) => {
+          foodEntries.filter((e: any) => !e.parentMealId).map((entry: any) => {
             const macros = entry.userCorrectionsJson?.macros || entry.aiOutputJson?.macros;
             const qualityScore = entry.userCorrectionsJson?.qualityScore || entry.aiOutputJson?.qualityScore;
             const notes = entry.userCorrectionsJson?.notes || entry.aiOutputJson?.notes;
+            const foodsDetected = entry.aiOutputJson?.foods_detected as any[] | undefined;
             const personalNoteText = (entry.tags as any)?.personalNote;
             const MealEntryIcon = mealIcons[entry.mealType as MealType] || Cookie;
             const isFavorite = !!(entry.tags as any)?.isFavorite;
@@ -1017,6 +1177,18 @@ export default function FoodLog() {
                           {format(new Date(entry.timestamp), 'h:mm a')}
                         </span>
                       </div>
+                      {foodsDetected && foodsDetected.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {foodsDetected.slice(0, 5).map((item: any, i: number) => (
+                            <span key={i} className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground">
+                              {item.name}
+                            </span>
+                          ))}
+                          {foodsDetected.length > 5 && (
+                            <span className="text-[10px] text-muted-foreground">+{foodsDetected.length - 5} more</span>
+                          )}
+                        </div>
+                      )}
                       {notes && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                           {notes}
@@ -1030,9 +1202,10 @@ export default function FoodLog() {
                       )}
                       {macros && (
                         <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
+                          <span>{macros.calories} cal</span>
                           <span>{macros.protein}g P</span>
-                          <span>{macros.carbs}g C</span>
                           <span>{macros.fat}g F</span>
+                          <span>{macros.netCarbs ?? macros.carbs}g C</span>
                         </div>
                       )}
                     </div>

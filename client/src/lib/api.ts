@@ -137,6 +137,32 @@ class ApiClient {
     }>("/food/streak");
   }
 
+  async createFoodMeal(data: {
+    items: {
+      name: string;
+      quantity: number;
+      unit: string;
+      calories: number;
+      protein: number;
+      fat: number;
+      totalCarbs: number;
+      fiber: number;
+      netCarbs: number;
+    }[];
+    mealType: string;
+    rawText: string;
+    timestamp?: Date;
+    qualityScore?: number;
+    notes?: string;
+    inputType: string;
+    tags?: any;
+  }) {
+    return this.request<{ parent: FoodEntry; children: FoodEntry[] }>("/food/meal", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async analyzeFoodEntry(rawText: string, timestamp?: Date) {
     return this.request<any>("/food/analyze", {
       method: "POST",

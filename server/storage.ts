@@ -67,6 +67,7 @@ export interface IStorage {
   getFoodEntryById(id: string): Promise<FoodEntry | undefined>;
   getFoodEntries(userId: string, from?: Date, to?: Date): Promise<FoodEntry[]>;
   getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]>;
+  getFoodEntriesByParent(parentMealId: string): Promise<FoodEntry[]>;
   updateFoodEntry(id: string, data: Partial<InsertFoodEntry>): Promise<FoodEntry | undefined>;
   deleteFoodEntry(id: string): Promise<boolean>;
   toggleFoodEntryFavorite(id: string): Promise<FoodEntry | undefined>;
@@ -295,6 +296,15 @@ export class PostgresStorage implements IStorage {
       .from(schema.foodEntries)
       .where(and(...conditions))
       .orderBy(desc(schema.foodEntries.timestamp));
+    return entries.map((e) => this.decryptFoodRawText(e));
+  }
+
+  async getFoodEntriesByParent(parentMealId: string): Promise<FoodEntry[]> {
+    const entries = await db
+      .select()
+      .from(schema.foodEntries)
+      .where(eq(schema.foodEntries.parentMealId, parentMealId))
+      .orderBy(schema.foodEntries.createdAt);
     return entries.map((e) => this.decryptFoodRawText(e));
   }
 

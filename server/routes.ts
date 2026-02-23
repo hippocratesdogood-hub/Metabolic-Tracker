@@ -396,6 +396,91 @@ export async function registerRoutes(
     }
   });
 
+  // Batch save: create parent meal + individual child items
+  app.post("/api/food/meal", requireAuth, async (req, res) => {
+    try {
+      const { items, mealType, rawText, timestamp, qualityScore, notes, inputType, tags } = req.body;
+      const userId = req.user!.id;
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "At least one food item is required" });
+      }
+
+      // Validate timestamp
+      const ts = timestamp ? new Date(timestamp) : new Date();
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const oneMinuteFromNow = new Date(now.getTime() + 60 * 1000);
+      if (ts > oneMinuteFromNow) {
+        return res.status(400).json({ message: "Timestamp cannot be in the future" });
+      }
+      if (ts < thirtyDaysAgo) {
+        return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
+      }
+
+      // Compute aggregate macros from items
+      const aggregateMacros = {
+        calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0,
+      };
+      for (const item of items) {
+        aggregateMacros.calories += item.calories || 0;
+        aggregateMacros.protein += item.protein || 0;
+        aggregateMacros.fat += item.fat || 0;
+        aggregateMacros.totalCarbs += item.totalCarbs || 0;
+        aggregateMacros.fiber += item.fiber || 0;
+        aggregateMacros.netCarbs += item.netCarbs || 0;
+      }
+      aggregateMacros.carbs = aggregateMacros.netCarbs; // compat with existing code
+
+      // Create parent entry
+      const parent = await storage.createFoodEntry({
+        userId,
+        timestamp: ts,
+        inputType: inputType || "text",
+        mealType: mealType || "Breakfast",
+        rawText: rawText || items.map((i: any) => i.name).join(", "),
+        aiOutputJson: {
+          macros: aggregateMacros,
+          foods_detected: items,
+          qualityScore: qualityScore || null,
+          notes: notes || null,
+        },
+        tags: tags || null,
+      });
+
+      // Create child entries (one per item)
+      const children = [];
+      for (const item of items) {
+        const child = await storage.createFoodEntry({
+          userId,
+          timestamp: ts,
+          inputType: inputType || "text",
+          mealType: mealType || "Breakfast",
+          parentMealId: parent.id,
+          itemName: item.name,
+          aiOutputJson: {
+            macros: {
+              calories: item.calories || 0,
+              protein: item.protein || 0,
+              fat: item.fat || 0,
+              totalCarbs: item.totalCarbs || 0,
+              fiber: item.fiber || 0,
+              netCarbs: item.netCarbs || 0,
+              carbs: item.netCarbs || 0,
+            },
+            quantity: item.quantity,
+            unit: item.unit,
+          },
+        });
+        children.push(child);
+      }
+
+      res.json({ parent, children });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/food", requireAuth, auditPhiRead("FOOD_ENTRY"), async (req, res) => {
     try {
       const { from, to } = req.query;
@@ -439,7 +524,52 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      await storage.deleteFoodEntry(req.params.id);
+      // If deleting a child entry, recalculate parent's aggregate macros
+      if (existing.parentMealId) {
+        await storage.deleteFoodEntry(req.params.id);
+
+        // Get remaining siblings
+        const siblings = await storage.getFoodEntriesByParent(existing.parentMealId);
+
+        if (siblings.length === 0) {
+          // No children left — delete the parent too
+          await storage.deleteFoodEntry(existing.parentMealId);
+        } else {
+          // Recalculate parent aggregate macros from remaining children
+          const newMacros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
+          const newItems: any[] = [];
+          for (const sib of siblings) {
+            const m = (sib.aiOutputJson as any)?.macros;
+            if (m) {
+              newMacros.calories += m.calories || 0;
+              newMacros.protein += m.protein || 0;
+              newMacros.fat += m.fat || 0;
+              newMacros.totalCarbs += m.totalCarbs || 0;
+              newMacros.fiber += m.fiber || 0;
+              newMacros.netCarbs += m.netCarbs || 0;
+            }
+            newItems.push({
+              name: sib.itemName,
+              quantity: (sib.aiOutputJson as any)?.quantity,
+              unit: (sib.aiOutputJson as any)?.unit,
+              ...(m || {}),
+            });
+          }
+          newMacros.carbs = newMacros.netCarbs;
+
+          const parent = await storage.getFoodEntryById(existing.parentMealId);
+          if (parent) {
+            const existingAi = (parent.aiOutputJson as any) || {};
+            await storage.updateFoodEntry(existing.parentMealId, {
+              aiOutputJson: { ...existingAi, macros: newMacros, foods_detected: newItems },
+            });
+          }
+        }
+      } else {
+        // Deleting a parent or legacy entry — cascade handles children via FK
+        await storage.deleteFoodEntry(req.params.id);
+      }
+
       res.json({ message: "Deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -540,16 +670,20 @@ export async function registerRoutes(
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
       
-      const systemPrompt = `You are a nutrition analysis AI. Analyze the food description and provide accurate macro estimates.
+      const systemPrompt = `You are a nutrition analysis AI. Analyze the food description and identify each individual food item with its macros.
 Return a JSON object with this exact structure:
 {
-  "foods_detected": [{"name": "food name", "portion": "portion size", "confidence": 0.85}],
-  "macros": {"calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number},
+  "foods_detected": [
+    {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
+  ],
+  "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
   "qualityScore": number (0-100, based on nutritional quality for metabolic health),
   "notes": "brief coaching note about the meal",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.7, "high": 0.9}
 }
+Each item in foods_detected must have its own macro breakdown. The "macros" field must be the sum of all items.
+"netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
 Be accurate with macro estimates based on typical serving sizes. Quality score should favor high protein, low carb meals.`;
 
       const response = await openai.chat.completions.create({
@@ -559,12 +693,12 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
           { role: "user", content: `Analyze this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}` }
         ],
         response_format: { type: "json_object" },
-        max_tokens: 500,
+        max_tokens: 800,
       });
 
       const content = response.choices[0]?.message?.content || "{}";
       const analysis = JSON.parse(content);
-      
+
       res.json({
         ...analysis,
         suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,
@@ -603,17 +737,21 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
       const base64Image = req.file.buffer.toString('base64');
       const mimeType = req.file.mimetype;
 
-      const systemPrompt = `You are a nutrition analysis AI with vision capabilities. Analyze the food in the image and provide accurate macro estimates.
+      const systemPrompt = `You are a nutrition analysis AI with vision capabilities. Analyze the food in the image and identify each individual food item with its macros.
 Return a JSON object with this exact structure:
 {
-  "foods_detected": [{"name": "food name", "portion": "estimated portion", "confidence": 0.85}],
-  "macros": {"calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number},
+  "foods_detected": [
+    {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
+  ],
+  "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
   "qualityScore": number (0-100, based on nutritional quality for metabolic health),
   "notes": "brief coaching note about the meal",
   "description": "brief description of what you see",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.65, "high": 0.85}
 }
+Each item in foods_detected must have its own macro breakdown. The "macros" field must be the sum of all items.
+"netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
 Be accurate with macro estimates based on visible portion sizes. Quality score should favor high protein, low carb meals.`;
 
       const userContent: any[] = [
@@ -1061,24 +1199,30 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
     try {
       const dateStr = req.query.date as string;
       const date = dateStr ? new Date(dateStr) : new Date();
-      
-      const entries = await storage.getFoodEntriesByDate(req.user!.id, date);
+
+      const allEntries = await storage.getFoodEntriesByDate(req.user!.id, date);
       const target = await storage.getMacroTarget(req.user!.id);
-      
-      // Sum macros from all entries
+
+      // Filter out child entries to avoid double-counting
+      // Only sum from parent entries (parentMealId is null) and legacy entries
+      const entries = allEntries.filter(e => !e.parentMealId);
+
+      // Sum macros from parent/legacy entries only
       const consumed = {
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
-        fiber: 0
+        fiber: 0,
+        totalCarbs: 0,
+        netCarbs: 0,
       };
 
       const byMeal: Record<string, typeof consumed> = {
-        Breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-        Lunch: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-        Dinner: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-        Snack: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+        Breakfast: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 },
+        Lunch: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 },
+        Dinner: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 },
+        Snack: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 }
       };
 
       for (const entry of entries) {
@@ -1089,6 +1233,8 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
           consumed.carbs += macros.carbs || 0;
           consumed.fat += macros.fat || 0;
           consumed.fiber += macros.fiber || 0;
+          consumed.totalCarbs += macros.totalCarbs || macros.carbs || 0;
+          consumed.netCarbs += macros.netCarbs || macros.carbs || 0;
 
           const meal = entry.mealType || "Snack";
           if (byMeal[meal]) {
@@ -1097,6 +1243,8 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
             byMeal[meal].carbs += macros.carbs || 0;
             byMeal[meal].fat += macros.fat || 0;
             byMeal[meal].fiber += macros.fiber || 0;
+            byMeal[meal].totalCarbs += macros.totalCarbs || macros.carbs || 0;
+            byMeal[meal].netCarbs += macros.netCarbs || macros.carbs || 0;
           }
         }
       }

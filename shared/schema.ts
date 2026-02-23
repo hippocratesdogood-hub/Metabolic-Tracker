@@ -120,6 +120,8 @@ export const foodEntries = pgTable("food_entries", {
   aiOutputJson: jsonb("ai_output_json"),
   userCorrectionsJson: jsonb("user_corrections_json"),
   tags: jsonb("tags"),
+  parentMealId: varchar("parent_meal_id").references((): any => foodEntries.id, { onDelete: "cascade" }),
+  itemName: text("item_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
