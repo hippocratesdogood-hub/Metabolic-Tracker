@@ -80,6 +80,7 @@ export const PERFORMANCE_BUDGETS = {
     createMetric: 150,
     getFoodEntries: 200,
     createFoodEntry: 500,     // Includes AI processing
+    analyzeFoodEntry: 10000,  // AI analysis + nutrition database lookups (OFF/USDA)
     getMessages: 150,
     sendMessage: 100,
     getDashboard: 500,
