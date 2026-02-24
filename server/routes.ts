@@ -45,6 +45,7 @@ import {
   auditUpdate,
   auditDelete,
 } from "./middleware/auditMiddleware";
+import { nutritionLookup } from "./services/nutritionLookup";
 
 // OpenAI is optional - only initialize if API key is provided
 const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
@@ -72,6 +73,38 @@ function suggestMealType(): string {
   if (hour >= 10 && hour < 14) return "Lunch";
   if (hour >= 17 && hour < 21) return "Dinner";
   return "Snack";
+}
+
+/**
+ * Enrich AI-detected foods with database lookups (Open Food Facts / USDA).
+ * Replaces AI macro estimates with verified data when a confident match is found.
+ * Gracefully falls back to AI estimates on any failure.
+ */
+async function enrichAnalysis(analysis: any): Promise<any> {
+  if (!analysis.foods_detected || !Array.isArray(analysis.foods_detected) || analysis.foods_detected.length === 0) {
+    return analysis;
+  }
+
+  try {
+    analysis.foods_detected = await nutritionLookup.enrichFoodsDetected(analysis.foods_detected);
+
+    // Recalculate aggregate macros from (potentially enriched) items
+    const m = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
+    for (const item of analysis.foods_detected) {
+      m.calories += item.calories || 0;
+      m.protein += item.protein || 0;
+      m.fat += item.fat || 0;
+      m.totalCarbs += item.totalCarbs || 0;
+      m.fiber += item.fiber || 0;
+      m.netCarbs += item.netCarbs || 0;
+    }
+    m.carbs = m.netCarbs;
+    analysis.macros = m;
+  } catch (err) {
+    console.error('[NutritionLookup] Enrichment failed, using AI estimates:', err);
+  }
+
+  return analysis;
 }
 
 export async function registerRoutes(
@@ -699,6 +732,9 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
       const content = response.choices[0]?.message?.content || "{}";
       const analysis = JSON.parse(content);
 
+      // Enrich with database lookups (Open Food Facts / USDA)
+      await enrichAnalysis(analysis);
+
       res.json({
         ...analysis,
         suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,
@@ -785,7 +821,10 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
 
       const content = response.choices[0]?.message?.content || "{}";
       const analysis = JSON.parse(content);
-      
+
+      // Enrich with database lookups (Open Food Facts / USDA)
+      await enrichAnalysis(analysis);
+
       res.json({
         ...analysis,
         suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,

@@ -189,6 +189,9 @@ export const cacheKeys = {
 
   // Analytics
   analytics: (type: string, params: string) => `analytics:${type}:${params}`,
+
+  // Nutrition database lookup
+  nutritionLookup: (query: string) => `nutrition:${query.toLowerCase().trim()}`,
 };
 
 export default cache;

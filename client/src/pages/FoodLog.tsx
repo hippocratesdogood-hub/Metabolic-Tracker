@@ -624,6 +624,9 @@ export default function FoodLog() {
             _baseFiber: Math.round((fib / qty) * 10) / 10,
             _baseNetCarbs: Math.round((nc / qty) * 10) / 10,
             confidence: item.confidence || 0.8,
+            source: item.source || 'ai_estimate',
+            sourceName: item.sourceName || null,
+            brand: item.brand || null,
           };
         }));
       }
@@ -659,6 +662,8 @@ export default function FoodLog() {
           totalCarbs: item.totalCarbs,
           fiber: item.fiber,
           netCarbs: item.netCarbs,
+          source: item.source || 'ai_estimate',
+          brand: item.brand || null,
         })),
         mealType,
         rawText: input || analysisResult.description || 'Photo analysis',
@@ -1098,8 +1103,18 @@ export default function FoodLog() {
                             updated[idx] = { ...updated[idx], name: e.target.value };
                             setEditableItems(updated);
                           }}
-                          className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0"
+                          className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0 flex-1 min-w-0"
                         />
+                        {item.source === 'verified' ? (
+                          <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            Verified
+                          </span>
+                        ) : (
+                          <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            AI Est.
+                          </span>
+                        )}
                       </div>
                       {/* Quantity / serving row */}
                       <div className="flex items-center gap-2 mb-2">
