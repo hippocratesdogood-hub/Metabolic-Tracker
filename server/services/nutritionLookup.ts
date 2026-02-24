@@ -58,31 +58,33 @@ class NutritionLookupService {
     // Cache stores null for "searched but no match" — check explicitly
     if (cache.get<string>(`${cacheKey}:miss`) === 'miss') return null;
 
-    // Try Open Food Facts first (better branded food coverage)
-    try {
-      const offResults = await this.searchOpenFoodFacts(query);
-      const bestOFF = this.pickBestMatch(query, offResults);
+    // Search OFF and USDA in parallel (cuts latency roughly in half)
+    const usdaKey = process.env.USDA_API_KEY;
+    const [offResult, usdaResult] = await Promise.allSettled([
+      this.searchOpenFoodFacts(query),
+      usdaKey ? this.searchUSDA(query) : Promise.resolve([] as NutritionMatch[]),
+    ]);
+
+    // Try OFF results first (better branded food coverage)
+    if (offResult.status === 'fulfilled' && offResult.value.length > 0) {
+      const bestOFF = this.pickBestMatch(query, offResult.value);
       if (bestOFF) {
         cache.set(cacheKey, bestOFF, 60 * 60 * 1000); // 1 hour
         return bestOFF;
       }
-    } catch (err) {
-      console.error('[NutritionLookup] OFF search failed:', err);
+    } else if (offResult.status === 'rejected') {
+      console.error('[NutritionLookup] OFF search failed:', offResult.reason);
     }
 
-    // Try USDA FoodData Central as fallback
-    const usdaKey = process.env.USDA_API_KEY;
-    if (usdaKey) {
-      try {
-        const usdaResults = await this.searchUSDA(query);
-        const bestUSDA = this.pickBestMatch(query, usdaResults);
-        if (bestUSDA) {
-          cache.set(cacheKey, bestUSDA, 60 * 60 * 1000);
-          return bestUSDA;
-        }
-      } catch (err) {
-        console.error('[NutritionLookup] USDA search failed:', err);
+    // Try USDA results as fallback
+    if (usdaResult.status === 'fulfilled' && usdaResult.value.length > 0) {
+      const bestUSDA = this.pickBestMatch(query, usdaResult.value);
+      if (bestUSDA) {
+        cache.set(cacheKey, bestUSDA, 60 * 60 * 1000);
+        return bestUSDA;
       }
+    } else if (usdaResult.status === 'rejected') {
+      console.error('[NutritionLookup] USDA search failed:', usdaResult.reason);
     }
 
     // No confident match — cache the miss to avoid repeated lookups
@@ -156,7 +158,7 @@ class NutritionLookupService {
 
     const response = await fetch(url.toString(), {
       headers: { 'User-Agent': 'MetabolicTracker/1.0 (health-app)' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(7000),
     });
 
     if (!response.ok) return [];
@@ -214,7 +216,7 @@ class NutritionLookupService {
     url.searchParams.set('api_key', apiKey);
 
     const response = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(7000),
     });
 
     if (!response.ok) return [];
