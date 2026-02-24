@@ -448,11 +448,13 @@ export default function FoodLog() {
   const { data: foodEntries = [], isLoading } = useQuery({
     queryKey: ['food'],
     queryFn: () => api.getFoodEntries(),
+    staleTime: 0, // always refetch on mount so data is fresh after login
   });
 
   const { data: macroProgress } = useQuery({
     queryKey: ['macro-progress'],
     queryFn: () => api.getMacroProgress(),
+    staleTime: 0, // always refetch on mount so tallies reflect DB state
   });
 
   const { data: favorites = [] } = useQuery({

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from './api';
+import { queryClient } from './queryClient';
 import { setUserContext, clearUserContext } from './errorTracking';
 
 type AuthUser = {
@@ -74,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await api.logout();
     setUser(null);
+    // Wipe all cached query data so the next login starts fresh
+    queryClient.clear();
     // Clear user context from error tracking
     clearUserContext();
   };
