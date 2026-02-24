@@ -277,15 +277,18 @@ class NutritionLookupService {
       score += 0.35;
     }
 
-    // Signal 2: Core food words overlap (Jaccard)
+    // Signal 2: Core food words overlap (recall-weighted)
+    // Recall (AI words found in DB) matters more than precision (DB words found in AI),
+    // because DB names are often more specific (e.g., "Vanilla Blended Non-Fat Greek Yogurt")
     const aiWithoutBrand = brandLower
       ? aiLower.replace(brandLower, '').trim()
       : aiLower;
     const aiWords = new Set(aiWithoutBrand.split(/\s+/).filter(w => w.length > 2));
     const dbWords = new Set(dbLower.split(/\s+/).filter(w => w.length > 2));
     const intersection = [...aiWords].filter(w => dbWords.has(w)).length;
-    const union = new Set([...aiWords, ...dbWords]).size;
-    const wordOverlap = union > 0 ? intersection / union : 0;
+    const recall = aiWords.size > 0 ? intersection / aiWords.size : 0;
+    const precision = dbWords.size > 0 ? intersection / dbWords.size : 0;
+    const wordOverlap = recall * 0.7 + precision * 0.3;
     score += wordOverlap * 0.45;
 
     // Signal 3: One string contains the other
@@ -310,6 +313,7 @@ class NutritionLookupService {
       .sort((a, b) => b.matchConfidence - a.matchConfidence);
 
     const best = scored[0];
+    console.log(`[NutritionLookup] Best match for "${query}": "${best.name}" (brand: ${best.brand}) → confidence: ${best.matchConfidence.toFixed(3)}, ${best.matchConfidence >= 0.6 ? 'ACCEPTED' : 'REJECTED'}`);
     return best.matchConfidence >= 0.6 ? best : null;
   }
 }
