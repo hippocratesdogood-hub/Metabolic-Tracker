@@ -43,7 +43,7 @@ export default function Trends() {
 
   // Process data for charts
   const chartData = metrics
-    .filter(m => m.timestamp >= subDays(new Date(), parseInt(range)))
+    .filter(m => new Date(m.timestamp) >= subDays(new Date(), parseInt(range)))
     .map(m => ({
       date: format(m.timestamp, 'MMM d'),
       value: extractValue(m),
