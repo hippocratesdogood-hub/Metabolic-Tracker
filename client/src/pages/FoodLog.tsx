@@ -435,7 +435,7 @@ export default function FoodLog() {
       recognition.onend = () => {
         setIsRecording(false);
         if (input.trim()) {
-          toast.success('Got it! Tap "Log Meal" to analyze.');
+          toast.success('Got it! Tap "Analyze Meal" to continue.');
         }
       };
 
@@ -594,7 +594,7 @@ export default function FoodLog() {
       }
       setAnalysisResult({
         ...result,
-        mealType: result.suggestedMealType || mealType,
+        mealType: mealType,
         hasImage: !!selectedImage,
       });
       // Populate editable items from AI response
@@ -1075,7 +1075,7 @@ export default function FoodLog() {
                     Analyzing...
                   </>
                 ) : (
-                  'Log Meal'
+                  'Analyze Meal'
                 )}
               </Button>
             </div>

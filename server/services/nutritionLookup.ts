@@ -113,7 +113,7 @@ class NutritionLookupService {
             const proRatio = aiProPerServing > 1 && match.protein > 1
               ? Math.max(aiProPerServing, match.protein) / Math.min(aiProPerServing, match.protein)
               : 1;
-            if (calRatio > 3 || proRatio > 3) {
+            if (calRatio > 2.5 || proRatio > 2.5) {
               console.log(`[NutritionLookup] Rejecting "${match.name}" for "${item.name}" — macro mismatch (cal ratio: ${calRatio.toFixed(1)}, pro ratio: ${proRatio.toFixed(1)})`);
               return {
                 ...item,
