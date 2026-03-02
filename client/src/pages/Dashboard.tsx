@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
 import UnifiedMetricModal from '@/components/UnifiedMetricModal';
+import OverviewStatistics from '@/components/OverviewStatistics';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -154,6 +155,19 @@ export default function Dashboard() {
           <p className="text-sm font-medium text-primary">{format(new Date(), 'EEEE, MMMM do')}</p>
         </div>
       </div>
+
+      <OverviewStatistics
+        metrics={{
+          weight: getMetricsByType('WEIGHT'),
+          bp: getMetricsByType('BP'),
+          glucose: getMetricsByType('GLUCOSE'),
+          ketones: getMetricsByType('KETONES'),
+          waist: getMetricsByType('WAIST'),
+        }}
+        trends={dashboardStats?.trends}
+        unitLabels={unitLabels}
+        unitsPref={unitsPref}
+      />
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-heading font-semibold text-foreground">Health Metrics</h2>
