@@ -5,9 +5,11 @@ import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
+import UnifiedMetricModal from '@/components/UnifiedMetricModal';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2 } from 'lucide-react';
+import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { getUnitLabels, formatMetricForDisplay, type UnitsPreference } from '@shared/units';
@@ -17,6 +19,7 @@ export default function Dashboard() {
   const { user: authUser } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<MetricType | null>(null);
+  const [unifiedModalOpen, setUnifiedModalOpen] = useState(false);
   const unitsPref = (authUser?.unitsPreference ?? "US") as UnitsPreference;
   const unitLabels = getUnitLabels(unitsPref);
 
@@ -150,6 +153,18 @@ export default function Dashboard() {
         <div className="text-right hidden md:block">
           <p className="text-sm font-medium text-primary">{format(new Date(), 'EEEE, MMMM do')}</p>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-heading font-semibold text-foreground">Health Metrics</h2>
+        <Button
+          onClick={() => setUnifiedModalOpen(true)}
+          className="bg-gradient-to-r from-primary to-orange-500 hover:opacity-90 text-white gap-1.5"
+          size="sm"
+        >
+          <Plus className="w-4 h-4" />
+          Add Today's Metrics
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -294,6 +309,10 @@ export default function Dashboard() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         type={selectedType}
+      />
+      <UnifiedMetricModal
+        isOpen={unifiedModalOpen}
+        onClose={() => setUnifiedModalOpen(false)}
       />
     </div>
   );

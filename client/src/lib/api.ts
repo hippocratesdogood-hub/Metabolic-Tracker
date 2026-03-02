@@ -61,6 +61,8 @@ class ApiClient {
   async createMetricEntry(entry: {
     type: string;
     valueJson: any;
+    normalizedValue?: number | null;
+    rawUnit?: string;
     timestamp?: Date;
     notes?: string;
   }) {
