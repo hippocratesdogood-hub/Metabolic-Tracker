@@ -163,7 +163,7 @@ export default function OverviewStatistics({ metrics, trends, unitLabels, unitsP
 
       {/* Cards */}
       {!collapsed && (
-        <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {metricConfigs.map(({ key, type, label, icon: Icon, iconColor, unitKey }) => {
             const entries = metrics[key as keyof typeof metrics];
             const stats = computeStats(entries, type);
@@ -173,7 +173,7 @@ export default function OverviewStatistics({ metrics, trends, unitLabels, unitsP
             if (stats.count === 0) return null;
 
             return (
-              <Card key={key} className="min-w-[180px] flex-1 p-4 border shadow-sm space-y-3">
+              <Card key={key} className="p-4 border shadow-sm space-y-3">
                 {/* Top row: icon + label + trend dot */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">

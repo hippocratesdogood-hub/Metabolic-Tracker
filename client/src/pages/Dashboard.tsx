@@ -7,6 +7,8 @@ import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
 import UnifiedMetricModal from '@/components/UnifiedMetricModal';
 import OverviewStatistics from '@/components/OverviewStatistics';
+import ProgressCharts from '@/components/ProgressCharts';
+import AdditionalInsights from '@/components/AdditionalInsights';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -242,6 +244,28 @@ export default function Dashboard() {
           lastUpdated={waist ? new Date(waist.timestamp) : undefined}
         />
       </div>
+
+      <ProgressCharts
+        metrics={{
+          weight: getMetricsByType('WEIGHT'),
+          bp: getMetricsByType('BP'),
+          glucose: getMetricsByType('GLUCOSE'),
+          ketones: getMetricsByType('KETONES'),
+          waist: getMetricsByType('WAIST'),
+        }}
+        unitLabels={unitLabels}
+        unitsPref={unitsPref}
+      />
+
+      <AdditionalInsights
+        metrics={{
+          weight: getMetricsByType('WEIGHT'),
+          bp: getMetricsByType('BP'),
+          glucose: getMetricsByType('GLUCOSE'),
+          ketones: getMetricsByType('KETONES'),
+          waist: getMetricsByType('WAIST'),
+        }}
+      />
 
       {macroProgress?.target ? (
         <Card className="border-none shadow-md" data-testid="card-macro-progress">
