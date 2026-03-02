@@ -123,7 +123,7 @@ export default function Trends() {
                       tickLine={false}
                       axisLine={false}
                       tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-                      domain={['auto', 'auto']}
+                      domain={[0, 'auto']}
                     />
                     <Tooltip
                       contentStyle={{
