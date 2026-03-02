@@ -165,6 +165,31 @@ class ApiClient {
     });
   }
 
+  async lookupBarcode(barcode: string) {
+    return this.request<{
+      found: boolean;
+      item?: {
+        name: string;
+        brand: string | null;
+        quantity: number;
+        unit: string;
+        calories: number;
+        protein: number;
+        fat: number;
+        totalCarbs: number;
+        fiber: number;
+        netCarbs: number;
+        confidence: number;
+        source: 'verified';
+        sourceName: 'Open Food Facts';
+        servingSize: string;
+      };
+    }>("/food/barcode-lookup", {
+      method: "POST",
+      body: JSON.stringify({ barcode }),
+    });
+  }
+
   async analyzeFoodEntry(rawText: string, timestamp?: Date) {
     return this.request<any>("/food/analyze", {
       method: "POST",

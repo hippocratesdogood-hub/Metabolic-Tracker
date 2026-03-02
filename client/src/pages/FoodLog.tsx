@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode } from 'lucide-react';
+import BarcodeScannerModal, { type ScannedFoodItem } from '@/components/BarcodeScannerModal';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -300,7 +301,8 @@ export default function FoodLog() {
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [editableItems, setEditableItems] = useState<any[]>([]);
   const [consentPending, setConsentPending] = useState(false);
-  
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
@@ -1050,6 +1052,16 @@ export default function FoodLog() {
                     {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full text-muted-foreground hover:text-primary"
+                  onClick={() => setBarcodeScannerOpen(true)}
+                  aria-label="Scan barcode"
+                  data-testid="button-barcode"
+                >
+                  <ScanBarcode className="w-5 h-5" />
+                </Button>
               </div>
               <Button 
                 onClick={handleAnalyze} 
@@ -1464,6 +1476,24 @@ export default function FoodLog() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BarcodeScannerModal
+        isOpen={barcodeScannerOpen}
+        onClose={() => setBarcodeScannerOpen(false)}
+        onItemFound={(item) => {
+          // Add scanned item to editable items list
+          setEditableItems(prev => [...prev, item]);
+          // If no analysis result yet, create a minimal one so the items section renders
+          if (!analysisResult) {
+            setAnalysisResult({
+              foods_detected: [],
+              macros: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+              qualityScore: 100,
+              notes: 'Items added via barcode scan',
+            });
+          }
+        }}
+      />
     </div>
   );
 }

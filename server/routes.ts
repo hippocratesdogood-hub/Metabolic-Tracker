@@ -689,6 +689,28 @@ export async function registerRoutes(
     }
   });
 
+  // ── Barcode Lookup ───────────────────────────────────────────────────
+  app.post("/api/food/barcode-lookup", requireAuth, async (req, res) => {
+    try {
+      const { barcode } = req.body;
+      if (!barcode || typeof barcode !== 'string') {
+        return res.status(400).json({ message: "Barcode is required" });
+      }
+
+      const cleaned = barcode.replace(/\D/g, '');
+      if (cleaned.length < 8 || cleaned.length > 14) {
+        return res.status(400).json({ message: "Invalid barcode format. Expected 8-14 digits." });
+      }
+
+      const { barcodeLookup } = await import("./services/barcodeLookup");
+      const result = await barcodeLookup.lookupBarcode(cleaned);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Barcode] Lookup failed:", error);
+      res.status(500).json({ message: "Barcode lookup failed" });
+    }
+  });
+
   app.post("/api/food/analyze", requireAuth, async (req, res) => {
     try {
       // Check AI consent

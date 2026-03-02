@@ -129,6 +129,8 @@ class PerformanceMonitorService {
       budget = endpoint.includes("POST")
         ? PERFORMANCE_BUDGETS.apiResponse.createMetric
         : PERFORMANCE_BUDGETS.apiResponse.getMetrics;
+    } else if (endpoint.includes("/food/barcode")) {
+      budget = PERFORMANCE_BUDGETS.apiResponse.barcodeLookup;
     } else if (endpoint.includes("/food/analyze")) {
       budget = PERFORMANCE_BUDGETS.apiResponse.analyzeFoodEntry;
     } else if (endpoint.includes("/food")) {

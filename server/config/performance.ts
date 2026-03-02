@@ -81,6 +81,7 @@ export const PERFORMANCE_BUDGETS = {
     getFoodEntries: 200,
     createFoodEntry: 500,     // Includes AI processing
     analyzeFoodEntry: 15000,  // AI analysis (~3s) + parallel nutrition lookups (up to 10s)
+    barcodeLookup: 12000,     // OFF barcode API can be slow
     getMessages: 150,
     sendMessage: 100,
     getDashboard: 500,
