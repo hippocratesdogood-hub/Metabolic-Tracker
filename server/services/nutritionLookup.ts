@@ -102,8 +102,30 @@ class NutritionLookupService {
         const match = await this.searchFood(item.name);
 
         if (match && match.matchConfidence >= 0.6) {
-          // Scale database per-serving values by quantity (e.g., 3 eggs = 3x one egg)
+          // Sanity check: reject matches where the macro profile is wildly different
+          // from the AI estimate — indicates a wrong food was matched (e.g., "egg noodles"
+          // instead of "egg"). Compare per-serving values (divide AI values by quantity).
           const qty = item.quantity || 1;
+          const aiCalPerServing = (item.calories || 0) / qty;
+          const aiProPerServing = (item.protein || 0) / qty;
+          if (aiCalPerServing > 0 && match.calories > 0) {
+            const calRatio = Math.max(aiCalPerServing, match.calories) / Math.min(aiCalPerServing, match.calories);
+            const proRatio = aiProPerServing > 1 && match.protein > 1
+              ? Math.max(aiProPerServing, match.protein) / Math.min(aiProPerServing, match.protein)
+              : 1;
+            if (calRatio > 3 || proRatio > 3) {
+              console.log(`[NutritionLookup] Rejecting "${match.name}" for "${item.name}" — macro mismatch (cal ratio: ${calRatio.toFixed(1)}, pro ratio: ${proRatio.toFixed(1)})`);
+              return {
+                ...item,
+                source: 'ai_estimate' as const,
+                sourceName: null,
+                brand: null,
+                matchConfidence: 0,
+              };
+            }
+          }
+
+          // Scale database per-serving values by quantity (e.g., 3 eggs = 3x one egg)
           return {
             ...item,
             calories: Math.round(match.calories * qty),
