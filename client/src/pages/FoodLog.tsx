@@ -632,9 +632,7 @@ export default function FoodLog() {
           };
         }));
       }
-      if (result.suggestedMealType) {
-        setMealType(result.suggestedMealType as MealType);
-      }
+      // Don't override user's meal type selection with AI suggestion
       toast.success('Analysis complete!');
       // Auto-scroll to analysis results
       setTimeout(() => {
