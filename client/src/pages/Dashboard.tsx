@@ -159,7 +159,7 @@ export default function Dashboard() {
         <h2 className="text-lg font-heading font-semibold text-foreground">Health Metrics</h2>
         <Button
           onClick={() => setUnifiedModalOpen(true)}
-          className="bg-gradient-to-r from-primary to-orange-500 hover:opacity-90 text-white gap-1.5"
+          className="gap-1.5"
           size="sm"
         >
           <Plus className="w-4 h-4" />

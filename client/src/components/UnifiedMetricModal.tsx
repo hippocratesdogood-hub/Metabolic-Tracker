@@ -394,7 +394,7 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-primary to-orange-500 hover:opacity-90 text-white min-w-[130px]"
+              className="min-w-[130px]"
               disabled={isSubmitting || !hasAnyValue}
             >
               {isSubmitting ? (
