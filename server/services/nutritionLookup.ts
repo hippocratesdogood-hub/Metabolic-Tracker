@@ -212,7 +212,7 @@ class NutritionLookupService {
     const url = new URL('https://api.nal.usda.gov/fdc/v1/foods/search');
     url.searchParams.set('query', query);
     url.searchParams.set('dataType', 'Branded');
-    url.searchParams.set('pageSize', '5');
+    url.searchParams.set('pageSize', '10');
     url.searchParams.set('api_key', apiKey);
 
     const response = await fetch(url.toString(), {
@@ -263,6 +263,13 @@ class NutritionLookupService {
 
   // ── Name matching ──────────────────────────────────────────────────────
 
+  /** Strip punctuation and split into clean word tokens */
+  private tokenize(text: string): Set<string> {
+    return new Set(
+      text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2)
+    );
+  }
+
   private calculateNameSimilarity(
     aiName: string,
     dbName: string,
@@ -282,19 +289,21 @@ class NutritionLookupService {
     // Signal 2: Core food words overlap (recall-weighted)
     // Recall (AI words found in DB) matters more than precision (DB words found in AI),
     // because DB names are often more specific (e.g., "Vanilla Blended Non-Fat Greek Yogurt")
-    const aiWithoutBrand = brandLower
+    const aiClean = brandLower
       ? aiLower.replace(brandLower, '').trim()
       : aiLower;
-    const aiWords = new Set(aiWithoutBrand.split(/\s+/).filter(w => w.length > 2));
-    const dbWords = new Set(dbLower.split(/\s+/).filter(w => w.length > 2));
+    const aiWords = this.tokenize(aiClean);
+    const dbWords = this.tokenize(dbLower);
     const intersection = [...aiWords].filter(w => dbWords.has(w)).length;
     const recall = aiWords.size > 0 ? intersection / aiWords.size : 0;
     const precision = dbWords.size > 0 ? intersection / dbWords.size : 0;
     const wordOverlap = recall * 0.7 + precision * 0.3;
     score += wordOverlap * 0.45;
 
-    // Signal 3: One string contains the other
-    if (aiLower.includes(dbLower) || dbLower.includes(aiLower)) {
+    // Signal 3: One string contains the other (compare cleaned versions)
+    const aiCleanFull = aiLower.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const dbCleanFull = dbLower.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (aiCleanFull.includes(dbCleanFull) || dbCleanFull.includes(aiCleanFull)) {
       score += 0.20;
     }
 
