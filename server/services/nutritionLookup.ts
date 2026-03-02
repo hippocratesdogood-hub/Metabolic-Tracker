@@ -102,14 +102,16 @@ class NutritionLookupService {
         const match = await this.searchFood(item.name);
 
         if (match && match.matchConfidence >= 0.6) {
+          // Scale database per-serving values by quantity (e.g., 3 eggs = 3x one egg)
+          const qty = item.quantity || 1;
           return {
             ...item,
-            calories: match.calories,
-            protein: match.protein,
-            fat: match.fat,
-            totalCarbs: match.totalCarbs,
-            fiber: match.fiber,
-            netCarbs: match.netCarbs,
+            calories: Math.round(match.calories * qty),
+            protein: Math.round(match.protein * qty * 10) / 10,
+            fat: Math.round(match.fat * qty * 10) / 10,
+            totalCarbs: Math.round(match.totalCarbs * qty * 10) / 10,
+            fiber: Math.round(match.fiber * qty * 10) / 10,
+            netCarbs: Math.round(match.netCarbs * qty * 10) / 10,
             source: 'verified' as const,
             sourceName: match.source === 'openfoodfacts'
               ? 'Open Food Facts'
@@ -211,7 +213,7 @@ class NutritionLookupService {
 
     const url = new URL('https://api.nal.usda.gov/fdc/v1/foods/search');
     url.searchParams.set('query', query);
-    url.searchParams.set('dataType', 'Branded');
+    url.searchParams.set('dataType', 'Foundation,SR Legacy,Branded');
     url.searchParams.set('pageSize', '10');
     url.searchParams.set('api_key', apiKey);
 
@@ -286,9 +288,7 @@ class NutritionLookupService {
       score += 0.35;
     }
 
-    // Signal 2: Core food words overlap (recall-weighted)
-    // Recall (AI words found in DB) matters more than precision (DB words found in AI),
-    // because DB names are often more specific (e.g., "Vanilla Blended Non-Fat Greek Yogurt")
+    // Signal 2: Core food words overlap (balanced recall + precision)
     const aiClean = brandLower
       ? aiLower.replace(brandLower, '').trim()
       : aiLower;
@@ -297,14 +297,24 @@ class NutritionLookupService {
     const intersection = [...aiWords].filter(w => dbWords.has(w)).length;
     const recall = aiWords.size > 0 ? intersection / aiWords.size : 0;
     const precision = dbWords.size > 0 ? intersection / dbWords.size : 0;
-    const wordOverlap = recall * 0.7 + precision * 0.3;
+
+    // For short queries (1-2 words), precision matters more to avoid
+    // "egg" matching "Egg Noodles Enriched Cooked" — the DB name has many
+    // extra words that signal it's a different food entirely.
+    const isShortQuery = aiWords.size <= 2;
+    const wordOverlap = isShortQuery
+      ? recall * 0.3 + precision * 0.7
+      : recall * 0.7 + precision * 0.3;
     score += wordOverlap * 0.45;
 
     // Signal 3: One string contains the other (compare cleaned versions)
+    // For short queries, only reward if DB name is close in length (avoid "egg" → "Egg Noodles")
     const aiCleanFull = aiLower.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     const dbCleanFull = dbLower.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     if (aiCleanFull.includes(dbCleanFull) || dbCleanFull.includes(aiCleanFull)) {
-      score += 0.20;
+      const lengthRatio = Math.min(aiCleanFull.length, dbCleanFull.length) /
+        Math.max(aiCleanFull.length, dbCleanFull.length);
+      score += lengthRatio >= 0.5 ? 0.20 : 0.05;
     }
 
     return Math.min(score, 1.0);
