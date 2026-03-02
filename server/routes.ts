@@ -18,6 +18,7 @@ import {
   validatePassword,
   getPasswordRequirementsMessage,
   loginRateLimiter,
+  rateLimit,
   recordFailedLogin,
   recordSuccessfulLogin,
   validateFileSignature,
@@ -113,8 +114,12 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  // Rate limiters for sensitive endpoints
+  const signupLimiter = rateLimit({ windowMs: 15 * 60 * 1000, maxAttempts: 10, lockoutDurationMs: 15 * 60 * 1000 });
+  const aiLimiter = rateLimit({ windowMs: 60 * 1000, maxAttempts: 15, lockoutDurationMs: 60 * 1000 });
+
   // Auth routes
-  app.post("/api/auth/signup", async (req, res, next) => {
+  app.post("/api/auth/signup", signupLimiter, async (req, res, next) => {
     try {
       const result = insertUserSchema.safeParse(req.body);
       if (!result.success) {
@@ -195,17 +200,14 @@ export async function registerRoutes(
     })(req, res, next);
   });
 
-  app.post("/api/auth/logout", async (req, res) => {
-    // Capture user info before logout
-    const user = req.user as { id: string; role: string } | undefined;
+  app.post("/api/auth/logout", requireAuth, async (req, res) => {
+    const user = req.user as { id: string; role: string };
 
     req.logout(async (err) => {
       if (err) return res.status(500).json({ message: "Logout failed" });
 
       // Audit: Logout
-      if (user) {
-        await auditLogout({ id: user.id, role: user.role }, req);
-      }
+      await auditLogout({ id: user.id, role: user.role }, req);
 
       res.json({ message: "Logged out" });
     });
@@ -263,7 +265,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const user = await storage.updateUser(req.params.id, req.body);
+      // Non-admins can only update safe profile fields (prevent role/coachId escalation)
+      let updateData = req.body;
+      if (req.user!.role !== "admin") {
+        const { name, unitsPreference, timezone, phone, height, notificationPreferencesJson } = req.body;
+        updateData = { name, unitsPreference, timezone, phone, height, notificationPreferencesJson };
+        // Strip undefined keys so we don't null out fields
+        Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
+      }
+
+      const user = await storage.updateUser(req.params.id, updateData);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -344,12 +355,16 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Entry not found" });
       }
 
-      // Check authorization - owner, coach of owner, or admin can edit
+      // Check authorization - owner, assigned coach, or admin can edit
       const isOwner = existing.userId === req.user!.id;
       const isAdmin = req.user!.role === "admin";
-      const isCoach = req.user!.role === "coach";
+      let isAssignedCoach = false;
+      if (req.user!.role === "coach" && !isOwner) {
+        const participant = await storage.getUser(existing.userId);
+        isAssignedCoach = participant?.coachId === req.user!.id;
+      }
 
-      if (!isOwner && !isAdmin && !isCoach) {
+      if (!isOwner && !isAdmin && !isAssignedCoach) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -711,7 +726,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/food/analyze", requireAuth, async (req, res) => {
+  app.post("/api/food/analyze", requireAuth, aiLimiter, async (req, res) => {
     try {
       // Check AI consent
       const consentUser = await storage.getUser(req.user!.id);
@@ -767,7 +782,7 @@ Be accurate with macro estimates based on typical serving sizes. Quality score s
     }
   });
 
-  app.post("/api/food/analyze-image", requireAuth, upload.single('image'), async (req, res) => {
+  app.post("/api/food/analyze-image", requireAuth, aiLimiter, upload.single('image'), async (req, res) => {
     try {
       // Check AI consent
       const consentUser = await storage.getUser(req.user!.id);
@@ -880,6 +895,13 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
   // Get macro targets for a specific user (admin/coach only)
   app.get("/api/admin/participants/:userId/macro-targets", requireAuth, requireCoachOrAdmin, async (req, res) => {
     try {
+      // Coaches can only view targets for their assigned participants
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(req.params.userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
       const target = await storage.getMacroTarget(req.params.userId);
       res.json(target || null);
     } catch (error: any) {
@@ -890,6 +912,13 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
   // Set macro targets for a specific user (admin/coach only)
   app.put("/api/admin/participants/:userId/macro-targets", requireAuth, requireCoachOrAdmin, async (req, res) => {
     try {
+      // Coaches can only set targets for their assigned participants
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(req.params.userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
       const result = insertMacroTargetSchema.safeParse({
         ...req.body,
         userId: req.params.userId,
@@ -1243,9 +1272,17 @@ Be accurate with macro estimates based on visible portion sizes. Quality score s
       // Role-based: only coach/admin can update macro targets for others
       const { userId, ...targetData } = req.body;
       const targetUserId = userId || req.user!.id;
-      
-      if (targetUserId !== req.user!.id && req.user!.role === "participant") {
-        return res.status(403).json({ message: "Participants cannot update other users' targets" });
+
+      if (targetUserId !== req.user!.id) {
+        if (req.user!.role === "participant") {
+          return res.status(403).json({ message: "Participants cannot update other users' targets" });
+        }
+        if (req.user!.role === "coach") {
+          const participant = await storage.getUser(targetUserId);
+          if (!participant || participant.coachId !== req.user!.id) {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
       }
 
       const target = await storage.upsertMacroTarget(targetUserId, targetData);
@@ -1543,16 +1580,27 @@ GUIDELINES:
     },
   ];
 
-  async function executeAIToolCall(name: string, args: any): Promise<any> {
+  async function executeAIToolCall(name: string, args: any, requestingUser: { id: string; role: string }): Promise<any> {
+    // For participant-specific queries, coaches can only access their assigned participants
+    if (requestingUser.role === "coach" && args.participantId) {
+      const participant = await storage.getUser(args.participantId);
+      if (!participant || participant.coachId !== requestingUser.id) {
+        return { error: "Access denied: participant is not assigned to you" };
+      }
+    }
+
     switch (name) {
       case "search_participants": {
         const participants = await storage.getAllParticipants();
         const query = (args.query || "").toLowerCase();
-        const matches = participants
+        let matches = participants
           .filter((p: any) => p.name?.toLowerCase().includes(query) || p.email?.toLowerCase().includes(query))
-          .map(({ passwordHash, ...rest }: any) => rest)
-          .slice(0, 20);
-        return { participants: matches, total: matches.length };
+          .map(({ passwordHash, ...rest }: any) => rest);
+        // Coaches only see their assigned participants
+        if (requestingUser.role === "coach") {
+          matches = matches.filter((p: any) => p.coachId === requestingUser.id);
+        }
+        return { participants: matches.slice(0, 20), total: matches.length };
       }
       case "get_participant_metrics": {
         const entries = await storage.getMetricEntries(
@@ -1591,7 +1639,7 @@ GUIDELINES:
     })).min(1),
   });
 
-  app.post("/api/admin/ai-assistant", requireAuth, requireCoachOrAdmin, async (req, res) => {
+  app.post("/api/admin/ai-assistant", requireAuth, requireCoachOrAdmin, aiLimiter, async (req, res) => {
     try {
       if (!openai) {
         return res.status(503).json({ message: "AI assistant is not configured. Add OPENAI_API_KEY to .env." });
@@ -1638,7 +1686,7 @@ GUIDELINES:
           const args = JSON.parse(toolCall.function.arguments);
           let result: any;
           try {
-            result = await executeAIToolCall(toolCall.function.name, args);
+            result = await executeAIToolCall(toolCall.function.name, args, { id: req.user!.id, role: req.user!.role });
           } catch (err: any) {
             result = { error: err.message };
           }
@@ -1863,7 +1911,21 @@ GUIDELINES:
       if (!coachId) {
         return res.status(400).json({ message: "coachId required" });
       }
-      
+
+      // Validate target is actually a coach
+      const coach = await storage.getUser(coachId);
+      if (!coach || coach.role !== "coach") {
+        return res.status(400).json({ message: "Invalid coach" });
+      }
+
+      // Participants can only message their assigned coach
+      if (req.user!.role === "participant") {
+        const self = await storage.getUser(req.user!.id);
+        if (!self || self.coachId !== coachId) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+
       const conversation = await storage.getOrCreateConversation(req.user!.id, coachId);
       res.json(conversation);
     } catch (error: any) {
@@ -1920,6 +1982,16 @@ GUIDELINES:
 
   app.patch("/api/messages/:id/read", requireAuth, async (req, res) => {
     try {
+      // Verify the message belongs to a conversation the user is in
+      const msg = await storage.getMessage(req.params.id);
+      if (!msg) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+      const conversation = await storage.getConversation(msg.conversationId);
+      if (!conversation || (conversation.participantId !== req.user!.id && conversation.coachId !== req.user!.id)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
       await storage.markMessageRead(req.params.id);
       res.json({ success: true });
     } catch (error: any) {
@@ -2551,9 +2623,9 @@ GUIDELINES:
 
   /**
    * Database health check - detailed database connectivity status.
-   * No authentication required - must be accessible for monitoring.
+   * Requires admin authentication to prevent information disclosure.
    */
-  app.get("/health/db", async (req, res) => {
+  app.get("/health/db", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { checkDatabase } = await import("./services/healthCheck");
       const status = await checkDatabase();
@@ -2569,9 +2641,9 @@ GUIDELINES:
 
   /**
    * External services health check - third-party service status.
-   * No authentication required - must be accessible for monitoring.
+   * Requires admin authentication to prevent information disclosure.
    */
-  app.get("/health/external", async (req, res) => {
+  app.get("/health/external", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { checkExternalServices } = await import("./services/healthCheck");
       const status = await checkExternalServices();
@@ -2623,10 +2695,9 @@ GUIDELINES:
 
   /**
    * Get metrics in Prometheus format for external monitoring systems.
-   * No authentication - must be accessible by Prometheus scraper.
-   * Note: Consider restricting by IP or using a separate port in production.
+   * Requires admin authentication to prevent information disclosure.
    */
-  app.get("/metrics", async (req, res) => {
+  app.get("/metrics", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { applicationMetrics } = await import("./services/applicationMetrics");
       const metrics = applicationMetrics.getPrometheusMetrics();
@@ -3016,8 +3087,16 @@ GUIDELINES:
       if (!ticket) {
         return res.status(404).json({ message: "Ticket not found" });
       }
+      // Participants can only respond to their own tickets
       if (ticket.userId !== user.id && user.role === "participant") {
         return res.status(403).json({ message: "Not authorized" });
+      }
+      // Coaches can only respond to tickets from their assigned participants
+      if (user.role === "coach" && ticket.userId !== user.id) {
+        const participant = await storage.getUser(ticket.userId);
+        if (!participant || participant.coachId !== user.id) {
+          return res.status(403).json({ message: "Not authorized" });
+        }
       }
 
       const updated = await supportTickets.addResponse(

@@ -471,6 +471,14 @@ export class PostgresStorage implements IStorage {
     return messages.map((m) => ({ ...m, body: decryptPHI(m.body) }));
   }
 
+  async getMessage(messageId: string): Promise<Message | undefined> {
+    const results = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.id, messageId));
+    return results[0];
+  }
+
   async markMessageRead(messageId: string): Promise<void> {
     await db
       .update(schema.messages)
