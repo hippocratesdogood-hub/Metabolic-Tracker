@@ -88,7 +88,7 @@ class NutritionLookupService {
     }
 
     // No confident match — cache the miss to avoid repeated lookups
-    cache.set(`${cacheKey}:miss`, 'miss', 30 * 60 * 1000); // 30 min
+    cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000); // 5 min (short so retries happen sooner)
     return null;
   }
 
@@ -158,7 +158,7 @@ class NutritionLookupService {
 
     const response = await fetch(url.toString(), {
       headers: { 'User-Agent': 'MetabolicTracker/1.0 (health-app)' },
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) return [];
@@ -216,7 +216,7 @@ class NutritionLookupService {
     url.searchParams.set('api_key', apiKey);
 
     const response = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) return [];
