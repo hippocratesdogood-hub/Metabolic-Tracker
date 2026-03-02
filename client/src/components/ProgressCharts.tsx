@@ -169,7 +169,7 @@ export default function ProgressCharts({ metrics, unitLabels, unitsPref }: Progr
                     <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} />
                     <YAxis
                       tick={axisStyle} tickLine={false} axisLine={false} width={40}
-                      domain={['auto', 'auto']}
+                      domain={[0, 'auto']}
                     />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="value" name={`Weight (${unitLabels.weight})`} fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} opacity={0.3} />
@@ -192,7 +192,7 @@ export default function ProgressCharts({ metrics, unitLabels, unitsPref }: Progr
                   <ScatterChart>
                     <CartesianGrid {...gridStyle} />
                     <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} type="category" allowDuplicatedCategory={false} />
-                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={['auto', 'auto']} />
+                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} />
                     <Tooltip content={<ChartTooltip />} />
                     <Scatter name="Systolic" data={bpData.map(d => ({ date: d.date, value: d.systolic }))} fill="hsl(217, 91%, 60%)" dataKey="value" />
                     <Scatter name="Diastolic" data={bpData.map(d => ({ date: d.date, value: d.diastolic }))} fill="hsl(142, 71%, 45%)" dataKey="value" />
@@ -214,7 +214,7 @@ export default function ProgressCharts({ metrics, unitLabels, unitsPref }: Progr
                   <LineChart data={glucoseData}>
                     <CartesianGrid {...gridStyle} />
                     <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} />
-                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={['auto', 'auto']} />
+                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} />
                     <Tooltip content={<ChartTooltip />} />
                     <Line dataKey="value" name={`Glucose (${unitLabels.glucose})`} stroke="#004aad" strokeWidth={2} dot={{ r: 3, fill: '#004aad' }} type="monotone" />
                   </LineChart>
@@ -256,7 +256,7 @@ export default function ProgressCharts({ metrics, unitLabels, unitsPref }: Progr
                   <ScatterChart>
                     <CartesianGrid {...gridStyle} />
                     <XAxis dataKey="date" tick={axisStyle} tickLine={false} axisLine={false} type="category" allowDuplicatedCategory={false} />
-                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={['auto', 'auto']} />
+                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={40} domain={[0, 'auto']} />
                     <Tooltip content={<ChartTooltip />} />
                     <Scatter name={`Waist (${unitLabels.waist})`} data={waistData.map(d => ({ date: d.date, value: d.value }))} fill="hsl(239, 84%, 67%)" dataKey="value" />
                   </ScatterChart>
