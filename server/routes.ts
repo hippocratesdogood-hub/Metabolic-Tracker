@@ -752,9 +752,11 @@ Return a JSON object with this exact structure:
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.7, "high": 0.9}
 }
-Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. Example: if the user says "2 oz salmon", set quantity: 2, unit: "oz", and set protein/calories/etc. for 2 oz total (not for 1 oz). The "macros" field must be the sum of all items.
+Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. The "macros" field must be the sum of all items.
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
-Estimate macros for the exact quantity the user specified. Quality score should favor high protein, low carb meals.`;
+CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
+Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
+Quality score should favor high protein, low carb meals.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -823,9 +825,11 @@ Return a JSON object with this exact structure:
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.65, "high": 0.85}
 }
-Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. Example: if you see 2 oz of salmon, set quantity: 2, unit: "oz", and set protein/calories/etc. for 2 oz total (not for 1 oz). The "macros" field must be the sum of all items.
+Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. The "macros" field must be the sum of all items.
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
-Estimate macros for the exact portion visible. Quality score should favor high protein, low carb meals.`;
+CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
+Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
+Quality score should favor high protein, low carb meals.`;
 
       const userContent: any[] = [
         {
