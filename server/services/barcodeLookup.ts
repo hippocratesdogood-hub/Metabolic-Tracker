@@ -83,15 +83,35 @@ class BarcodeLookupService {
         return miss;
       }
 
-      // Prefer per-serving data, fall back to per-100g
-      const hasServing = n['energy-kcal_serving'] !== undefined;
-      const suffix = hasServing ? '_serving' : '_100g';
+      // Compute per-serving macros from per-100g data (more reliable than
+      // crowd-sourced _serving values). Scale by serving_quantity if available.
+      const has100g = n['energy-kcal_100g'] !== undefined;
+      const servingQty = product.serving_quantity ? parseFloat(product.serving_quantity) : null;
+      const factor = has100g && servingQty ? servingQty / 100 : 1;
 
-      const calories = n[`energy-kcal${suffix}`] || 0;
-      const protein = n[`proteins${suffix}`] || 0;
-      const fat = n[`fat${suffix}`] || 0;
-      const totalCarbs = n[`carbohydrates${suffix}`] || 0;
-      const fiber = n[`fiber${suffix}`] || 0;
+      let calories: number, protein: number, fat: number, totalCarbs: number, fiber: number;
+      if (has100g && servingQty) {
+        // Best path: scale per-100g by actual serving weight
+        calories = (n['energy-kcal_100g'] || 0) * factor;
+        protein = (n['proteins_100g'] || 0) * factor;
+        fat = (n['fat_100g'] || 0) * factor;
+        totalCarbs = (n['carbohydrates_100g'] || 0) * factor;
+        fiber = (n['fiber_100g'] || 0) * factor;
+      } else if (n['energy-kcal_serving'] !== undefined) {
+        // Fallback: use pre-computed _serving if no serving_quantity
+        calories = n['energy-kcal_serving'] || 0;
+        protein = n['proteins_serving'] || 0;
+        fat = n['fat_serving'] || 0;
+        totalCarbs = n['carbohydrates_serving'] || 0;
+        fiber = n['fiber_serving'] || 0;
+      } else {
+        // Last resort: per-100g raw
+        calories = n['energy-kcal_100g'] || 0;
+        protein = n['proteins_100g'] || 0;
+        fat = n['fat_100g'] || 0;
+        totalCarbs = n['carbohydrates_100g'] || 0;
+        fiber = n['fiber_100g'] || 0;
+      }
 
       // Skip products with clearly incomplete data
       if (calories === 0 && protein === 0 && fat === 0 && totalCarbs === 0) {
@@ -104,7 +124,7 @@ class BarcodeLookupService {
       const name = product.product_name_en || product.product_name || 'Unknown Product';
       const brand = product.brands || null;
       const servingSize = product.serving_size
-        || (hasServing ? `${product.serving_quantity || '?'}g` : '100g');
+        || (servingQty ? `${servingQty}g` : '100g');
 
       const result: BarcodeResult = {
         found: true,

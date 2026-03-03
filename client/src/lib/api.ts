@@ -238,8 +238,18 @@ class ApiClient {
   }
 
   async getMacroProgress(date?: string) {
-    const query = date ? `?date=${date}` : "";
-    return this.request<any>(`/macro-progress${query}`);
+    if (!date) {
+      // Send local-time day boundaries so the server doesn't use UTC midnight,
+      // which bleeds yesterday's evening entries into today for users west of UTC.
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      return this.request<any>(
+        `/macro-progress?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`
+      );
+    }
+    return this.request<any>(`/macro-progress?date=${date}`);
   }
 
   // Admin

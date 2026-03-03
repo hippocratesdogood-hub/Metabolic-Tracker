@@ -1299,10 +1299,20 @@ Quality score should favor high protein, low carb meals.`;
   // Macro Progress API
   app.get("/api/macro-progress", requireAuth, async (req, res) => {
     try {
-      const dateStr = req.query.date as string;
-      const date = dateStr ? new Date(dateStr) : new Date();
+      const { from, to, date: dateStr } = req.query;
 
-      const allEntries = await storage.getFoodEntriesByDate(req.user!.id, date);
+      let allEntries;
+      if (from && to) {
+        // Client-provided local-time boundaries (preferred — avoids UTC day mismatch)
+        allEntries = await storage.getFoodEntries(
+          req.user!.id,
+          new Date(from as string),
+          new Date(to as string),
+        );
+      } else {
+        const date = dateStr ? new Date(dateStr as string) : new Date();
+        allEntries = await storage.getFoodEntriesByDate(req.user!.id, date);
+      }
       const target = await storage.getMacroTarget(req.user!.id);
 
       // Filter out child entries to avoid double-counting
