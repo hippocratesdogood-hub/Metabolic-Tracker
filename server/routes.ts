@@ -752,9 +752,9 @@ Return a JSON object with this exact structure:
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.7, "high": 0.9}
 }
-Each item in foods_detected must have its own macro breakdown. The "macros" field must be the sum of all items.
+Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. Example: if the user says "2 oz salmon", set quantity: 2, unit: "oz", and set protein/calories/etc. for 2 oz total (not for 1 oz). The "macros" field must be the sum of all items.
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
-Be accurate with macro estimates based on typical serving sizes. Quality score should favor high protein, low carb meals.`;
+Estimate macros for the exact quantity the user specified. Quality score should favor high protein, low carb meals.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -823,9 +823,9 @@ Return a JSON object with this exact structure:
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.65, "high": 0.85}
 }
-Each item in foods_detected must have its own macro breakdown. The "macros" field must be the sum of all items.
+Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. Example: if you see 2 oz of salmon, set quantity: 2, unit: "oz", and set protein/calories/etc. for 2 oz total (not for 1 oz). The "macros" field must be the sum of all items.
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
-Be accurate with macro estimates based on visible portion sizes. Quality score should favor high protein, low carb meals.`;
+Estimate macros for the exact portion visible. Quality score should favor high protein, low carb meals.`;
 
       const userContent: any[] = [
         {
