@@ -181,7 +181,7 @@ class ApiClient {
         netCarbs: number;
         confidence: number;
         source: 'verified';
-        sourceName: 'Open Food Facts';
+        sourceName: string;
         servingSize: string;
       };
     }>("/food/barcode-lookup", {

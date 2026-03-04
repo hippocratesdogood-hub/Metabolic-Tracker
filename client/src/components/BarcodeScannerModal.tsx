@@ -88,6 +88,7 @@ export default function BarcodeScannerModal({ isOpen, onClose, onItemFound }: Ba
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
         ],
+        verbose: false,
       });
       scannerRef.current = scanner;
       isInitializedRef.current = true;
@@ -298,7 +299,7 @@ export default function BarcodeScannerModal({ isOpen, onClose, onItemFound }: Ba
                   <div>
                     <p className="font-semibold text-green-900">{foundItem.name}</p>
                     <p className="text-xs text-green-700 mt-0.5">
-                      Serving: {foundItem.servingSize} | Verified via Open Food Facts
+                      Serving: {foundItem.servingSize} | Verified via {foundItem.sourceName || 'Open Food Facts'}
                     </p>
                   </div>
                 </div>
