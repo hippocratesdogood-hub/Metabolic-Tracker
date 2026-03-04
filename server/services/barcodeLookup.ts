@@ -85,7 +85,7 @@ class BarcodeLookupService {
 
       // Compute per-serving macros from per-100g data (more reliable than
       // crowd-sourced _serving values). Scale by serving_quantity if available.
-      const has100g = n['energy-kcal_100g'] !== undefined;
+      const has100g = (n['energy-kcal_100g'] > 0) || (n['proteins_100g'] > 0);
       const servingQty = product.serving_quantity ? parseFloat(product.serving_quantity) : null;
       const factor = has100g && servingQty ? servingQty / 100 : 1;
 
