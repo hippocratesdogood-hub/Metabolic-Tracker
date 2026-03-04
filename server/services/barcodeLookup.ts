@@ -33,8 +33,67 @@ class BarcodeLookupService {
   private readonly TIMEOUT = 10000; // 10 seconds
 
   /**
-   * Look up a food product by barcode (UPC-A, EAN-8, EAN-13, GTIN-14).
-   * Queries USDA and OFF in parallel; prefers USDA (manufacturer data).
+   * Expand a UPC-E barcode (8 digits) to UPC-A (12 digits).
+   * UPC-E is a zero-suppressed version of UPC-A used on small packages.
+   */
+  private expandUPCE(upce: string): string {
+    const s = upce[0];          // Number system (0 or 1)
+    const d = upce.slice(1, 7); // 6 data digits
+    const c = upce[7];          // Check digit
+
+    let mfr: string;
+    let prod: string;
+
+    switch (d[5]) {
+      case '0': case '1': case '2':
+        mfr = d[0] + d[1] + d[5] + '00';
+        prod = '00' + d[2] + d[3] + d[4];
+        break;
+      case '3':
+        mfr = d[0] + d[1] + d[2] + '00';
+        prod = '000' + d[3] + d[4];
+        break;
+      case '4':
+        mfr = d[0] + d[1] + d[2] + d[3] + '0';
+        prod = '0000' + d[4];
+        break;
+      default: // 5–9
+        mfr = d[0] + d[1] + d[2] + d[3] + d[4];
+        prod = '0000' + d[5];
+        break;
+    }
+
+    return s + mfr + prod + c;
+  }
+
+  /**
+   * Generate barcode variants for database lookup.
+   * Handles UPC-E→UPC-A expansion and UPC-A→EAN-13 padding.
+   */
+  private getBarcodeVariants(barcode: string): string[] {
+    const variants: string[] = [];
+
+    if (barcode.length === 8) {
+      // UPC-E → expand to UPC-A (12) → pad to EAN-13 (13)
+      const upcA = this.expandUPCE(barcode);
+      variants.push('0' + upcA);  // EAN-13 (OFF stores US products this way)
+      variants.push(upcA);        // UPC-A  (USDA gtinUpc format)
+      variants.push(barcode);     // Original UPC-E (fallback)
+    } else if (barcode.length === 12) {
+      // UPC-A → also try as EAN-13
+      variants.push('0' + barcode);
+      variants.push(barcode);
+    } else {
+      // EAN-13, EAN-8 (non-UPC), GTIN-14 — use as-is
+      variants.push(barcode);
+    }
+
+    return variants;
+  }
+
+  /**
+   * Look up a food product by barcode (UPC-A, UPC-E, EAN-8, EAN-13, GTIN-14).
+   * Automatically expands UPC-E to UPC-A. Queries USDA and OFF in parallel.
    */
   async lookupBarcode(barcode: string): Promise<BarcodeResult> {
     const cleaned = barcode.replace(/\D/g, '');
@@ -49,10 +108,17 @@ class BarcodeLookupService {
       return cached;
     }
 
+    // Expand UPC-E and generate format variants
+    const variants = this.getBarcodeVariants(cleaned);
+    console.log(`[BarcodeLookup] Trying variants for ${cleaned}: ${variants.join(', ')}`);
+
+    // USDA wants 12-digit UPC-A; OFF prefers 13-digit EAN
+    const usdaBarcode = variants.find(v => v.length === 12) || variants[0];
+
     // Query both sources in parallel
     const [usdaResult, offResult] = await Promise.allSettled([
-      this.lookupUSDA(cleaned),
-      this.lookupOFF(cleaned),
+      this.lookupUSDA(usdaBarcode),
+      this.tryOFFVariants(variants),
     ]);
 
     const usda = usdaResult.status === 'fulfilled' ? usdaResult.value : null;
@@ -150,6 +216,17 @@ class BarcodeLookupService {
   }
 
   // ── Open Food Facts ──────────────────────────────────────────────────
+
+  /**
+   * Try multiple barcode variants against OFF (EAN-13, UPC-A, UPC-E).
+   */
+  private async tryOFFVariants(variants: string[]): Promise<BarcodeResult> {
+    for (const barcode of variants) {
+      const result = await this.lookupOFF(barcode);
+      if (result.found) return result;
+    }
+    return { found: false };
+  }
 
   private async lookupOFF(barcode: string): Promise<BarcodeResult> {
     try {
