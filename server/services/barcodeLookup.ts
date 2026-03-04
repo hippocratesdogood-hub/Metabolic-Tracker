@@ -97,20 +97,23 @@ class BarcodeLookupService {
         fat = (n['fat_100g'] || 0) * factor;
         totalCarbs = (n['carbohydrates_100g'] || 0) * factor;
         fiber = (n['fiber_100g'] || 0) * factor;
+      } else if (has100g) {
+        // No serving_quantity: use per-100g raw (regulation-required, more accurate
+        // than crowd-sourced _serving values). Labeled "100g" in servingSize.
+        calories = n['energy-kcal_100g'] || 0;
+        protein = n['proteins_100g'] || 0;
+        fat = n['fat_100g'] || 0;
+        totalCarbs = n['carbohydrates_100g'] || 0;
+        fiber = n['fiber_100g'] || 0;
       } else if (n['energy-kcal_serving'] !== undefined) {
-        // Fallback: use pre-computed _serving if no serving_quantity
+        // Last resort: use _serving when no _100g data exists at all
         calories = n['energy-kcal_serving'] || 0;
         protein = n['proteins_serving'] || 0;
         fat = n['fat_serving'] || 0;
         totalCarbs = n['carbohydrates_serving'] || 0;
         fiber = n['fiber_serving'] || 0;
       } else {
-        // Last resort: per-100g raw
-        calories = n['energy-kcal_100g'] || 0;
-        protein = n['proteins_100g'] || 0;
-        fat = n['fat_100g'] || 0;
-        totalCarbs = n['carbohydrates_100g'] || 0;
-        fiber = n['fiber_100g'] || 0;
+        calories = 0; protein = 0; fat = 0; totalCarbs = 0; fiber = 0;
       }
 
       // Skip products with clearly incomplete data
