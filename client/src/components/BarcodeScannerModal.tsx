@@ -72,14 +72,23 @@ export default function BarcodeScannerModal({ isOpen, onClose, onItemFound }: Ba
     if (!containerRef.current || isInitializedRef.current) return;
 
     try {
-      const { Html5Qrcode } = await import('html5-qrcode');
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
       // Clean up previous instance if exists
       if (scannerRef.current) {
         await stopScanner();
       }
 
-      const scanner = new Html5Qrcode('barcode-reader');
+      // Only scan product barcodes (UPC/EAN) — ignore QR codes, Code 128,
+      // Code 39, etc. that appear on packaging as lot/internal codes.
+      const scanner = new Html5Qrcode('barcode-reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+        ],
+      });
       scannerRef.current = scanner;
       isInitializedRef.current = true;
 
