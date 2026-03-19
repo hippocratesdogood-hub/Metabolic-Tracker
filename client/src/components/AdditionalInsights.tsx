@@ -146,7 +146,7 @@ export default function AdditionalInsights({ metrics }: AdditionalInsightsProps)
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={completenessData}>
                   <CartesianGrid {...gridStyle} />
-                  <XAxis dataKey="name" tick={axisStyle} tickLine={false} axisLine={false} interval={0} />
+                  <XAxis dataKey="name" tick={{ ...axisStyle, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={40} />
                   <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={30} allowDecimals={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="count" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
