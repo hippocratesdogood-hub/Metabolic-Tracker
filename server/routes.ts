@@ -1302,6 +1302,7 @@ Quality score should favor high protein, low carb meals.`;
       const { from, to, date: dateStr } = req.query;
 
       let allEntries;
+      let date = dateStr ? new Date(dateStr as string) : new Date();
       if (from && to) {
         // Client-provided local-time boundaries (preferred — avoids UTC day mismatch)
         allEntries = await storage.getFoodEntries(
@@ -1310,7 +1311,6 @@ Quality score should favor high protein, low carb meals.`;
           new Date(to as string),
         );
       } else {
-        const date = dateStr ? new Date(dateStr as string) : new Date();
         allEntries = await storage.getFoodEntriesByDate(req.user!.id, date);
       }
       const target = await storage.getMacroTarget(req.user!.id);
