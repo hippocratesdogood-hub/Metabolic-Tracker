@@ -13,6 +13,7 @@ import {
   recordFailedLoginAttempt,
   clearFailedLoginAttempts,
 } from "./middleware/security";
+import bcrypt from "bcryptjs";
 
 const scryptAsync = promisify(scrypt);
 
@@ -21,6 +22,7 @@ const scryptAsync = promisify(scrypt);
  * - 64-byte key length (512 bits)
  * - 16-byte random salt per password
  * - Timing-safe comparison to prevent timing attacks
+ * - Supports legacy bcrypt hashes from MySQL migration (auto-upgrades to scrypt)
  */
 const crypto = {
   hash: async (password: string) => {
@@ -28,8 +30,13 @@ const crypto = {
     const buf = (await scryptAsync(password, salt, 64)) as Buffer;
     return `${buf.toString("hex")}.${salt}`;
   },
+  isBcrypt: (hash: string) => hash.startsWith("$2a$") || hash.startsWith("$2b$") || hash.startsWith("$2y$"),
   compare: async (suppliedPassword: string, storedPassword: string) => {
     try {
+      // Handle legacy bcrypt hashes from MySQL migration
+      if (crypto.isBcrypt(storedPassword)) {
+        return bcrypt.compare(suppliedPassword, storedPassword);
+      }
       const [hashedPassword, salt] = storedPassword.split(".");
       if (!hashedPassword || !salt) {
         return false;
@@ -159,6 +166,13 @@ export function setupAuth(app: Express) {
           }
 
           const isValid = await crypto.compare(password, user.passwordHash);
+
+          // Auto-upgrade legacy bcrypt hashes to scrypt on successful login
+          if (isValid && crypto.isBcrypt(user.passwordHash)) {
+            const newHash = await crypto.hash(password);
+            await storage.updateUser(user.id, { passwordHash: newHash });
+          }
+
           if (!isValid) {
             // Record failed attempt
             const lockoutResult = recordFailedLoginAttempt(user.id);
