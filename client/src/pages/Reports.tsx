@@ -20,46 +20,249 @@ export default function Reports() {
   });
 
   const handleDownloadPDF = async () => {
-    if (!reportRef.current) return;
+    if (!report) return;
 
     setIsGenerating(true);
     toast.info('Generating PDF...');
 
     try {
-      // Use html2canvas-pro which supports modern CSS color functions (oklab, oklch, etc.)
-      const html2canvas = (await import('html2canvas-pro')).default;
-      const jsPDF = (await import('jspdf')).default;
+      const { default: jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210;
+      const margin = 16;
+      const contentW = W - margin * 2;
+      let y = 0;
 
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#f8fafc'
+      // --- Colors ---
+      const primary = [59, 130, 246] as const;     // blue-500
+      const primaryDark = [37, 99, 235] as const;  // blue-600
+      const green = [22, 163, 74] as const;         // green-600
+      const red = [220, 38, 38] as const;           // red-600
+      const yellow = [202, 138, 4] as const;        // yellow-600
+      const gray = [100, 116, 139] as const;        // slate-500
+      const darkText = [15, 23, 42] as const;       // slate-900
+      const lightGray = [241, 245, 249] as const;   // slate-100
+
+      // --- Helper: rounded rect ---
+      const roundedRect = (x: number, ry: number, w: number, h: number, r: number, fill: readonly [number, number, number]) => {
+        pdf.setFillColor(fill[0], fill[1], fill[2]);
+        pdf.roundedRect(x, ry, w, h, r, r, 'F');
+      };
+
+      // --- Hero Header (blue gradient band) ---
+      roundedRect(0, 0, W, 72, 0, primary);
+      // Overlay gradient effect
+      roundedRect(0, 36, W, 36, 0, primaryDark);
+
+      // Metabolic OS branding
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('Metabolic OS', margin, 12);
+
+      // Period label
+      pdf.setFontSize(10);
+      pdf.setTextColor(220, 230, 255);
+      pdf.text(report.period.label, margin, 22);
+
+      // Greeting
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(22);
+      pdf.setTextColor(255, 255, 255);
+      const firstName = user.name.split(' ')[0];
+      const greeting = report.adherence >= 85 ? 'Excellent Week' :
+                       report.adherence >= 70 ? 'Good Progress' :
+                       report.adherence >= 50 ? 'Solid Effort' :
+                       report.daysLogged > 0 ? 'Getting Started' : 'Time to Log';
+      pdf.text(`${greeting}, ${firstName}!`, margin, 34);
+
+      // Subtitle
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(210, 220, 245);
+      const subtitle = report.adherence >= 85 ? "High adherence — your metabolic flexibility is improving." :
+                       report.adherence >= 70 ? "Good consistency this week. Keep building those habits!" :
+                       report.adherence >= 50 ? "You're making progress. Try to log more consistently." :
+                       report.daysLogged > 0 ? "Every day counts. Try to log meals and metrics daily." :
+                       "Start tracking to see your progress!";
+      pdf.text(subtitle, margin, 42);
+
+      // Adherence & Streak badges
+      const badgeW = 36;
+      const badgeH = 28;
+      const badgeX1 = W - margin - badgeW * 2 - 6;
+      const badgeX2 = W - margin - badgeW;
+      const badgeY = 48;
+
+      // Adherence badge
+      pdf.setFillColor(255, 255, 255, 0.2);
+      roundedRect(badgeX1, badgeY, badgeW, badgeH, 4, [80, 150, 255]);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(`${report.adherence}%`, badgeX1 + badgeW / 2, badgeY + 14, { align: 'center' });
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7);
+      pdf.text('Adherence', badgeX1 + badgeW / 2, badgeY + 22, { align: 'center' });
+
+      // Streak badge
+      roundedRect(badgeX2, badgeY, badgeW, badgeH, 4, [80, 150, 255]);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.text(`${report.streak}`, badgeX2 + badgeW / 2, badgeY + 14, { align: 'center' });
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7);
+      pdf.text('Day Streak', badgeX2 + badgeW / 2, badgeY + 22, { align: 'center' });
+
+      y = 82;
+
+      // --- Key Metrics Cards ---
+      const cardW = (contentW - 8) / 3;
+      const cardH = 32;
+      const metrics = [
+        {
+          label: 'Avg Glucose',
+          value: report.averages.glucose !== null ? `${report.averages.glucose}` : '--',
+          unit: 'mg/dL',
+          sub: report.averages.glucoseVsPrev !== null
+            ? `${report.averages.glucoseVsPrev > 0 ? '+' : ''}${report.averages.glucoseVsPrev} vs last week`
+            : report.metricsCount.glucose > 0 ? `${report.metricsCount.glucose} readings this week` : '',
+          subColor: report.averages.glucoseVsPrev !== null
+            ? (report.averages.glucoseVsPrev <= 0 ? green : red)
+            : gray,
+        },
+        {
+          label: 'Avg Ketones',
+          value: report.averages.ketones !== null ? `${report.averages.ketones}` : '--',
+          unit: 'mmol/L',
+          sub: report.averages.ketonesVsPrev !== null
+            ? `${report.averages.ketonesVsPrev > 0 ? '+' : ''}${report.averages.ketonesVsPrev} vs last week`
+            : report.metricsCount.ketones > 0 ? `${report.metricsCount.ketones} readings this week` : '',
+          subColor: report.averages.ketonesVsPrev !== null
+            ? (report.averages.ketonesVsPrev >= 0 ? green : yellow)
+            : gray,
+        },
+        {
+          label: 'Weight Change',
+          value: report.averages.weightChange !== null
+            ? `${report.averages.weightChange > 0 ? '+' : ''}${report.averages.weightChange}`
+            : '--',
+          unit: 'lbs',
+          sub: report.averages.weightChange !== null
+            ? (report.averages.weightChange <= 0 ? 'On track' : 'Monitor closely')
+            : 'Need more data points',
+          subColor: report.averages.weightChange !== null
+            ? (report.averages.weightChange <= 0 ? green : yellow)
+            : gray,
+        },
+      ];
+
+      metrics.forEach((m, i) => {
+        const cx = margin + i * (cardW + 4);
+        roundedRect(cx, y, cardW, cardH, 3, lightGray);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(...gray);
+        pdf.text(m.label, cx + 6, y + 8);
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(16);
+        pdf.setTextColor(...darkText);
+        pdf.text(m.value, cx + 6, y + 19);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(...gray);
+        pdf.text(m.unit, cx + 6 + pdf.getTextWidth(m.value) + 2, y + 19);
+
+        if (m.sub) {
+          pdf.setFontSize(7);
+          pdf.setTextColor(m.subColor[0], m.subColor[1], m.subColor[2]);
+          pdf.text(m.sub, cx + 6, y + 27);
+        }
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
+      y += cardH + 10;
 
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+      // --- Highlights & Setbacks ---
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(...darkText);
+      pdf.text('Highlights & Setbacks', margin, y);
+      y += 7;
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      if (report.highlights.length > 0) {
+        report.highlights.forEach((item) => {
+          const isPositive = item.type === 'positive';
+          const dotColor = isPositive ? green : red;
 
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+          roundedRect(margin, y, contentW, 14, 3, lightGray);
+
+          // Status dot
+          pdf.setFillColor(dotColor[0], dotColor[1], dotColor[2]);
+          pdf.circle(margin + 6, y + 7, 2.5, 'F');
+
+          // Icon
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(8);
+          pdf.setTextColor(255, 255, 255);
+          pdf.text(isPositive ? '✓' : '!', margin + 6, y + 8.5, { align: 'center' });
+
+          // Text
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(9);
+          pdf.setTextColor(...darkText);
+          const lines = pdf.splitTextToSize(item.text, contentW - 18);
+          pdf.text(lines[0], margin + 14, y + 8.5);
+
+          y += 17;
+        });
+      } else {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(...gray);
+        pdf.text('Start logging to see your weekly highlights!', margin, y + 6);
+        y += 14;
       }
 
+      y += 4;
+
+      // --- Next Week's Focus ---
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(...darkText);
+      pdf.text("Next Week's Focus", margin, y);
+      y += 7;
+
+      // Focus card with light blue background
+      const focusTitle = report.adherence >= 70 ? 'Keep the Momentum' : 'Build Consistency';
+      const focusLines = pdf.splitTextToSize(report.nextFocus, contentW - 16);
+      const focusH = 16 + focusLines.length * 5;
+      roundedRect(margin, y, contentW, focusH, 3, [239, 246, 255]); // blue-50
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(11);
+      pdf.setTextColor(...primary);
+      pdf.text(focusTitle, margin + 8, y + 10);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(...gray);
+      pdf.text(focusLines, margin + 8, y + 18);
+
+      y += focusH + 10;
+
+      // --- Week Summary footer ---
+      roundedRect(margin, y, contentW, 12, 3, lightGray);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(...gray);
+      const totalMetrics = report.metricsCount.glucose + report.metricsCount.ketones + report.metricsCount.weight;
+      pdf.text(`This week: ${report.metricsCount.meals} meals, ${totalMetrics} metrics logged`, margin + 6, y + 7.5);
+      pdf.text(`${report.daysLogged}/7 days active`, W - margin - 6, y + 7.5, { align: 'right' });
+
+      // --- Save ---
       const fileName = `metabolic-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
       pdf.save(fileName);
       toast.success('PDF downloaded successfully!');
