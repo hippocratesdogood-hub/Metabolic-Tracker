@@ -852,7 +852,8 @@ export default function FoodLog() {
             </div>
             <div className="flex justify-between px-2">
               {foodStreak.weekDays.map((day) => {
-                const isToday = day.date === new Date().toISOString().split('T')[0];
+                // Use local date (YYYY-MM-DD) to match server's timezone-aware dates
+                const isToday = day.date === new Date().toLocaleDateString("en-CA");
                 return (
                   <div key={day.date} className="flex flex-col items-center gap-1.5">
                     <span className="text-[10px] text-muted-foreground font-medium">{day.dayLabel}</span>

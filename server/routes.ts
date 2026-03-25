@@ -652,20 +652,26 @@ export async function registerRoutes(
   app.get("/api/food/streak", requireAuth, async (req, res) => {
     try {
       const userId = req.user!.id;
+      const user = await storage.getUser(userId);
+      const tz = user?.timezone || "America/Los_Angeles";
       const allFood = await storage.getFoodEntries(userId);
+
+      // Convert a Date to YYYY-MM-DD in the user's timezone
+      const toLocalDate = (d: Date) =>
+        d.toLocaleDateString("en-CA", { timeZone: tz }); // en-CA gives YYYY-MM-DD
 
       const foodDays = new Set<string>();
       allFood.forEach(entry => {
-        const day = new Date(entry.timestamp).toISOString().split('T')[0];
-        foodDays.add(day);
+        foodDays.add(toLocalDate(new Date(entry.timestamp)));
       });
 
       let streak = 0;
-      const today = new Date();
+      const now = new Date();
+      const todayStr = toLocalDate(now);
       for (let i = 0; i < 365; i++) {
-        const checkDate = new Date(today);
+        const checkDate = new Date(now);
         checkDate.setDate(checkDate.getDate() - i);
-        const dateStr = checkDate.toISOString().split('T')[0];
+        const dateStr = toLocalDate(checkDate);
         if (foodDays.has(dateStr)) {
           streak++;
         } else if (i > 0) {
@@ -677,12 +683,14 @@ export async function registerRoutes(
       const weekDays = [];
       let daysLoggedThisWeek = 0;
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(today);
+        const d = new Date(now);
         d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDate(d);
         const logged = foodDays.has(dateStr);
         if (logged) daysLoggedThisWeek++;
-        weekDays.push({ date: dateStr, dayLabel: dayLabels[d.getDay()], logged });
+        // Get day-of-week in user's timezone
+        const dayIndex = new Date(dateStr + "T12:00:00").getDay();
+        weekDays.push({ date: dateStr, dayLabel: dayLabels[dayIndex], logged });
       }
 
       let message: string;
