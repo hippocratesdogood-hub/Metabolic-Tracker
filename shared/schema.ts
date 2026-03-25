@@ -83,6 +83,8 @@ export const users = pgTable("users", {
   status: userStatusEnum("status").default("active").notNull(),
   forcePasswordReset: boolean("force_password_reset").default(false).notNull(),
   aiConsentGiven: boolean("ai_consent_given").default(false),
+  glp1Status: boolean("glp1_status").default(false),
+  programPhaseOverride: text("program_phase_override"), // null = auto-derive from programStartDate, "active" or "maintenance" to override
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -149,6 +151,8 @@ export const macroTargets = pgTable("macro_targets", {
   snackProteinG: integer("snack_protein_g"),
   snackCarbsG: integer("snack_carbs_g"),
   snackFatG: integer("snack_fat_g"),
+  netCarbsThreshold: integer("net_carbs_threshold"), // glucose variability warning threshold (independent of daily carb target)
+  targetMealCount: integer("target_meal_count").default(3), // prescribed meals per day
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
