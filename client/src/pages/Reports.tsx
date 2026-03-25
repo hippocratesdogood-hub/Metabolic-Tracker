@@ -26,47 +26,16 @@ export default function Reports() {
     toast.info('Generating PDF...');
 
     try {
-      const html2canvas = (await import('html2canvas')).default;
+      // Use html2canvas-pro which supports modern CSS color functions (oklab, oklch, etc.)
+      const html2canvas = (await import('html2canvas-pro')).default;
       const jsPDF = (await import('jspdf')).default;
 
-      // html2canvas doesn't support oklab() colors used by modern Tailwind CSS.
-      // Temporarily inject a stylesheet that forces all colors to rgb/hex fallbacks.
-      const fixSheet = document.createElement('style');
-      fixSheet.textContent = `
-        *, *::before, *::after {
-          color: inherit !important;
-          border-color: inherit !important;
-        }
-      `;
-      document.head.appendChild(fixSheet);
-
-      let canvas: HTMLCanvasElement;
-      try {
-        canvas = await html2canvas(reportRef.current, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#f8fafc',
-          ignoreElements: (el) => el.tagName === 'STYLE' && el.textContent?.includes('oklab') || false,
-          onclone: (clonedDoc) => {
-            // Replace oklab colors in cloned document's computed styles
-            const allElements = clonedDoc.querySelectorAll('*');
-            allElements.forEach((el) => {
-              const style = (el as HTMLElement).style;
-              const computed = clonedDoc.defaultView?.getComputedStyle(el);
-              if (computed) {
-                // Force background and color to computed rgb values
-                const bg = computed.backgroundColor;
-                const fg = computed.color;
-                if (bg) style.backgroundColor = bg;
-                if (fg) style.color = fg;
-              }
-            });
-          }
-        });
-      } finally {
-        fixSheet.remove();
-      }
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#f8fafc'
+      });
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
