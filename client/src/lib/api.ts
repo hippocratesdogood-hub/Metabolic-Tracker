@@ -159,7 +159,7 @@ class ApiClient {
     inputType: string;
     tags?: any;
   }) {
-    return this.request<{ parent: FoodEntry; children: FoodEntry[] }>("/food/meal", {
+    return this.request<{ parent: FoodEntry; children: FoodEntry[]; coachingMessage: string | null }>("/food/meal", {
       method: "POST",
       body: JSON.stringify(data),
     });
