@@ -297,6 +297,7 @@ export default function FoodLog() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [personalNote, setPersonalNote] = useState('');
+  const [coachingMessage, setCoachingMessage] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [editableItems, setEditableItems] = useState<any[]>([]);
@@ -649,9 +650,14 @@ export default function FoodLog() {
   const handleSave = async () => {
     if (!analysisResult) return;
 
+    // Clear previous coaching message before saving new meal
+    setCoachingMessage(null);
+
+    let newCoachingMessage: string | null = null;
+
     if (editableItems.length > 0) {
       // New flow: save individual items via batch endpoint
-      await createMealMutation.mutateAsync({
+      const result = await createMealMutation.mutateAsync({
         items: editableItems.map(item => ({
           name: item.name,
           quantity: item.quantity,
@@ -673,10 +679,11 @@ export default function FoodLog() {
         inputType: selectedImage ? 'photo' : 'text',
         tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
       });
+      newCoachingMessage = result.coachingMessage;
     } else {
       // Legacy flow: save as single entry
       const savedMacros = scaleMacros(analysisResult.macros, servingMultiplier);
-      await createFoodMutation.mutateAsync({
+      const result = await createFoodMutation.mutateAsync({
         inputType: selectedImage ? 'photo' : 'text',
         mealType,
         rawText: input || analysisResult.description || 'Photo analysis',
@@ -689,6 +696,7 @@ export default function FoodLog() {
         },
         tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
       });
+      newCoachingMessage = (result as any).coachingMessage ?? null;
     }
 
     setInput('');
@@ -699,6 +707,11 @@ export default function FoodLog() {
     setMealType(suggestMealType());
     setEntryDate(new Date());
     clearImage();
+
+    // Set new coaching message after form reset
+    if (newCoachingMessage) {
+      setCoachingMessage(newCoachingMessage);
+    }
   };
   
   const isBackfill = !isToday(entryDate);
@@ -1330,6 +1343,31 @@ export default function FoodLog() {
           )}
         </CardContent>
       </Card>
+
+      {/* Coaching Message — shown after meal save */}
+      {coachingMessage && (
+        <Card className={cn(
+          "border shadow-sm",
+          coachingMessage.includes("Dr. Larson")
+            ? "border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/20"
+            : "border-primary/20 bg-primary/5 dark:bg-primary/5"
+        )}>
+          <CardContent className="p-4 flex items-start gap-3">
+            <div className={cn(
+              "mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0",
+              coachingMessage.includes("Dr. Larson")
+                ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
+                : "bg-primary/10 text-primary"
+            )}>
+              <MessageSquare className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Coach</p>
+              <p className="text-sm leading-relaxed">{coachingMessage}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="space-y-4">
         <h3 className="font-heading font-semibold text-lg">Recent Meals</h3>
