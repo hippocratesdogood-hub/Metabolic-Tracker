@@ -397,6 +397,7 @@ export default function Participants() {
         coaches={coaches}
         onEdit={() => { setShowViewModal(false); setShowEditModal(true); }}
         onResetPassword={() => { setShowViewModal(false); setShowResetModal(true); }}
+        onViewMetrics={() => { setShowViewModal(false); setShowMetricsModal(true); }}
       />
 
       <EditParticipantModal
@@ -610,7 +611,7 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
   );
 }
 
-function ViewParticipantModal({ open, onClose, participant, coaches, onEdit, onResetPassword }: any) {
+function ViewParticipantModal({ open, onClose, participant, coaches, onEdit, onResetPassword, onViewMetrics }: any) {
   if (!participant) return null;
 
   const coach = coaches.find((c: any) => c.id === participant.coachId);
@@ -653,6 +654,10 @@ function ViewParticipantModal({ open, onClose, participant, coaches, onEdit, onR
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={onViewMetrics} className="gap-2">
+            <Activity className="w-4 h-4" />
+            Metrics & Notes
+          </Button>
           <Button variant="outline" onClick={onResetPassword} className="gap-2">
             <KeyRound className="w-4 h-4" />
             Reset Password
