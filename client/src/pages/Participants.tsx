@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2, Activity, StickyNote, Loader2 } from 'lucide-react';
+// Tooltip imports removed — replaced by DropdownMenu for actions
+import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2, Activity, StickyNote, Loader2, MoreVertical } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
 // Password strength utilities
@@ -283,7 +284,7 @@ export default function Participants() {
                 {isAdmin && <TableHead>Coach</TableHead>}
                 <TableHead>Created</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right w-[220px]">Actions</TableHead>
+                <TableHead className="text-right w-[60px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -301,79 +302,41 @@ export default function Participants() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <TooltipProvider delayDuration={300}>
-                      <div className="flex justify-end gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setSelectedParticipant(p); setShowViewModal(true); }}
-                              data-testid={`button-view-${p.id}`}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>View profile</TooltipContent>
-                        </Tooltip>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" data-testid={`button-actions-${p.id}`}>
+                          <MoreVertical className="w-4 h-4" />
+                          <span className="sr-only">Actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setSelectedParticipant(p); setShowViewModal(true); }}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setSelectedParticipant(p); setShowMetricsModal(true); }}>
+                          <Activity className="w-4 h-4 mr-2" />
+                          Metrics & Notes
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setSelectedParticipant(p); setShowMacroModal(true); }}>
+                          <Target className="w-4 h-4 mr-2" />
+                          Macro Targets
+                        </DropdownMenuItem>
                         {isAdmin && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}
-                                data-testid={`button-edit-${p.id}`}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Edit profile</TooltipContent>
-                          </Tooltip>
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => { setSelectedParticipant(p); setShowEditModal(true); }}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}>
+                              <KeyRound className="w-4 h-4 mr-2" />
+                              Reset Password
+                            </DropdownMenuItem>
+                          </>
                         )}
-                        {isAdmin && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => { setSelectedParticipant(p); setShowResetModal(true); }}
-                                data-testid={`button-reset-${p.id}`}
-                              >
-                                <KeyRound className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Reset password</TooltipContent>
-                          </Tooltip>
-                        )}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setSelectedParticipant(p); setShowMacroModal(true); }}
-                              data-testid={`button-macros-${p.id}`}
-                            >
-                              <Target className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Set macro targets</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => { setSelectedParticipant(p); setShowMetricsModal(true); }}
-                              data-testid={`button-metrics-${p.id}`}
-                            >
-                              <Activity className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>View metrics & notes</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </TooltipProvider>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
