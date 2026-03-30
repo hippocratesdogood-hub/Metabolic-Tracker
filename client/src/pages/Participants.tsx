@@ -283,7 +283,7 @@ export default function Participants() {
                 {isAdmin && <TableHead>Coach</TableHead>}
                 <TableHead>Created</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right w-[220px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
