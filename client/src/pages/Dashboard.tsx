@@ -195,6 +195,7 @@ export default function Dashboard() {
           icon={Scale}
           onAdd={() => handleAddMetric('WEIGHT')}
           lastUpdated={weight ? new Date(weight.timestamp) : undefined}
+          latestNotes={weight?.notes}
         />
         <MetricCard
           title="Glucose (Fasting)"
@@ -207,6 +208,7 @@ export default function Dashboard() {
           icon={Droplet}
           onAdd={() => handleAddMetric('GLUCOSE')}
           lastUpdated={glucose ? new Date(glucose.timestamp) : undefined}
+          latestNotes={glucose?.notes}
         />
         <MetricCard
           title="Ketones"
@@ -219,6 +221,7 @@ export default function Dashboard() {
           icon={Activity}
           onAdd={() => handleAddMetric('KETONES')}
           lastUpdated={ketones ? new Date(ketones.timestamp) : undefined}
+          latestNotes={ketones?.notes}
         />
         <MetricCard
           title="Blood Pressure"
@@ -230,6 +233,7 @@ export default function Dashboard() {
           icon={Heart}
           onAdd={() => handleAddMetric('BP')}
           lastUpdated={bp ? new Date(bp.timestamp) : undefined}
+          latestNotes={bp?.notes}
         />
         <MetricCard
           title="Waist"
@@ -242,6 +246,7 @@ export default function Dashboard() {
           icon={Ruler}
           onAdd={() => handleAddMetric('WAIST')}
           lastUpdated={waist ? new Date(waist.timestamp) : undefined}
+          latestNotes={waist?.notes}
         />
       </div>
 

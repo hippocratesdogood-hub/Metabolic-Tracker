@@ -325,6 +325,10 @@ class ApiClient {
     });
   }
 
+  async getParticipantMetrics(id: string) {
+    return this.request<any[]>(`/admin/participants/${id}/metrics`);
+  }
+
   // Admin - Prompts
   async getPrompts() {
     return this.request<any[]>("/admin/prompts");

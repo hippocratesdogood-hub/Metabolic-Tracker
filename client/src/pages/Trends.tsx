@@ -6,8 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays } from 'date-fns';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, StickyNote } from 'lucide-react';
 import { getUnitLabels, fromKg, fromCm, fromMgdl, type UnitsPreference } from '@shared/units';
+import { cn } from '@/lib/utils';
 
 export default function Trends() {
   const { getMetricsByType } = useData();
@@ -41,15 +42,36 @@ export default function Trends() {
     return vj?.value ?? null;
   };
 
+  // Filter metrics by date range
+  const filteredMetrics = metrics
+    .filter(m => new Date(m.timestamp) >= subDays(new Date(), parseInt(range)));
+
   // Process data for charts
-  const chartData = metrics
-    .filter(m => new Date(m.timestamp) >= subDays(new Date(), parseInt(range)))
+  const chartData = filteredMetrics
     .map(m => ({
       date: format(m.timestamp, 'MMM d'),
       value: extractValue(m),
     }))
     .filter(d => d.value != null)
     .reverse();
+
+  // Build history table data (most recent first)
+  const historyData = filteredMetrics
+    .map(m => {
+      const val = extractValue(m);
+      const vj = m.valueJson as Record<string, any>;
+      let displayValue = val != null ? String(val) : '--';
+      if (selectedMetric === 'BP' && vj) {
+        displayValue = `${vj.systolic ?? '--'}/${vj.diastolic ?? '--'}`;
+      }
+      return {
+        id: m.id,
+        date: format(m.timestamp, 'MMM d, yyyy'),
+        time: format(m.timestamp, 'h:mm a'),
+        displayValue,
+        notes: (m as any).notes as string | null,
+      };
+    });
 
   return (
     <div className="space-y-6 pb-20">
@@ -147,6 +169,41 @@ export default function Trends() {
           </CardContent>
         </Card>
       </Tabs>
+
+      {/* History Table with Notes */}
+      {historyData.length > 0 && (
+        <Card className="border-none shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-medium">Entry History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {historyData.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={cn(
+                    "flex items-start justify-between gap-4 py-2.5 px-3 rounded-lg",
+                    entry.notes ? "bg-muted/50" : "hover:bg-muted/30"
+                  )}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">{entry.displayValue}</span>
+                      <span className="text-xs text-muted-foreground">{entry.date} at {entry.time}</span>
+                    </div>
+                    {entry.notes && (
+                      <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <StickyNote className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{entry.notes}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2, Activity, StickyNote, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Password strength utilities
@@ -111,6 +111,7 @@ export default function Participants() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showMacroModal, setShowMacroModal] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<any>(null);
   const [createdParticipant, setCreatedParticipant] = useState<any>(null);
   const [tempPassword, setTempPassword] = useState('');
@@ -358,6 +359,19 @@ export default function Participants() {
                           </TooltipTrigger>
                           <TooltipContent>Set macro targets</TooltipContent>
                         </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedParticipant(p); setShowMetricsModal(true); }}
+                              data-testid={`button-metrics-${p.id}`}
+                            >
+                              <Activity className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>View metrics & notes</TooltipContent>
+                        </Tooltip>
                       </div>
                     </TooltipProvider>
                   </TableCell>
@@ -419,6 +433,12 @@ export default function Participants() {
         participant={selectedParticipant}
         onSubmit={(data: any) => macroTargetsMutation.mutate({ userId: selectedParticipant?.id, data })}
         isLoading={macroTargetsMutation.isPending}
+      />
+
+      <ParticipantMetricsModal
+        open={showMetricsModal}
+        onClose={() => setShowMetricsModal(false)}
+        participant={selectedParticipant}
       />
     </div>
   );
@@ -1050,6 +1070,92 @@ function MacroTargetsModal({ open, onClose, participant, onSubmit, isLoading }: 
             </DialogFooter>
           </form>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ParticipantMetricsModal({ open, onClose, participant }: { open: boolean; onClose: () => void; participant: any }) {
+  const [filter, setFilter] = useState<string>('ALL');
+
+  const { data: metrics, isLoading } = useQuery({
+    queryKey: ['participant-metrics', participant?.id],
+    queryFn: () => api.getParticipantMetrics(participant.id),
+    enabled: open && !!participant?.id,
+  });
+
+  if (!participant) return null;
+
+  const typeLabels: Record<string, string> = {
+    WEIGHT: 'Weight', GLUCOSE: 'Glucose', KETONES: 'Ketones', BP: 'Blood Pressure', WAIST: 'Waist',
+  };
+
+  const filtered = (metrics || []).filter((m: any) => filter === 'ALL' || m.type === filter);
+  const hasNotes = filtered.some((m: any) => m.notes);
+
+  const getDisplayValue = (m: any): string => {
+    const vj = m.valueJson as Record<string, any>;
+    if (m.type === 'BP') return `${vj?.systolic ?? '--'}/${vj?.diastolic ?? '--'} mmHg`;
+    return `${vj?.value ?? m.normalizedValue ?? '--'}`;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{participant.name} — Metrics & Notes</DialogTitle>
+          <DialogDescription>
+            Recent health metric entries{hasNotes ? ' (entries with notes highlighted)' : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex gap-2 flex-wrap">
+          {['ALL', 'WEIGHT', 'GLUCOSE', 'KETONES', 'BP', 'WAIST'].map(t => (
+            <Button
+              key={t}
+              variant={filter === t ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter(t)}
+            >
+              {t === 'ALL' ? 'All' : typeLabels[t]}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-1 mt-2">
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No metrics recorded yet.</p>
+          ) : (
+            filtered.map((m: any) => (
+              <div
+                key={m.id}
+                className={`flex items-start gap-3 py-2.5 px-3 rounded-lg ${m.notes ? 'bg-muted/50' : 'hover:bg-muted/30'}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="text-xs shrink-0">
+                      {typeLabels[m.type] || m.type}
+                    </Badge>
+                    <span className="text-sm font-medium">{getDisplayValue(m)}</span>
+                    <span className="text-xs text-muted-foreground ml-auto shrink-0">
+                      {format(new Date(m.timestamp), 'MMM d, yyyy h:mm a')}
+                    </span>
+                  </div>
+                  {m.notes && (
+                    <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <StickyNote className="h-3 w-3 mt-0.5 shrink-0" />
+                      <span>{m.notes}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

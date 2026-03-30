@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, TrendingDown, TrendingUp, Minus } from 'lucide-react';
+import { Plus, TrendingDown, TrendingUp, Minus, StickyNote } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MetricType } from '@/lib/dataAdapter';
 import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
@@ -38,6 +38,7 @@ interface MetricCardProps {
   icon: React.ElementType;
   onAdd: () => void;
   lastUpdated?: Date; // Changed from string to Date
+  latestNotes?: string | null;
 }
 
 export default function MetricCard({
@@ -50,7 +51,8 @@ export default function MetricCard({
   color,
   icon: Icon,
   onAdd,
-  lastUpdated
+  lastUpdated,
+  latestNotes,
 }: MetricCardProps) {
   return (
     <Card className="overflow-hidden border-none shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -86,9 +88,9 @@ export default function MetricCard({
           <p className="text-xs text-muted-foreground">
             {lastUpdated ? `Last: ${formatRelativeTimestamp(lastUpdated)}` : 'No entry today'}
           </p>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-8 w-8 p-0 rounded-full hover:bg-primary/10 hover:text-primary"
             onClick={onAdd}
           >
@@ -96,6 +98,12 @@ export default function MetricCard({
             <span className="sr-only">Add {title}</span>
           </Button>
         </div>
+        {latestNotes && (
+          <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-md px-2.5 py-1.5">
+            <StickyNote className="h-3 w-3 mt-0.5 shrink-0" />
+            <span className="line-clamp-2">{latestNotes}</span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

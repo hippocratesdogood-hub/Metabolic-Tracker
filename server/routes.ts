@@ -1337,6 +1337,17 @@ Quality score should favor high protein, low carb meals.`;
     }
   });
 
+  // Admin - Get participant's recent metrics (with notes)
+  app.get("/api/admin/participants/:id/metrics", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const entries = await storage.getMetricEntries(req.params.id);
+      // Return the 50 most recent entries
+      res.json(entries.slice(0, 50));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Admin - Prompts CRUD
   app.get("/api/admin/prompts", requireAuth, requireAdmin, async (req, res) => {
     try {
