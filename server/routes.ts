@@ -605,7 +605,7 @@ export async function registerRoutes(
             proteinG: legacyMacros.protein || 0,
             netCarbsG: legacyMacros.netCarbs || legacyMacros.carbs || 0,
             fatG: legacyMacros.fat || 0,
-            loggedAt: timestamp,
+            eatenAt: req.body.eaten_at ? new Date(req.body.eaten_at) : timestamp,
           },
           {
             proteinTargetG: legacyTarget.proteinG || 0,
@@ -622,6 +622,7 @@ export async function registerRoutes(
         ...req.body,
         userId: req.user!.id,
         timestamp,
+        eatenAt: req.body.eaten_at ? new Date(req.body.eaten_at) : timestamp,
         aiOutputJson: {
           ...req.body.aiOutputJson,
           qualityScore: legacyScore?.qualityScore ?? null,
@@ -654,7 +655,7 @@ export async function registerRoutes(
   // Batch save: create parent meal + individual child items
   app.post("/api/food/meal", requireAuth, async (req, res) => {
     try {
-      const { items, mealType, rawText, timestamp, notes, inputType, tags } = req.body;
+      const { items, mealType, rawText, timestamp, notes, inputType, tags, eaten_at } = req.body;
       const userId = req.user!.id;
 
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -697,7 +698,7 @@ export async function registerRoutes(
             proteinG: aggregateMacros.protein,
             netCarbsG: aggregateMacros.netCarbs,
             fatG: aggregateMacros.fat,
-            loggedAt: ts,
+            eatenAt: eaten_at ? new Date(eaten_at) : ts,
           },
           {
             proteinTargetG: macroTarget.proteinG || 0,
@@ -711,6 +712,7 @@ export async function registerRoutes(
       }
 
       // Create parent entry
+      const eatenAtTs = eaten_at ? new Date(eaten_at) : ts;
       const parent = await storage.createFoodEntry({
         userId,
         timestamp: ts,
@@ -725,6 +727,7 @@ export async function registerRoutes(
           notes: notes || null,
         },
         tags: tags || null,
+        eatenAt: eatenAtTs,
       });
 
       // Create child entries (one per item)
@@ -737,6 +740,7 @@ export async function registerRoutes(
           mealType: mealType || "Breakfast",
           parentMealId: parent.id,
           itemName: item.name,
+          eatenAt: eatenAtTs,
           aiOutputJson: {
             macros: {
               calories: item.calories || 0,
@@ -794,6 +798,27 @@ export async function registerRoutes(
       }
 
       const entry = await storage.updateFoodEntry(req.params.id, req.body);
+      res.json(entry);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH eaten_at for a specific food entry
+  app.patch("/api/food/:id/eaten-at", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getFoodEntryById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Entry not found" });
+      }
+      if (existing.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { eaten_at } = req.body;
+      if (!eaten_at) {
+        return res.status(400).json({ message: "eaten_at is required" });
+      }
+      const entry = await storage.updateFoodEntry(req.params.id, { eatenAt: new Date(eaten_at) });
       res.json(entry);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

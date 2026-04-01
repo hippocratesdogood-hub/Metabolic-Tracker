@@ -171,7 +171,7 @@ function FoodEditModal({
             <MealEntryIcon className="w-3.5 h-3.5" />
             <span className="truncate">{entry.mealType || 'Meal'}</span>
             <span className="text-muted-foreground shrink-0">
-              {format(new Date(entry.timestamp), 'MMM d, h:mm a')}
+              {format(new Date(entry.eatenAt || entry.timestamp), 'MMM d, h:mm a')}
             </span>
           </DialogDescription>
         </DialogHeader>
@@ -298,6 +298,7 @@ export default function FoodLog() {
   const [servingMultiplier, setServingMultiplier] = useState(1);
   const [personalNote, setPersonalNote] = useState('');
   const [coachingMessage, setCoachingMessage] = useState<string | null>(null);
+  const [editingTimeId, setEditingTimeId] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [editableItems, setEditableItems] = useState<any[]>([]);
@@ -674,6 +675,7 @@ export default function FoodLog() {
         mealType,
         rawText: input || analysisResult.description || 'Photo analysis',
         timestamp: entryDate,
+        eaten_at: entryDate.toISOString(),
         qualityScore: analysisResult.qualityScore,
         notes: analysisResult.notes,
         inputType: selectedImage ? 'photo' : 'text',
@@ -688,6 +690,7 @@ export default function FoodLog() {
         mealType,
         rawText: input || analysisResult.description || 'Photo analysis',
         timestamp: entryDate,
+        eaten_at: entryDate.toISOString(),
         aiOutputJson: {
           foods_detected: analysisResult.foods_detected,
           macros: savedMacros,
@@ -965,20 +968,36 @@ export default function FoodLog() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className={cn("gap-2", isBackfill && "border-amber-500 text-amber-600")} data-testid="button-date-picker">
                     <CalendarIcon className="w-4 h-4" />
-                    {isToday(entryDate) ? 'Today' : format(entryDate, 'MMM d')}
-                    {isBackfill && <Clock className="w-3 h-3" />}
+                    {isToday(entryDate) ? `Today ${format(entryDate, 'h:mm a')}` : format(entryDate, 'MMM d, h:mm a')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
                     selected={entryDate}
-                    onSelect={(date) => date && setEntryDate(date)}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      // Preserve the current time when changing the date
+                      date.setHours(entryDate.getHours(), entryDate.getMinutes());
+                      setEntryDate(new Date(date));
+                    }}
                     disabled={(date) => isBefore(date, minDate) || isAfter(date, maxDate)}
                     initialFocus
                   />
-                  <div className="p-2 border-t text-xs text-muted-foreground text-center">
-                    Backfill entries up to 7 days
+                  <div className="px-3 py-2 border-t flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <Input
+                      type="time"
+                      className="w-auto h-8 text-sm"
+                      value={format(entryDate, 'HH:mm')}
+                      onChange={(e) => {
+                        const [h, m] = e.target.value.split(':').map(Number);
+                        const updated = new Date(entryDate);
+                        updated.setHours(h || 0, m || 0);
+                        setEntryDate(updated);
+                      }}
+                    />
+                    <span className="text-xs text-muted-foreground">Meal time</span>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -1407,9 +1426,39 @@ export default function FoodLog() {
                       <div className="flex items-center gap-2 mb-1">
                         <MealEntryIcon className="w-4 h-4 text-muted-foreground shrink-0" />
                         <span className="font-medium truncate">{entry.rawText || 'Food entry'}</span>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                          {format(new Date(entry.timestamp), 'h:mm a')}
-                        </span>
+                        {editingTimeId === entry.id ? (
+                          <Input
+                            type="time"
+                            className="w-[100px] h-6 text-xs px-1"
+                            defaultValue={format(new Date(entry.eatenAt || entry.timestamp), 'HH:mm')}
+                            autoFocus
+                            onBlur={async (e) => {
+                              setEditingTimeId(null);
+                              const [h, m] = e.target.value.split(':').map(Number);
+                              const original = new Date(entry.eatenAt || entry.timestamp);
+                              const updated = new Date(original);
+                              updated.setHours(h || 0, m || 0);
+                              if (updated.getTime() !== original.getTime()) {
+                                try {
+                                  await api.updateEatenAt(entry.id, updated);
+                                  queryClient.invalidateQueries({ queryKey: ['food'] });
+                                } catch { /* silent */ }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                              if (e.key === 'Escape') setEditingTimeId(null);
+                            }}
+                          />
+                        ) : (
+                          <button
+                            className="text-xs text-muted-foreground whitespace-nowrap shrink-0 hover:text-primary hover:underline cursor-pointer"
+                            onClick={() => setEditingTimeId(entry.id)}
+                            title="Click to edit meal time"
+                          >
+                            {format(new Date(entry.eatenAt || entry.timestamp), 'h:mm a')}
+                          </button>
+                        )}
                       </div>
                       {foodsDetected && foodsDetected.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">

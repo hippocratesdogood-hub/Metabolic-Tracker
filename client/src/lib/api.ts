@@ -165,6 +165,13 @@ class ApiClient {
     });
   }
 
+  async updateEatenAt(entryId: string, eatenAt: Date) {
+    return this.request<FoodEntry>(`/food/${entryId}/eaten-at`, {
+      method: "PATCH",
+      body: JSON.stringify({ eaten_at: eatenAt.toISOString() }),
+    });
+  }
+
   async lookupBarcode(barcode: string) {
     return this.request<{
       found: boolean;

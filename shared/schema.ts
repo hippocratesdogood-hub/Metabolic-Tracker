@@ -124,6 +124,7 @@ export const foodEntries = pgTable("food_entries", {
   tags: jsonb("tags"),
   parentMealId: varchar("parent_meal_id").references((): any => foodEntries.id, { onDelete: "cascade" }),
   itemName: text("item_name"),
+  eatenAt: timestamp("eaten_at"), // when the meal was actually consumed (user-adjustable)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

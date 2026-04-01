@@ -19,7 +19,8 @@ export interface MealScoreInput {
   proteinG: number;
   netCarbsG: number;
   fatG: number;
-  loggedAt: Date;
+  eatenAt: Date;   // when the meal was consumed (preferred)
+  loggedAt?: Date;  // system timestamp (fallback if eatenAt is null)
 }
 
 export interface PatientTargets {
@@ -114,9 +115,10 @@ export function calculateMealScore(
     rawScore = Math.min(rawScore, 40);
   }
 
-  // Timing penalty
+  // Timing penalty — use eatenAt (preferred), fall back to loggedAt
+  const mealTime = meal.eatenAt || meal.loggedAt || new Date();
   const outsideEatingWindow = !isWithinEatingWindow(
-    meal.loggedAt,
+    mealTime,
     targets.eatingWindowStart,
     targets.eatingWindowEnd,
     targets.timezone
