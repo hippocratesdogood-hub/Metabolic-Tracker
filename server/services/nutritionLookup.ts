@@ -359,6 +359,137 @@ class NutritionLookupService {
     console.log(`[NutritionLookup] Best match for "${query}": "${best.name}" (brand: ${best.brand}) → confidence: ${best.matchConfidence.toFixed(3)}, ${best.matchConfidence >= 0.6 ? 'ACCEPTED' : 'REJECTED'}`);
     return best.matchConfidence >= 0.6 ? best : null;
   }
+
+  // ── Nutritionix Natural Nutrients ─────────────────────────────────────
+  /**
+   * Query Nutritionix /v2/natural/nutrients for a food item with quantity.
+   * Returns macros for the specified quantity, or null if not configured/failed.
+   * This is the most accurate source for natural language food descriptions.
+   */
+  async lookupNutritionix(
+    food: string,
+    quantity: number,
+    unit: string
+  ): Promise<NutritionMatch | null> {
+    const appId = process.env.NUTRITIONIX_APP_ID;
+    const appKey = process.env.NUTRITIONIX_APP_KEY;
+    if (!appId || !appKey) return null;
+
+    const query = `${quantity} ${unit} ${food}`;
+    const cacheKey = cacheKeys.nutritionLookup(`nix:${query}`);
+    const cached = cache.get<NutritionMatch | null>(cacheKey);
+    if (cached !== undefined && cached !== null) return cached;
+    if (cache.get<string>(`${cacheKey}:miss`) === 'miss') return null;
+
+    try {
+      const response = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-app-id': appId,
+          'x-app-key': appKey,
+        },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        console.error(`[Nutritionix] ${response.status} for "${query}"`);
+        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        return null;
+      }
+
+      const data = await response.json();
+      const foods = data.foods || [];
+      if (foods.length === 0) {
+        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        return null;
+      }
+
+      // Sum all returned foods (Nutritionix may split "2 cups yogurt" into one item)
+      let calories = 0, protein = 0, fat = 0, totalCarbs = 0, fiber = 0;
+      for (const f of foods) {
+        calories += f.nf_calories || 0;
+        protein += f.nf_protein || 0;
+        fat += f.nf_total_fat || 0;
+        totalCarbs += f.nf_total_carbohydrate || 0;
+        fiber += f.nf_dietary_fiber || 0;
+      }
+
+      const result: NutritionMatch = {
+        name: foods[0].food_name || food,
+        brand: foods[0].brand_name || null,
+        servingSize: `${quantity} ${unit}`,
+        calories: Math.round(calories),
+        protein: Math.round(protein * 10) / 10,
+        fat: Math.round(fat * 10) / 10,
+        totalCarbs: Math.round(totalCarbs * 10) / 10,
+        fiber: Math.round(fiber * 10) / 10,
+        netCarbs: Math.round((totalCarbs - fiber) * 10) / 10,
+        source: 'usda', // close enough — Nutritionix uses USDA data
+        sourceId: null,
+        matchConfidence: 0.95, // Nutritionix natural language is high confidence
+      };
+
+      cache.set(cacheKey, result, 60 * 60 * 1000);
+      console.log(`[Nutritionix] "${query}" → ${result.calories} cal, ${result.protein}g protein`);
+      return result;
+    } catch (err) {
+      console.error('[Nutritionix] Lookup failed:', err);
+      cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+      return null;
+    }
+  }
+
+  /**
+   * Look up macros for a parsed food item. Tries Nutritionix first,
+   * then Open Food Facts / USDA, then returns null (caller uses LLM fallback).
+   */
+  async lookupItemMacros(
+    food: string,
+    quantity: number,
+    unit: string
+  ): Promise<{
+    calories: number;
+    protein: number;
+    fat: number;
+    totalCarbs: number;
+    fiber: number;
+    netCarbs: number;
+    source: 'nutritionix' | 'openfoodfacts' | 'usda' | 'ai_estimate';
+  } | null> {
+    // 1. Nutritionix (best for natural language)
+    const nix = await this.lookupNutritionix(food, quantity, unit);
+    if (nix) {
+      return {
+        calories: nix.calories,
+        protein: nix.protein,
+        fat: nix.fat,
+        totalCarbs: nix.totalCarbs,
+        fiber: nix.fiber,
+        netCarbs: nix.netCarbs,
+        source: 'nutritionix',
+      };
+    }
+
+    // 2. Open Food Facts / USDA (existing search)
+    const dbMatch = await this.searchFood(food);
+    if (dbMatch) {
+      const qty = quantity || 1;
+      return {
+        calories: Math.round(dbMatch.calories * qty),
+        protein: Math.round(dbMatch.protein * qty * 10) / 10,
+        fat: Math.round(dbMatch.fat * qty * 10) / 10,
+        totalCarbs: Math.round(dbMatch.totalCarbs * qty * 10) / 10,
+        fiber: Math.round(dbMatch.fiber * qty * 10) / 10,
+        netCarbs: Math.round(dbMatch.netCarbs * qty * 10) / 10,
+        source: dbMatch.source,
+      };
+    }
+
+    // 3. No match — caller should fall back to LLM
+    return null;
+  }
 }
 
 export const nutritionLookup = new NutritionLookupService();

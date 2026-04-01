@@ -1011,43 +1011,148 @@ export async function registerRoutes(
       }
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
-      
-      const systemPrompt = `You are a nutrition analysis AI. Analyze the food description and identify each individual food item with its macros.
+
+      // ── STAGE 1: LLM parses food items and quantities only ──
+      const parsePrompt = `You are a food parsing assistant. Parse the meal description into individual food items with quantities. Do NOT estimate nutrition — only identify what was eaten.
 Return a JSON object with this exact structure:
 {
-  "foods_detected": [
-    {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
+  "items": [
+    { "food": "food name", "quantity": 1, "unit": "cup|oz|g|piece|tbsp|slice|serving" }
   ],
-  "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
   "notes": "brief coaching note about the meal",
-  "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
-  "confidence": {"low": 0.7, "high": 0.9}
+  "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack"
 }
-Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. The "macros" field must be the sum of all items.
-"netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
-CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
-Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
-Do NOT include a qualityScore field — scoring is handled server-side.`;
+Rules:
+- Identify each distinct food item separately
+- Use standard units (cup, oz, g, piece, tbsp, slice, serving)
+- If quantity is unclear, estimate a reasonable default
+- Do NOT include any macro or calorie estimates`;
 
-      const response = await openai.chat.completions.create({
+      const parseResponse = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyze this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}` }
+          { role: "system", content: parsePrompt },
+          { role: "user", content: `Parse this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}` }
         ],
         response_format: { type: "json_object" },
-        max_tokens: 800,
+        max_tokens: 400,
       });
 
-      const content = response.choices[0]?.message?.content || "{}";
-      const analysis = JSON.parse(content);
+      const parseContent = parseResponse.choices[0]?.message?.content || "{}";
+      const parsed = JSON.parse(parseContent);
+      const parsedItems = parsed.items || [];
 
-      // Enrich with database lookups (Open Food Facts / USDA)
-      await enrichAnalysis(analysis);
+      // ── STAGE 2: Look up macros for each item (Nutritionix → OFF/USDA → LLM fallback) ──
+      const foodsDetected: any[] = [];
+      const llmFallbackItems: any[] = [];
+
+      for (const item of parsedItems) {
+        const macros = await nutritionLookup.lookupItemMacros(
+          item.food,
+          item.quantity || 1,
+          item.unit || 'serving'
+        );
+
+        if (macros) {
+          foodsDetected.push({
+            name: item.food,
+            quantity: item.quantity || 1,
+            unit: item.unit || 'serving',
+            calories: macros.calories,
+            protein: macros.protein,
+            fat: macros.fat,
+            totalCarbs: macros.totalCarbs,
+            fiber: macros.fiber,
+            netCarbs: macros.netCarbs,
+            source: macros.source === 'nutritionix' ? 'verified' : 'verified',
+            sourceName: macros.source === 'nutritionix' ? 'Nutritionix'
+              : macros.source === 'openfoodfacts' ? 'Open Food Facts'
+              : 'USDA FoodData Central',
+            confidence: 0.95,
+          });
+        } else {
+          llmFallbackItems.push(item);
+        }
+      }
+
+      // LLM fallback for items not found in any database
+      if (llmFallbackItems.length > 0 && openai) {
+        const fallbackPrompt = `Estimate nutrition for these food items. Return a JSON object:
+{
+  "items": [
+    {"food": "name", "quantity": 1, "unit": "cup", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0}
+  ]
+}
+netCarbs = totalCarbs - fiber. Use standard USDA values. 1 oz = 28g, 1 lb = 454g.`;
+
+        const fallbackQuery = llmFallbackItems
+          .map((i: any) => `${i.quantity || 1} ${i.unit || 'serving'} ${i.food}`)
+          .join(', ');
+
+        try {
+          const fallbackResponse = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: fallbackPrompt },
+              { role: "user", content: fallbackQuery }
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 500,
+          });
+
+          const fallbackContent = fallbackResponse.choices[0]?.message?.content || "{}";
+          const fallbackParsed = JSON.parse(fallbackContent);
+          for (const item of (fallbackParsed.items || [])) {
+            foodsDetected.push({
+              name: item.food || item.name,
+              quantity: item.quantity || 1,
+              unit: item.unit || 'serving',
+              calories: item.calories || 0,
+              protein: item.protein || 0,
+              fat: item.fat || 0,
+              totalCarbs: item.totalCarbs || 0,
+              fiber: item.fiber || 0,
+              netCarbs: item.netCarbs || 0,
+              source: 'ai_estimate',
+              sourceName: null,
+              confidence: 0.6,
+            });
+          }
+        } catch (fallbackErr) {
+          console.error("[Food Analyze] LLM fallback failed:", fallbackErr);
+          // Add items with zero macros so they still appear
+          for (const item of llmFallbackItems) {
+            foodsDetected.push({
+              name: item.food,
+              quantity: item.quantity || 1,
+              unit: item.unit || 'serving',
+              calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0,
+              source: 'ai_estimate',
+              sourceName: null,
+              confidence: 0,
+            });
+          }
+        }
+      }
+
+      // Compute aggregate macros
+      const macros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
+      for (const item of foodsDetected) {
+        macros.calories += item.calories || 0;
+        macros.protein += item.protein || 0;
+        macros.fat += item.fat || 0;
+        macros.totalCarbs += item.totalCarbs || 0;
+        macros.fiber += item.fiber || 0;
+        macros.netCarbs += item.netCarbs || 0;
+      }
+      macros.carbs = macros.netCarbs;
 
       res.json({
-        ...analysis,
-        suggestedMealType: analysis.suggestedMealType || mealTypeSuggestion,
+        foods_detected: foodsDetected,
+        macros,
+        notes: parsed.notes || null,
+        suggestedMealType: parsed.suggestedMealType || mealTypeSuggestion,
+        confidence: { low: 0.7, high: 0.95 },
       });
     } catch (error: any) {
       console.error("Food analysis error:", error);

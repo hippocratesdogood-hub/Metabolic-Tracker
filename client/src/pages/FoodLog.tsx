@@ -1432,6 +1432,7 @@ export default function FoodLog() {
                             className="w-[100px] h-6 text-xs px-1"
                             defaultValue={format(new Date(entry.eatenAt || entry.timestamp), 'HH:mm')}
                             autoFocus
+                            onClick={(e) => e.stopPropagation()}
                             onBlur={async (e) => {
                               setEditingTimeId(null);
                               const [h, m] = e.target.value.split(':').map(Number);
@@ -1453,7 +1454,7 @@ export default function FoodLog() {
                         ) : (
                           <button
                             className="text-xs text-muted-foreground whitespace-nowrap shrink-0 hover:text-primary hover:underline cursor-pointer"
-                            onClick={() => setEditingTimeId(entry.id)}
+                            onClick={(e) => { e.stopPropagation(); setEditingTimeId(entry.id); }}
                             title="Click to edit meal time"
                           >
                             {format(new Date(entry.eatenAt || entry.timestamp), 'h:mm a')}
