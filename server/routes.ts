@@ -53,6 +53,7 @@ import {
   deriveProgramPhase,
   type CoachingContext,
 } from "./services/coachingRules";
+import { calculateMealScore } from "./services/mealScore";
 
 // OpenAI is optional - only initialize if API key is provided
 const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
@@ -593,10 +594,39 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
       }
 
+      // Calculate deterministic meal quality score
+      const legacyUser = await storage.getUser(req.user!.id);
+      const legacyTarget = await storage.getMacroTarget(req.user!.id);
+      const legacyMacros = req.body.aiOutputJson?.macros || {};
+      let legacyScore = null;
+      if (legacyTarget && (legacyTarget.proteinG || legacyTarget.carbsG || legacyTarget.fatG)) {
+        legacyScore = calculateMealScore(
+          {
+            proteinG: legacyMacros.protein || 0,
+            netCarbsG: legacyMacros.netCarbs || legacyMacros.carbs || 0,
+            fatG: legacyMacros.fat || 0,
+            loggedAt: timestamp,
+          },
+          {
+            proteinTargetG: legacyTarget.proteinG || 0,
+            netCarbTargetG: legacyTarget.carbsG || 0,
+            fatTargetG: legacyTarget.fatG || 0,
+            eatingWindowStart: (legacyTarget as any).eatingWindowStart || "08:00",
+            eatingWindowEnd: (legacyTarget as any).eatingWindowEnd || "20:00",
+            timezone: legacyUser?.timezone || "America/Los_Angeles",
+          }
+        );
+      }
+
       const data = {
         ...req.body,
         userId: req.user!.id,
         timestamp,
+        aiOutputJson: {
+          ...req.body.aiOutputJson,
+          qualityScore: legacyScore?.qualityScore ?? null,
+          scoreBreakdown: legacyScore?.scoreBreakdown ?? null,
+        },
       };
 
       const result = insertFoodEntrySchema.safeParse(data);
@@ -624,7 +654,7 @@ export async function registerRoutes(
   // Batch save: create parent meal + individual child items
   app.post("/api/food/meal", requireAuth, async (req, res) => {
     try {
-      const { items, mealType, rawText, timestamp, qualityScore, notes, inputType, tags } = req.body;
+      const { items, mealType, rawText, timestamp, notes, inputType, tags } = req.body;
       const userId = req.user!.id;
 
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -657,6 +687,29 @@ export async function registerRoutes(
       }
       aggregateMacros.carbs = aggregateMacros.netCarbs; // compat with existing code
 
+      // Calculate deterministic meal quality score
+      const user = await storage.getUser(userId);
+      const macroTarget = await storage.getMacroTarget(userId);
+      let scoreResult = null;
+      if (macroTarget && (macroTarget.proteinG || macroTarget.carbsG || macroTarget.fatG)) {
+        scoreResult = calculateMealScore(
+          {
+            proteinG: aggregateMacros.protein,
+            netCarbsG: aggregateMacros.netCarbs,
+            fatG: aggregateMacros.fat,
+            loggedAt: ts,
+          },
+          {
+            proteinTargetG: macroTarget.proteinG || 0,
+            netCarbTargetG: macroTarget.carbsG || 0,
+            fatTargetG: macroTarget.fatG || 0,
+            eatingWindowStart: (macroTarget as any).eatingWindowStart || "08:00",
+            eatingWindowEnd: (macroTarget as any).eatingWindowEnd || "20:00",
+            timezone: user?.timezone || "America/Los_Angeles",
+          }
+        );
+      }
+
       // Create parent entry
       const parent = await storage.createFoodEntry({
         userId,
@@ -667,7 +720,8 @@ export async function registerRoutes(
         aiOutputJson: {
           macros: aggregateMacros,
           foods_detected: items,
-          qualityScore: qualityScore || null,
+          qualityScore: scoreResult?.qualityScore ?? null,
+          scoreBreakdown: scoreResult?.scoreBreakdown ?? null,
           notes: notes || null,
         },
         tags: tags || null,
@@ -940,7 +994,6 @@ Return a JSON object with this exact structure:
     {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
   ],
   "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
-  "qualityScore": number (0-100, based on nutritional quality for metabolic health),
   "notes": "brief coaching note about the meal",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.7, "high": 0.9}
@@ -949,7 +1002,7 @@ Each item in foods_detected must have its own macro breakdown representing the T
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
 CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
 Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
-Quality score should favor high protein, low carb meals.`;
+Do NOT include a qualityScore field — scoring is handled server-side.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -1012,7 +1065,6 @@ Return a JSON object with this exact structure:
     {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
   ],
   "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
-  "qualityScore": number (0-100, based on nutritional quality for metabolic health),
   "notes": "brief coaching note about the meal",
   "description": "brief description of what you see",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
@@ -1022,7 +1074,7 @@ Each item in foods_detected must have its own macro breakdown representing the T
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
 CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
 Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
-Quality score should favor high protein, low carb meals.`;
+Do NOT include a qualityScore field — scoring is handled server-side.`;
 
       const userContent: any[] = [
         {

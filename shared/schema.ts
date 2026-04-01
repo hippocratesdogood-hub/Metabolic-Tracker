@@ -153,6 +153,8 @@ export const macroTargets = pgTable("macro_targets", {
   snackFatG: integer("snack_fat_g"),
   netCarbsThreshold: integer("net_carbs_threshold"), // glucose variability warning threshold (independent of daily carb target)
   targetMealCount: integer("target_meal_count").default(3), // prescribed meals per day
+  eatingWindowStart: text("eating_window_start").default("08:00"), // HH:MM format, default 8 AM
+  eatingWindowEnd: text("eating_window_end").default("20:00"), // HH:MM format, default 8 PM
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
