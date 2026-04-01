@@ -47,12 +47,8 @@ import {
   auditDelete,
 } from "./middleware/auditMiddleware";
 import { nutritionLookup } from "./services/nutritionLookup";
-import {
-  evaluateCoachingRules,
-  formatFlagsForPrompt,
-  deriveProgramPhase,
-  type CoachingContext,
-} from "./services/coachingRules";
+// coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
+// Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
 import { calculateMealScore } from "./services/mealScore";
 
 // OpenAI is optional - only initialize if API key is provided
@@ -79,162 +75,132 @@ const upload = multer({
 // Assembles a four-layer coaching prompt, evaluates rules, and calls the LLM.
 // Returns null if no flags triggered, no OpenAI configured, or on error.
 
-async function generateCoachingMessage(
-  userId: string,
-  ai: OpenAI | null
-): Promise<string | null> {
-  if (!ai) return null;
+type CoachIssue = 'hardCeil' | 'timing' | 'lowProtein' | 'positive';
 
-  // 1. Load user profile, targets, and food data
-  const [user, macroTarget, allFood] = await Promise.all([
-    storage.getUser(userId),
-    storage.getMacroTarget(userId),
-    storage.getFoodEntries(userId),
-  ]);
-
-  if (!user || !macroTarget) return null;
-
-  const tz = user.timezone || "America/Los_Angeles";
-  const toLocalDate = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: tz });
-  const todayStr = toLocalDate(new Date());
-
-  // 2. Compute today's totals
-  const todayEntries = allFood.filter(
-    (e) => !e.parentMealId && toLocalDate(new Date(e.timestamp)) === todayStr
-  );
-  const todayTotals = { proteinG: 0, netCarbsG: 0, fatG: 0, calories: 0 };
-  const mealTimestamps: Date[] = [];
-  for (const entry of todayEntries) {
-    const macros = (entry.aiOutputJson as any)?.macros || {};
-    todayTotals.proteinG += macros.protein || 0;
-    todayTotals.netCarbsG += macros.netCarbs || macros.carbs || 0;
-    todayTotals.fatG += macros.fat || 0;
-    todayTotals.calories += macros.calories || 0;
-    mealTimestamps.push(new Date(entry.timestamp));
-  }
-
-  // 3. Compute recent 7-day history (excluding today)
-  const recentDays: CoachingContext["recentDays"] = [];
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = toLocalDate(d);
-    const dayEntries = allFood.filter(
-      (e) => !e.parentMealId && toLocalDate(new Date(e.timestamp)) === dateStr
-    );
-    let proteinG = 0, netCarbsG = 0, mealCount = 0;
-    let firstMealTime: Date | null = null;
-    let lastMealTime: Date | null = null;
-    for (const entry of dayEntries) {
-      const macros = (entry.aiOutputJson as any)?.macros || {};
-      proteinG += macros.protein || 0;
-      netCarbsG += macros.netCarbs || macros.carbs || 0;
-      mealCount++;
-      const ts = new Date(entry.timestamp);
-      if (!firstMealTime || ts < firstMealTime) firstMealTime = ts;
-      if (!lastMealTime || ts > lastMealTime) lastMealTime = ts;
-    }
-    recentDays.push({ date: dateStr, proteinG, netCarbsG, mealCount, firstMealTime, lastMealTime });
-  }
-
-  // 4. Derive program phase
-  const { phase: programPhase, activeWeeks } = deriveProgramPhase(
-    user.programStartDate ? new Date(user.programStartDate) : null,
-    (user as any).programPhaseOverride || null
-  );
-
-  // 5. Build context and evaluate rules
-  const ctx: CoachingContext = {
-    programPhase,
-    glp1Status: (user as any).glp1Status || false,
-    activeWeeks,
-    proteinTarget: macroTarget.proteinG || 0,
-    carbsTarget: macroTarget.carbsG || 0,
-    netCarbsThreshold: (macroTarget as any).netCarbsThreshold || macroTarget.carbsG || 0,
-    targetMealCount: (macroTarget as any).targetMealCount || 3,
-    today: {
-      proteinG: todayTotals.proteinG,
-      netCarbsG: todayTotals.netCarbsG,
-      fatG: todayTotals.fatG,
-      calories: todayTotals.calories,
-      mealCount: todayEntries.length,
-      mealTimestamps,
-    },
-    recentDays,
+interface MealCoachResult {
+  coachingMessage: string | null;
+  coachingMeta: {
+    issue: CoachIssue;
+    repeatedIssue: boolean;
   };
+}
 
-  const flags = evaluateCoachingRules(ctx);
+/**
+ * Generate a coaching message driven by the meal's scoreBreakdown.
+ * Identifies the single most important issue, checks for repeat patterns
+ * in the last 3 meals, and calls the LLM with a structured prompt.
+ */
+async function generateMealCoachMessage(
+  userId: string,
+  ai: OpenAI | null,
+  scoreBreakdown: {
+    proteinScore: number;
+    netCarbsScore: number;
+    fatScore: number;
+    hardCeilApplied: boolean;
+    timingPenaltyApplied: boolean;
+    outsideEatingWindow: boolean;
+  },
+  mealMacros: { proteinG: number; netCarbsG: number; fatG: number },
+  targets: { proteinTargetG: number; netCarbTargetG: number },
+  currentEntryId?: string
+): Promise<MealCoachResult> {
+  // 1. Priority logic — identify the single most important issue
+  let issue: CoachIssue;
+  if (scoreBreakdown.hardCeilApplied) {
+    issue = 'hardCeil';
+  } else if (scoreBreakdown.timingPenaltyApplied) {
+    issue = 'timing';
+  } else if (scoreBreakdown.proteinScore < 50) {
+    issue = 'lowProtein';
+  } else {
+    issue = 'positive';
+  }
 
-  // Skip LLM call if no actionable flags (only positive or none)
-  const actionableFlags = flags.filter((f) => f.category !== "positive");
-  if (actionableFlags.length === 0 && flags.length === 0) return null;
+  // 2. Repeat pattern detection — check last 3 meals
+  let repeatedIssue = false;
+  try {
+    const recentEntries = await storage.getFoodEntries(userId);
+    const last3 = recentEntries
+      .filter((e: any) => !e.parentMealId && e.id !== currentEntryId)
+      .slice(0, 3);
 
-  // 6. Assemble four-layer coaching prompt
-  const proteinPct = ctx.proteinTarget > 0
-    ? Math.round((ctx.today.proteinG / ctx.proteinTarget) * 100)
-    : 0;
-  const mealTimes = mealTimestamps
-    .sort((a, b) => a.getTime() - b.getTime())
-    .map((t) => t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz }))
-    .join(", ");
-  const fastingWindow = recentDays[0]?.lastMealTime && mealTimestamps.length > 0
-    ? ((mealTimestamps.sort((a, b) => a.getTime() - b.getTime())[0].getTime() - recentDays[0].lastMealTime.getTime()) / (1000 * 60 * 60)).toFixed(1)
-    : "unknown";
+    if (last3.length >= 3) {
+      const recentIssues = last3.map((e: any) => {
+        const meta = (e.aiOutputJson as any)?.coachingMeta;
+        return meta?.issue || null;
+      });
+      repeatedIssue = recentIssues.every((i: string | null) => i === issue);
+    }
+  } catch {
+    // Non-blocking — if history check fails, proceed without repeat detection
+  }
 
-  // Recent 7-day summary
-  const recentSummary = recentDays.slice(0, 7).map((d) =>
-    `${d.date}: ${d.proteinG}g protein, ${d.netCarbsG}g carbs, ${d.mealCount} meals`
-  ).join("\n");
+  const meta = { issue, repeatedIssue };
 
-  const systemPrompt = `You are a metabolic health coach operating within Dr. Chad Larson's clinical protocol and the Metabolic OS. Your role is to provide brief, direct, non-judgmental coaching messages based on a patient's food log data.
+  // 3. Skip LLM if not configured
+  if (!ai) {
+    return { coachingMessage: null, coachingMeta: meta };
+  }
 
-CLINICAL PROTOCOL CONTEXT:
-- Framework: Low-carbohydrate / ketogenic (net carbs target: ${ctx.netCarbsThreshold}g)
-- Protein target: ${ctx.proteinTarget}g daily
-- Fasting: 14-hour overnight minimum
-- Meals: ${ctx.targetMealCount} per day, no between-meal eating
-- GLP-1 status: ${ctx.glp1Status ? "YES" : "NO"}
-- Program phase: ${programPhase.toUpperCase()} (week ${activeWeeks})
+  // 4. Build structured LLM prompt
+  const perMealProtein = Math.round(targets.proteinTargetG / 3);
+  const perMealCarbs = Math.round(targets.netCarbTargetG / 3);
 
-TODAY'S DATA:
-- Protein: ${Math.round(ctx.today.proteinG)}g (${proteinPct}% of target)
-- Net carbs: ${Math.round(ctx.today.netCarbsG)}g
-- Fat: ${Math.round(ctx.today.fatG)}g
-- Total calories: ${Math.round(ctx.today.calories)}
-- Meal times: ${mealTimes || "none yet"}
-- Fasting window: ${fastingWindow} hours
+  let issueDescription: string;
+  switch (issue) {
+    case 'hardCeil':
+      issueDescription = `HIGH CARB ISSUE: Net carbs this meal: ${Math.round(mealMacros.netCarbsG)}g. Per-meal target: ${perMealCarbs}g. The 30g hard ceiling was triggered, capping the meal score at 40.`;
+      break;
+    case 'timing':
+      issueDescription = `EATING WINDOW ISSUE: This meal was logged outside the patient's prescribed eating window. Fasting adherence is a core protocol requirement.`;
+      break;
+    case 'lowProtein':
+      issueDescription = `LOW PROTEIN ISSUE: Protein this meal: ${Math.round(mealMacros.proteinG)}g. Per-meal target: ${perMealProtein}g (${scoreBreakdown.proteinScore}% of target). Protein is the highest-priority macro in this protocol.`;
+      break;
+    case 'positive':
+      issueDescription = `POSITIVE: Protein score: ${scoreBreakdown.proteinScore}, net carbs score: ${scoreBreakdown.netCarbsScore}, fat score: ${scoreBreakdown.fatScore}. No issues detected — this meal is on target.`;
+      break;
+  }
 
-RECENT PATTERN (last 7 days):
-${recentSummary}
+  const systemPrompt = `You are a metabolic health coach. Write a 2-3 sentence coaching message about this meal.
 
-TRIGGERED RULE FLAGS TODAY:
-${formatFlagsForPrompt(flags)}
+ISSUE IDENTIFIED:
+${issueDescription}
 
-RESPONSE RULES:
-- Lead with the most clinically significant flag
-- Maximum 2 coaching points per message (avoid overwhelming)
-- If a positive streak flag is triggered, acknowledge it briefly
-- If ESCALATE_TO_PHYSICIAN_REVIEW is flagged, end with: "Dr. Larson may want to review this with you at your next check-in"
-- Never use shame language — frame everything as information and action
-- Keep response under 60 words
-- Speak directly to the patient in second person
-- Do not repeat the raw numbers back to them — they can see those
+REPEATED PATTERN: ${repeatedIssue ? 'YES — this is the same issue as the last 3 consecutive meals. Reference the pattern.' : 'NO — this is not a repeated issue.'}
 
-OUTPUT FORMAT:
-Return only the coaching message. No preamble, no explanation of your reasoning.`;
+TONE:
+- Direct and authoritative, like a knowledgeable clinical coach
+- Respect the patient's intelligence
+- No cheerleader language, no exclamation marks, no "great job!" filler
+- No patient name
+- Do not repeat the exact numbers — the patient can see those in the UI
+- Frame issues as information and actionable next steps
+${issue === 'positive' ? '- Briefly acknowledge what was done well. Be specific, not generic.' : ''}
 
-  // 7. Call LLM
-  const response = await ai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: "Generate the coaching message for this patient based on today's data and triggered flags." },
-    ],
-    max_tokens: 150,
-    temperature: 0.7,
-  });
+LENGTH: 2-3 sentences maximum.
 
-  return response.choices[0]?.message?.content?.trim() || null;
+OUTPUT: Return only the coaching message. No preamble.`;
+
+  try {
+    const response = await ai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: "Generate the coaching message." },
+      ],
+      max_tokens: 120,
+      temperature: 0.6,
+    });
+
+    return {
+      coachingMessage: response.choices[0]?.message?.content?.trim() || null,
+      coachingMeta: meta,
+    };
+  } catch {
+    return { coachingMessage: null, coachingMeta: meta };
+  }
 }
 
 function suggestMealType(): string {
@@ -638,12 +604,26 @@ export async function registerRoutes(
 
       const entry = await storage.createFoodEntry(result.data);
 
-      // Generate coaching message (non-blocking — never breaks meal save)
+      // Generate scoreBreakdown-driven coaching message
       let coachingMessage: string | null = null;
-      try {
-        coachingMessage = await generateCoachingMessage(req.user!.id, openai);
-      } catch (e) {
-        console.error("Coaching generation error:", e);
+      const entryOutput = (entry.aiOutputJson as any) || {};
+      const breakdown = entryOutput.scoreBreakdown;
+      if (breakdown && legacyTarget) {
+        try {
+          const coachResult = await generateMealCoachMessage(
+            req.user!.id, openai, breakdown,
+            { proteinG: legacyMacros.protein || 0, netCarbsG: legacyMacros.netCarbs || legacyMacros.carbs || 0, fatG: legacyMacros.fat || 0 },
+            { proteinTargetG: legacyTarget.proteinG || 0, netCarbTargetG: legacyTarget.carbsG || 0 },
+            entry.id
+          );
+          coachingMessage = coachResult.coachingMessage;
+          // Store coaching metadata alongside the entry
+          await storage.updateFoodEntry(entry.id, {
+            aiOutputJson: { ...entryOutput, coachingMessage: coachResult.coachingMessage, coachingMeta: coachResult.coachingMeta },
+          });
+        } catch (e) {
+          console.error("Coaching generation error:", e);
+        }
       }
 
       res.json({ ...entry, coachingMessage });
@@ -758,12 +738,25 @@ export async function registerRoutes(
         children.push(child);
       }
 
-      // Generate coaching message (non-blocking — never breaks meal save)
+      // Generate scoreBreakdown-driven coaching message
       let coachingMessage: string | null = null;
-      try {
-        coachingMessage = await generateCoachingMessage(userId, openai);
-      } catch (e) {
-        console.error("Coaching generation error:", e);
+      if (scoreResult && macroTarget) {
+        try {
+          const coachResult = await generateMealCoachMessage(
+            userId, openai, scoreResult.scoreBreakdown,
+            { proteinG: aggregateMacros.protein, netCarbsG: aggregateMacros.netCarbs, fatG: aggregateMacros.fat },
+            { proteinTargetG: macroTarget.proteinG || 0, netCarbTargetG: macroTarget.carbsG || 0 },
+            parent.id
+          );
+          coachingMessage = coachResult.coachingMessage;
+          // Store coaching metadata in parent entry's ai_output_json
+          const parentOutput = (parent.aiOutputJson as any) || {};
+          await storage.updateFoodEntry(parent.id, {
+            aiOutputJson: { ...parentOutput, coachingMessage: coachResult.coachingMessage, coachingMeta: coachResult.coachingMeta },
+          });
+        } catch (e) {
+          console.error("Coaching generation error:", e);
+        }
       }
 
       res.json({ parent, children, coachingMessage });
