@@ -1457,7 +1457,7 @@ export default function FoodLog() {
                             onClick={(e) => { e.stopPropagation(); setEditingTimeId(entry.id); }}
                             title="Click to edit meal time"
                           >
-                            {format(new Date(entry.eatenAt || entry.timestamp), 'h:mm a')}
+                            {(() => { const d = new Date(entry.eatenAt || entry.timestamp); return isToday(d) ? format(d, 'h:mm a') : format(d, 'MMM d, h:mm a'); })()}
                           </button>
                         )}
                       </div>
