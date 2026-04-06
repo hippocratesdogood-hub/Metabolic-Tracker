@@ -1090,11 +1090,12 @@ netCarbs = totalCarbs - fiber. Use standard USDA values. 1 oz = 28g, 1 lb = 454g
               { role: "user", content: fallbackQuery }
             ],
             response_format: { type: "json_object" },
-            max_tokens: 500,
+            max_tokens: 1200,
           });
 
           const fallbackContent = fallbackResponse.choices[0]?.message?.content || "{}";
-          const fallbackParsed = JSON.parse(fallbackContent);
+          let fallbackParsed: any;
+          try { fallbackParsed = JSON.parse(fallbackContent); } catch { fallbackParsed = { items: [] }; }
           for (const item of (fallbackParsed.items || [])) {
             foodsDetected.push({
               name: item.food || item.name,
@@ -1225,11 +1226,18 @@ Do NOT include a qualityScore field — scoring is handled server-side.`;
           { role: "user", content: userContent }
         ],
         response_format: { type: "json_object" },
-        max_tokens: 500,
+        max_tokens: 1200,
       });
 
       const content = response.choices[0]?.message?.content || "{}";
-      const analysis = JSON.parse(content);
+      let analysis: any;
+      try {
+        analysis = JSON.parse(content);
+      } catch {
+        // LLM response was truncated — attempt to salvage by closing the JSON
+        const repaired = content.replace(/,?\s*$/, '') + ']}';
+        try { analysis = JSON.parse(repaired); } catch { analysis = {}; }
+      }
 
       // Enrich with database lookups (Open Food Facts / USDA)
       await enrichAnalysis(analysis);
