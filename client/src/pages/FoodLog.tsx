@@ -108,7 +108,12 @@ function FoodEditModal({
       setReanalyzedResult(result);
       toast.success('Macros updated!');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to re-analyze');
+      const msg = err.message || 'Failed to re-analyze';
+      if (msg.includes('Unauthorized') || msg.includes('401') || msg.includes('Not authenticated')) {
+        toast.error('Session expired — please log in again.');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -214,19 +219,19 @@ function FoodEditModal({
           )}>
             <div>
               <div className="text-xs text-muted-foreground">Cals</div>
-              <div className="font-bold text-sm">{displayMacros.calories}</div>
+              <div className="font-bold text-sm">{Math.round(displayMacros.calories)}</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Protein</div>
-              <div className="font-bold text-sm">{displayMacros.protein}g</div>
+              <div className="font-bold text-sm">{Math.round(displayMacros.protein)}g</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Carbs</div>
-              <div className="font-bold text-sm">{displayMacros.carbs}g</div>
+              <div className="font-bold text-sm">{Math.round(displayMacros.carbs)}g</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Fat</div>
-              <div className="font-bold text-sm">{displayMacros.fat}g</div>
+              <div className="font-bold text-sm">{Math.round(displayMacros.fat)}g</div>
             </div>
           </div>
           {hasNewAnalysis && (
