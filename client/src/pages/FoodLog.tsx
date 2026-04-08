@@ -1058,21 +1058,21 @@ export default function FoodLog() {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    "rounded-full text-muted-foreground hover:text-primary",
+                    "rounded-full text-muted-foreground hover:text-primary h-11 w-11",
                     selectedImage && "text-primary"
                   )}
                   onClick={handleCameraClick}
                   aria-label={selectedImage ? "Change photo" : "Add photo of your meal"}
                   data-testid="button-camera"
                 >
-                  {selectedImage ? <Image className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
+                  {selectedImage ? <Image className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
                 </Button>
                 {hasSpeechRecognition && (
                   <Button
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "rounded-full text-muted-foreground hover:text-primary",
+                      "rounded-full text-muted-foreground hover:text-primary h-11 w-11",
                       isRecording && "text-red-500 animate-pulse"
                     )}
                     onClick={handleVoiceClick}
@@ -1080,18 +1080,18 @@ export default function FoodLog() {
                     aria-pressed={isRecording}
                     data-testid="button-voice"
                   >
-                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                   </Button>
                 )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="rounded-full text-muted-foreground hover:text-primary"
+                  className="rounded-full text-muted-foreground hover:text-primary h-11 w-11"
                   onClick={() => setBarcodeScannerOpen(true)}
                   aria-label="Scan barcode"
                   data-testid="button-barcode"
                 >
-                  <ScanBarcode className="w-5 h-5" />
+                  <ScanBarcode className="w-6 h-6" />
                 </Button>
               </div>
               <Button 
