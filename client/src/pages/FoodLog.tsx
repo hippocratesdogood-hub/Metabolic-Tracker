@@ -910,7 +910,7 @@ export default function FoodLog() {
                     <FavIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <span className="truncate font-medium">{fav.rawText || 'Meal'}</span>
                     {macros && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{macros.calories} cal</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{Math.round(macros.calories)} cal</span>
                     )}
                   </button>
                   <button
@@ -1486,10 +1486,10 @@ export default function FoodLog() {
                       )}
                       {macros && (
                         <div className="flex gap-3 mt-2 text-xs font-medium text-muted-foreground">
-                          <span>{macros.calories} cal</span>
-                          <span>{macros.protein}g P</span>
-                          <span>{macros.fat}g F</span>
-                          <span>{macros.netCarbs ?? macros.carbs}g C</span>
+                          <span>{Math.round(macros.calories)} cal</span>
+                          <span>{Math.round(macros.protein)}g P</span>
+                          <span>{Math.round(macros.fat)}g F</span>
+                          <span>{Math.round(macros.netCarbs ?? macros.carbs)}g C</span>
                         </div>
                       )}
                     </div>
