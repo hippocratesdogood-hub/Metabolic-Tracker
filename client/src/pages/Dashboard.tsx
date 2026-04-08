@@ -288,34 +288,34 @@ export default function Dashboard() {
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-muted-foreground">Protein</span>
-                  <span className="font-medium">{macroProgress.consumed.protein}g / {macroProgress.target.protein || 0}g</span>
+                  <span className="font-medium">{Math.round(macroProgress.consumed.protein)}g / {macroProgress.target.protein || 0}g</span>
                 </div>
                 <Progress value={Math.min(100, macroProgress.target.protein ? (macroProgress.consumed.protein / macroProgress.target.protein) * 100 : 0)} className="h-2" />
-                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.protein >= 0 ? `${macroProgress.remaining.protein}g left` : `${Math.abs(macroProgress.remaining?.protein || 0)}g over`}</span>
+                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.protein >= 0 ? `${Math.round(macroProgress.remaining.protein)}g left` : `${Math.round(Math.abs(macroProgress.remaining?.protein || 0))}g over`}</span>
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-muted-foreground">Carbs</span>
-                  <span className="font-medium">{macroProgress.consumed.carbs}g / {macroProgress.target.carbs || 0}g</span>
+                  <span className="font-medium">{Math.round(macroProgress.consumed.carbs)}g / {macroProgress.target.carbs || 0}g</span>
                 </div>
                 <Progress value={Math.min(100, macroProgress.target.carbs ? (macroProgress.consumed.carbs / macroProgress.target.carbs) * 100 : 0)} className="h-2" />
-                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.carbs >= 0 ? `${macroProgress.remaining.carbs}g left` : `${Math.abs(macroProgress.remaining?.carbs || 0)}g over`}</span>
+                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.carbs >= 0 ? `${Math.round(macroProgress.remaining.carbs)}g left` : `${Math.round(Math.abs(macroProgress.remaining?.carbs || 0))}g over`}</span>
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-muted-foreground">Fat</span>
-                  <span className="font-medium">{macroProgress.consumed.fat}g / {macroProgress.target.fat || 0}g</span>
+                  <span className="font-medium">{Math.round(macroProgress.consumed.fat)}g / {macroProgress.target.fat || 0}g</span>
                 </div>
                 <Progress value={Math.min(100, macroProgress.target.fat ? (macroProgress.consumed.fat / macroProgress.target.fat) * 100 : 0)} className="h-2" />
-                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.fat >= 0 ? `${macroProgress.remaining.fat}g left` : `${Math.abs(macroProgress.remaining?.fat || 0)}g over`}</span>
+                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.fat >= 0 ? `${Math.round(macroProgress.remaining.fat)}g left` : `${Math.round(Math.abs(macroProgress.remaining?.fat || 0))}g over`}</span>
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-muted-foreground">Calories</span>
-                  <span className="font-medium">{macroProgress.consumed.calories} / {macroProgress.target.calories || 0}</span>
+                  <span className="font-medium">{Math.round(macroProgress.consumed.calories)} / {macroProgress.target.calories || 0}</span>
                 </div>
                 <Progress value={Math.min(100, macroProgress.target.calories ? (macroProgress.consumed.calories / macroProgress.target.calories) * 100 : 0)} className="h-2" />
-                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.calories >= 0 ? `${macroProgress.remaining.calories} left` : `${Math.abs(macroProgress.remaining?.calories || 0)} over`}</span>
+                <span className="text-xs text-muted-foreground">{macroProgress.remaining?.calories >= 0 ? `${Math.round(macroProgress.remaining.calories)} left` : `${Math.round(Math.abs(macroProgress.remaining?.calories || 0))} over`}</span>
               </div>
             </div>
           </CardContent>
