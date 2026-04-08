@@ -72,8 +72,8 @@ declare global {
 
 // Session configuration constants for healthcare app
 const SESSION_CONFIG = {
-  // Session timeout: 30 minutes for healthcare apps (balance security vs usability)
-  maxAge: 30 * 60 * 1000, // 30 minutes
+  // Session timeout: 8 hours — users log meals throughout the day
+  maxAge: 8 * 60 * 60 * 1000, // 8 hours
 
   // Rolling session: extends on activity
   rolling: true,
