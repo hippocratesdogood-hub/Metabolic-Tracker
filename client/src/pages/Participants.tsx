@@ -616,16 +616,16 @@ function ViewParticipantModal({ open, onClose, participant, coaches, onEdit, onR
             </div>
           </div>
         </div>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={onViewMetrics} className="gap-2">
+        <DialogFooter className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:justify-end">
+          <Button variant="outline" onClick={onViewMetrics} className="gap-2 w-full sm:w-auto">
             <Activity className="w-4 h-4" />
             Metrics & Notes
           </Button>
-          <Button variant="outline" onClick={onResetPassword} className="gap-2">
+          <Button variant="outline" onClick={onResetPassword} className="gap-2 w-full sm:w-auto">
             <KeyRound className="w-4 h-4" />
             Reset Password
           </Button>
-          <Button onClick={onEdit} className="gap-2">
+          <Button onClick={onEdit} className="gap-2 w-full sm:w-auto">
             <Pencil className="w-4 h-4" />
             Edit Profile
           </Button>
