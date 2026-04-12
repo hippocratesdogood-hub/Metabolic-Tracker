@@ -32,6 +32,9 @@ import type {
   AuditLog,
   AuditAction,
   AuditResourceType,
+  Recipe,
+  RecipeIngredient,
+  InsertRecipeIngredient,
 } from "@shared/schema";
 
 // Configure PostgreSQL pool with SSL in production
@@ -399,7 +402,7 @@ export class PostgresStorage implements IStorage {
 
   async upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget> {
     const existing = await this.getMacroTarget(userId);
-    
+
     if (existing) {
       const results = await db
         .update(schema.macroTargets)
@@ -414,6 +417,76 @@ export class PostgresStorage implements IStorage {
         .returning();
       return results[0];
     }
+  }
+
+  // Recipes
+  async getRecipesForUser(userId: string): Promise<Array<Recipe & { ingredients: RecipeIngredient[] }>> {
+    const recipesList = await db
+      .select()
+      .from(schema.recipes)
+      .where(eq(schema.recipes.participantId, userId))
+      .orderBy(desc(schema.recipes.createdAt));
+
+    if (recipesList.length === 0) return [];
+
+    const recipeIds = recipesList.map(r => r.id);
+    const allIngredients = await db
+      .select()
+      .from(schema.recipeIngredients)
+      .where(sql`${schema.recipeIngredients.recipeId} = ANY(${recipeIds})`);
+
+    return recipesList.map(r => ({
+      ...r,
+      ingredients: allIngredients.filter(i => i.recipeId === r.id),
+    }));
+  }
+
+  async getRecipeById(recipeId: string): Promise<(Recipe & { ingredients: RecipeIngredient[] }) | undefined> {
+    const [recipe] = await db
+      .select()
+      .from(schema.recipes)
+      .where(eq(schema.recipes.id, recipeId));
+    if (!recipe) return undefined;
+
+    const ingredients = await db
+      .select()
+      .from(schema.recipeIngredients)
+      .where(eq(schema.recipeIngredients.recipeId, recipeId));
+
+    return { ...recipe, ingredients };
+  }
+
+  async createRecipe(
+    userId: string,
+    name: string,
+    totalServings: number,
+    ingredients: Array<Omit<InsertRecipeIngredient, "recipeId">>
+  ): Promise<Recipe & { ingredients: RecipeIngredient[] }> {
+    const [recipe] = await db
+      .insert(schema.recipes)
+      .values({
+        participantId: userId,
+        name,
+        totalServings: String(totalServings),
+      })
+      .returning();
+
+    const insertedIngredients: RecipeIngredient[] = [];
+    if (ingredients.length > 0) {
+      const rows = ingredients.map(ing => ({ ...ing, recipeId: recipe.id }));
+      const inserted = await db
+        .insert(schema.recipeIngredients)
+        .values(rows)
+        .returning();
+      insertedIngredients.push(...inserted);
+    }
+
+    return { ...recipe, ingredients: insertedIngredients };
+  }
+
+  async deleteRecipe(recipeId: string): Promise<void> {
+    // recipe_ingredients cascade-delete via FK
+    await db.delete(schema.recipes).where(eq(schema.recipes.id, recipeId));
   }
 
   // Messaging

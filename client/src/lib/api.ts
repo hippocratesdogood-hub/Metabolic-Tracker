@@ -172,6 +172,92 @@ class ApiClient {
     });
   }
 
+  // ── Recipes ──
+  async getRecipes() {
+    return this.request<Array<{
+      id: string;
+      participantId: string;
+      name: string;
+      totalServings: string;
+      createdAt: string;
+      ingredients: Array<{
+        id: string;
+        recipeId: string;
+        foodName: string;
+        nutritionixFoodId: string | null;
+        quantity: string;
+        unit: string | null;
+        calories: string;
+        protein: string;
+        carbs: string;
+        fat: string;
+      }>;
+      totalMacros: { calories: number; protein: number; carbs: number; fat: number };
+      perServingMacros: { calories: number; protein: number; carbs: number; fat: number };
+    }>>("/recipes");
+  }
+
+  async createRecipe(data: {
+    name: string;
+    totalServings: number;
+    ingredients: Array<{
+      foodName: string;
+      quantity: number;
+      unit: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      nutritionixFoodId?: string | null;
+    }>;
+  }) {
+    return this.request<any>("/recipes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRecipe(recipeId: string) {
+    return this.request<{ message: string }>(`/recipes/${recipeId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async lookupNutrition(food: string, quantity: number, unit: string) {
+    return this.request<{
+      calories: number;
+      protein: number;
+      fat: number;
+      totalCarbs: number;
+      fiber: number;
+      netCarbs: number;
+      source: string;
+      sourceName?: string;
+      brand?: string;
+    }>("/food/lookup-nutrition", {
+      method: "POST",
+      body: JSON.stringify({ food, quantity, unit }),
+    });
+  }
+
+  async logRecipeAsMeal(data: {
+    recipeId: string;
+    servingsEaten: number;
+    mealType: string;
+    eaten_at?: string;
+  }) {
+    return this.request<{ parent: FoodEntry; children: FoodEntry[]; coachingMessage: string | null }>("/food/meal", {
+      method: "POST",
+      body: JSON.stringify({
+        recipeId: data.recipeId,
+        servingsEaten: data.servingsEaten,
+        mealType: data.mealType,
+        eaten_at: data.eaten_at,
+        inputType: "text",
+      }),
+    });
+  }
+
   async lookupBarcode(barcode: string) {
     return this.request<{
       found: boolean;

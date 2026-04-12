@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode, ChefHat } from 'lucide-react';
 import BarcodeScannerModal, { type ScannedFoodItem } from '@/components/BarcodeScannerModal';
+import RecipeBuilderModal from '@/components/RecipeBuilderModal';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -309,6 +310,7 @@ export default function FoodLog() {
   const [editableItems, setEditableItems] = useState<any[]>([]);
   const [consentPending, setConsentPending] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+  const [recipeBuilderOpen, setRecipeBuilderOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -1098,8 +1100,18 @@ export default function FoodLog() {
                 >
                   <ScanBarcode className="w-6 h-6" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full text-muted-foreground hover:text-primary h-11 w-11"
+                  onClick={() => setRecipeBuilderOpen(true)}
+                  aria-label="Build a meal from recipe"
+                  data-testid="button-recipe"
+                >
+                  <ChefHat className="w-6 h-6" />
+                </Button>
               </div>
-              <Button 
+              <Button
                 onClick={handleAnalyze} 
                 disabled={(!input.trim() && !selectedImage) || isAnalyzing}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-6"
@@ -1584,6 +1596,15 @@ export default function FoodLog() {
               notes: 'Items added via barcode scan',
             });
           }
+        }}
+      />
+
+      <RecipeBuilderModal
+        isOpen={recipeBuilderOpen}
+        onClose={() => setRecipeBuilderOpen(false)}
+        onMealLogged={() => {
+          queryClient.invalidateQueries({ queryKey: ['food'] });
+          queryClient.invalidateQueries({ queryKey: ['food-streak'] });
         }}
       />
     </div>

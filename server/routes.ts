@@ -632,11 +632,161 @@ export async function registerRoutes(
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Recipes — user-authored meal templates with linear macro scaling
+  // ─────────────────────────────────────────────────────────────────────
+  app.get("/api/recipes", requireAuth, async (req, res) => {
+    try {
+      // Coaches/admins can pass ?participantId=... to view another user's recipes
+      const role = (req.user as any)?.role;
+      const queryParticipantId = req.query.participantId as string | undefined;
+      const targetUserId = (queryParticipantId && (role === "coach" || role === "admin"))
+        ? queryParticipantId
+        : req.user!.id;
+
+      const recipes = await storage.getRecipesForUser(targetUserId);
+      // Attach per-serving macro totals for convenience
+      const withPerServing = recipes.map(r => {
+        const total = r.ingredients.reduce(
+          (acc, i) => {
+            acc.calories += Number(i.calories) || 0;
+            acc.protein += Number(i.protein) || 0;
+            acc.carbs += Number(i.carbs) || 0;
+            acc.fat += Number(i.fat) || 0;
+            return acc;
+          },
+          { calories: 0, protein: 0, carbs: 0, fat: 0 }
+        );
+        const servings = Number(r.totalServings) || 1;
+        return {
+          ...r,
+          totalMacros: total,
+          perServingMacros: {
+            calories: total.calories / servings,
+            protein: total.protein / servings,
+            carbs: total.carbs / servings,
+            fat: total.fat / servings,
+          },
+        };
+      });
+      res.json(withPerServing);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/recipes", requireAuth, async (req, res) => {
+    try {
+      const { name, totalServings, ingredients } = req.body;
+      if (!name || typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ message: "Recipe name is required" });
+      }
+      if (!Array.isArray(ingredients) || ingredients.length === 0) {
+        return res.status(400).json({ message: "At least one ingredient is required" });
+      }
+      const servings = Number(totalServings);
+      if (!servings || servings <= 0) {
+        return res.status(400).json({ message: "Total servings must be a positive number" });
+      }
+
+      const normalized = ingredients.map((ing: any) => ({
+        foodName: String(ing.foodName || ing.name || "").trim(),
+        nutritionixFoodId: ing.nutritionixFoodId || null,
+        quantity: String(Number(ing.quantity) || 1),
+        unit: ing.unit || null,
+        calories: String(Number(ing.calories) || 0),
+        protein: String(Number(ing.protein) || 0),
+        carbs: String(Number(ing.carbs) || 0),
+        fat: String(Number(ing.fat) || 0),
+      }));
+
+      if (normalized.some(i => !i.foodName)) {
+        return res.status(400).json({ message: "Every ingredient must have a name" });
+      }
+
+      const recipe = await storage.createRecipe(req.user!.id, name.trim(), servings, normalized);
+      res.json(recipe);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/recipes/:id", requireAuth, async (req, res) => {
+    try {
+      const recipe = await storage.getRecipeById(req.params.id);
+      if (!recipe) {
+        return res.status(404).json({ message: "Recipe not found" });
+      }
+      if (recipe.participantId !== req.user!.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteRecipe(req.params.id);
+      res.json({ message: "Deleted" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Nutrition lookup — thin wrapper for recipe-builder ingredient search.
+  // Rate-limited to protect the Nutritionix trial quota.
+  app.post("/api/food/lookup-nutrition", requireAuth, aiLimiter, async (req, res) => {
+    try {
+      const { food, quantity, unit } = req.body;
+      if (!food || typeof food !== "string") {
+        return res.status(400).json({ message: "food is required" });
+      }
+      const qty = Number(quantity) || 1;
+      const u = unit || "serving";
+      const result = await nutritionLookup.lookupItemMacros(food, qty, u);
+      if (!result) {
+        return res.status(404).json({ message: "No nutrition data found for that item" });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Batch save: create parent meal + individual child items
   app.post("/api/food/meal", requireAuth, async (req, res) => {
     try {
-      const { items, mealType, rawText, timestamp, notes, inputType, tags, eaten_at } = req.body;
+      let { items, mealType, rawText, timestamp, notes, inputType, tags, eaten_at } = req.body;
+      const { recipeId, servingsEaten } = req.body;
       const userId = req.user!.id;
+
+      // If a recipeId is provided, load the recipe and scale its ingredients
+      if (recipeId) {
+        const recipe = await storage.getRecipeById(recipeId);
+        if (!recipe) {
+          return res.status(404).json({ message: "Recipe not found" });
+        }
+        if (recipe.participantId !== userId) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        const totalServings = Number(recipe.totalServings) || 1;
+        const eatenServings = Number(servingsEaten) || 1;
+        const scale = eatenServings / totalServings;
+        items = recipe.ingredients.map(ing => {
+          const qty = Number(ing.quantity) || 0;
+          const cal = Number(ing.calories) || 0;
+          const pro = Number(ing.protein) || 0;
+          const c = Number(ing.carbs) || 0;
+          const f = Number(ing.fat) || 0;
+          return {
+            name: ing.foodName,
+            quantity: qty * scale,
+            unit: ing.unit || "serving",
+            calories: cal * scale,
+            protein: pro * scale,
+            fat: f * scale,
+            totalCarbs: c * scale,
+            fiber: 0,
+            netCarbs: c * scale,
+          };
+        });
+        rawText = rawText || `${recipe.name} × ${eatenServings} serving${eatenServings === 1 ? "" : "s"}`;
+        inputType = inputType || "text";
+      }
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ message: "At least one food item is required" });

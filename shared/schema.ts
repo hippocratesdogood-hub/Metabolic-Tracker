@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum, uniqueIndex, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -160,6 +160,28 @@ export const macroTargets = pgTable("macro_targets", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// User-authored recipes — reusable meal templates with linear macro scaling
+export const recipes = pgTable("recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  participantId: varchar("participant_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  totalServings: numeric("total_servings").notNull().default("1"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const recipeIngredients = pgTable("recipe_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").references(() => recipes.id, { onDelete: "cascade" }).notNull(),
+  foodName: text("food_name").notNull(),
+  nutritionixFoodId: text("nutritionix_food_id"),
+  quantity: numeric("quantity").notNull().default("1"),
+  unit: text("unit"),
+  calories: numeric("calories").notNull().default("0"),
+  protein: numeric("protein").notNull().default("0"),
+  carbs: numeric("carbs").notNull().default("0"),
+  fat: numeric("fat").notNull().default("0"),
+});
+
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   participantId: varchar("participant_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -284,6 +306,14 @@ export const insertFoodEntrySchema = createInsertSchema(foodEntries, {
 
 export const insertMacroTargetSchema = createInsertSchema(macroTargets).omit({ id: true, createdAt: true, updatedAt: true });
 
+export const insertRecipeSchema = createInsertSchema(recipes, {
+  name: z.string().min(1).max(200),
+}).omit({ id: true, createdAt: true });
+
+export const insertRecipeIngredientSchema = createInsertSchema(recipeIngredients, {
+  foodName: z.string().min(1),
+}).omit({ id: true });
+
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
 export const insertPromptSchema = createInsertSchema(prompts, {
@@ -338,6 +368,12 @@ export type PromptRule = typeof promptRules.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MacroTarget = typeof macroTargets.$inferSelect;
 export type InsertMacroTarget = z.infer<typeof insertMacroTargetSchema>;
+
+export type Recipe = typeof recipes.$inferSelect;
+export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
+
+export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
+export type InsertRecipeIngredient = z.infer<typeof insertRecipeIngredientSchema>;
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
