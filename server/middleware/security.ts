@@ -476,7 +476,7 @@ export function securityHeaders(): RequestHandler {
     // Content Security Policy (basic - customize for your app)
     res.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.ingest.us.sentry.io https://*.ingest.sentry.io; worker-src 'self' blob:;"
     );
 
     // HSTS - Enforce HTTPS for 1 year (only in production)
