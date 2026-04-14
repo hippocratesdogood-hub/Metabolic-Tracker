@@ -47,6 +47,7 @@ import {
   auditDelete,
 } from "./middleware/auditMiddleware";
 import { nutritionLookup } from "./services/nutritionLookup";
+import { promptEngine } from "./services/promptEngine";
 // coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
 // Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
 import { calculateMealScore } from "./services/mealScore";
@@ -461,6 +462,19 @@ export async function registerRoutes(
       }
 
       const entry = await storage.createMetricEntry(result.data);
+
+      // Fire event-triggered prompts (fire-and-forget — must not block response
+      // or fail the metric creation if the prompt engine errors).
+      void promptEngine
+        .onMetricLogged(req.user!.id, entry.type, {
+          timestamp: entry.timestamp,
+          createdAt: entry.createdAt,
+          valueJson: entry.valueJson,
+        })
+        .catch((err) => {
+          console.error("[promptEngine] onMetricLogged failed", err);
+        });
+
       res.json(entry);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1676,6 +1690,29 @@ Do NOT include a qualityScore field — scoring is handled server-side.`;
       const entries = await storage.getMetricEntries(req.params.id);
       // Return the 50 most recent entries
       res.json(entries.slice(0, 50));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Participant prompt inbox — delivered coaching prompts for the current user
+  app.get("/api/prompts/inbox", requireAuth, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt((req.query.limit as string) || "50", 10) || 50, 200);
+      const inbox = await storage.getPromptInboxForUser(req.user!.id, limit);
+      res.json(inbox);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/prompts/inbox/:id/opened", requireAuth, async (req, res) => {
+    try {
+      const ok = await storage.markPromptDeliveryOpened(req.params.id, req.user!.id);
+      if (!ok) {
+        return res.status(404).json({ message: "Delivery not found" });
+      }
+      res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -15,6 +15,7 @@ import {
 } from "./services/errorMonitoring";
 import { errorMetricsService } from "./services/errorMetrics";
 import { performanceMonitor } from "./services/performanceMonitor";
+import { startScheduler, stopScheduler } from "./services/scheduler";
 
 // Initialize error monitoring FIRST (before any other code)
 initializeErrorMonitoring();
@@ -148,11 +149,16 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
+    // Start hourly prompt scheduler once the server is actually listening.
+    startScheduler();
   });
 
   // Graceful shutdown - flush Sentry events before exit
   const gracefulShutdown = async (signal: string) => {
     log(`Received ${signal}. Shutting down gracefully...`);
+
+    // Stop the hourly scheduler so no new ticks fire during shutdown
+    stopScheduler();
 
     // Stop accepting new connections
     httpServer.close(async () => {

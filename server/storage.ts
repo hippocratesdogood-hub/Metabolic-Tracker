@@ -489,6 +489,83 @@ export class PostgresStorage implements IStorage {
     await db.delete(schema.recipes).where(eq(schema.recipes.id, recipeId));
   }
 
+  // Prompt inbox
+  async getPromptInboxForUser(userId: string, limit = 50): Promise<Array<{
+    id: string;
+    promptId: string;
+    firedAt: Date;
+    status: string;
+    promptName: string;
+    promptKey: string;
+    category: string;
+    channel: string;
+    renderedMessage: string;
+    triggerType: string | null;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.promptDeliveries.id,
+        promptId: schema.promptDeliveries.promptId,
+        firedAt: schema.promptDeliveries.firedAt,
+        status: schema.promptDeliveries.status,
+        triggerContextJson: schema.promptDeliveries.triggerContextJson,
+        promptName: schema.prompts.name,
+        promptKey: schema.prompts.key,
+        category: schema.prompts.category,
+        channel: schema.prompts.channel,
+        messageTemplate: schema.prompts.messageTemplate,
+      })
+      .from(schema.promptDeliveries)
+      .innerJoin(
+        schema.prompts,
+        eq(schema.promptDeliveries.promptId, schema.prompts.id)
+      )
+      .where(eq(schema.promptDeliveries.userId, userId))
+      .orderBy(desc(schema.promptDeliveries.firedAt))
+      .limit(limit);
+
+    return rows.map((r) => {
+      const ctx = (r.triggerContextJson ?? {}) as {
+        renderedMessage?: string;
+        triggerType?: string;
+      };
+      return {
+        id: r.id,
+        promptId: r.promptId,
+        firedAt: r.firedAt,
+        status: r.status,
+        promptName: r.promptName,
+        promptKey: r.promptKey,
+        category: r.category,
+        channel: r.channel,
+        // Prefer the snapshot taken at fire time; fall back to the raw template
+        // if an older delivery predates that snapshot field.
+        renderedMessage: ctx.renderedMessage ?? r.messageTemplate,
+        triggerType: ctx.triggerType ?? null,
+      };
+    });
+  }
+
+  async markPromptDeliveryOpened(
+    deliveryId: string,
+    userId: string
+  ): Promise<boolean> {
+    const [existing] = await db
+      .select({ userId: schema.promptDeliveries.userId })
+      .from(schema.promptDeliveries)
+      .where(eq(schema.promptDeliveries.id, deliveryId));
+
+    if (!existing || existing.userId !== userId) return false;
+
+    const updated = await db
+      .update(schema.promptDeliveries)
+      .set({ status: "opened" })
+      .where(eq(schema.promptDeliveries.id, deliveryId))
+      .returning({ id: schema.promptDeliveries.id });
+
+    return updated.length > 0;
+  }
+
   // Messaging
   async getOrCreateConversation(participantId: string, coachId: string): Promise<Conversation> {
     const existing = await db

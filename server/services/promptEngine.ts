@@ -80,6 +80,7 @@ export interface UserContext {
   id: string;
   name: string;
   email: string;
+  timezone: string;
   lastLogDate: Date | null;
   daysSinceLastLog: number | null;
   metrics: MetricSummary;
@@ -106,6 +107,48 @@ export interface DeliveryResult {
   message: string;
   channel: string;
   error?: string;
+}
+
+// ============================================================================
+// Timezone helpers
+// ============================================================================
+
+const WEEKDAY_MAP: Record<string, number> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
+/**
+ * Return hour (0-23), day-of-week (0=Sun), and day-of-month for a given
+ * instant in the specified IANA timezone. Used so scheduled prompt rules
+ * fire at the user's local time rather than server UTC.
+ */
+export function getLocalDateParts(
+  date: Date,
+  timezone: string
+): { hour: number; dayOfWeek: number; dayOfMonth: number } {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    hour12: false,
+    day: "numeric",
+    weekday: "long",
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+
+  const rawHour = parseInt(get("hour"), 10);
+  // Intl with hour12:false can emit "24" for midnight on some engines
+  const hour = rawHour === 24 ? 0 : rawHour;
+  const dayOfMonth = parseInt(get("day"), 10);
+  const dayOfWeek = WEEKDAY_MAP[get("weekday")] ?? 0;
+
+  return { hour, dayOfWeek, dayOfMonth };
 }
 
 // ============================================================================
@@ -222,7 +265,10 @@ export class PromptEngine {
 
     switch (rule.triggerType) {
       case "schedule":
-        return this.evaluateSchedule(rule.scheduleJson as ScheduleConfig | null);
+        return this.evaluateSchedule(
+          rule.scheduleJson as ScheduleConfig | null,
+          context.timezone
+        );
 
       case "missed":
         return this.evaluateMissedLogging(conditions, context);
@@ -236,28 +282,24 @@ export class PromptEngine {
   }
 
   /**
-   * Check if current time matches schedule
+   * Check if current time in the user's timezone matches schedule.
+   * Hour/day-of-week/day-of-month are all interpreted in the user's local zone
+   * so a rule set to hour=8 fires at 8 AM local, not 8 AM server UTC.
    */
-  evaluateSchedule(schedule: ScheduleConfig | null): boolean {
+  evaluateSchedule(schedule: ScheduleConfig | null, timezone: string): boolean {
     if (!schedule) return false;
 
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentDayOfWeek = now.getDay();
-    const currentDayOfMonth = now.getDate();
+    const parts = getLocalDateParts(new Date(), timezone);
 
-    // Check hour (if specified)
-    if (schedule.hour !== undefined && schedule.hour !== currentHour) {
+    if (schedule.hour !== undefined && schedule.hour !== parts.hour) {
       return false;
     }
 
-    // Check day of week (if specified)
-    if (schedule.dayOfWeek !== undefined && schedule.dayOfWeek !== currentDayOfWeek) {
+    if (schedule.dayOfWeek !== undefined && schedule.dayOfWeek !== parts.dayOfWeek) {
       return false;
     }
 
-    // Check day of month (if specified)
-    if (schedule.dayOfMonth !== undefined && schedule.dayOfMonth !== currentDayOfMonth) {
+    if (schedule.dayOfMonth !== undefined && schedule.dayOfMonth !== parts.dayOfMonth) {
       return false;
     }
 
@@ -537,7 +579,8 @@ export class PromptEngine {
     try {
       const message = this.personalizeMessage(prompt.messageTemplate, context);
 
-      // Record the delivery
+      // Record the delivery with the rendered message snapshot so the inbox
+      // displays what was generated at fire time (not re-rendered later).
       await db.insert(schema.promptDeliveries).values({
         userId: context.id,
         promptId: prompt.id,
@@ -546,6 +589,7 @@ export class PromptEngine {
           ruleKey: rule.key,
           triggerType: rule.triggerType,
           metrics: context.metrics,
+          renderedMessage: message,
         },
         status: "sent",
       });
@@ -634,6 +678,7 @@ export class PromptEngine {
       id: user.id,
       name: user.name,
       email: user.email,
+      timezone: user.timezone || "America/Los_Angeles",
       lastLogDate,
       daysSinceLastLog,
       metrics: this.summarizeMetrics(metrics),
