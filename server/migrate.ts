@@ -92,6 +92,58 @@ async function runIncrementalMigrations(pool: pg.Pool) {
     ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_consent_given" boolean DEFAULT false;
   `);
 
+  // Migration: Clinical protocol fields on users
+  await pool.query(`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "glp1_status" boolean DEFAULT false;
+  `);
+  await pool.query(`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "program_phase_override" text;
+  `);
+
+  // Migration: Clinical protocol fields on macro_targets
+  await pool.query(`
+    ALTER TABLE "macro_targets" ADD COLUMN IF NOT EXISTS "net_carbs_threshold" integer;
+  `);
+  await pool.query(`
+    ALTER TABLE "macro_targets" ADD COLUMN IF NOT EXISTS "target_meal_count" integer DEFAULT 3;
+  `);
+  await pool.query(`
+    ALTER TABLE "macro_targets" ADD COLUMN IF NOT EXISTS "eating_window_start" text DEFAULT '08:00';
+  `);
+  await pool.query(`
+    ALTER TABLE "macro_targets" ADD COLUMN IF NOT EXISTS "eating_window_end" text DEFAULT '20:00';
+  `);
+
+  // Migration: Food entry eaten_at (user-adjustable consumption time)
+  await pool.query(`
+    ALTER TABLE "food_entries" ADD COLUMN IF NOT EXISTS "eaten_at" timestamp;
+  `);
+
+  // Migration: Recipe Builder tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "recipes" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "participant_id" varchar NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "name" text NOT NULL,
+      "total_servings" numeric NOT NULL DEFAULT '1',
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "recipe_ingredients" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "recipe_id" varchar NOT NULL REFERENCES "recipes"("id") ON DELETE CASCADE,
+      "food_name" text NOT NULL,
+      "nutritionix_food_id" text,
+      "quantity" numeric NOT NULL DEFAULT '1',
+      "unit" text,
+      "calories" numeric NOT NULL DEFAULT '0',
+      "protein" numeric NOT NULL DEFAULT '0',
+      "carbs" numeric NOT NULL DEFAULT '0',
+      "fat" numeric NOT NULL DEFAULT '0'
+    );
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [
