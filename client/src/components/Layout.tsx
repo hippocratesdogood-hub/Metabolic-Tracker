@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { InboxBell } from '@/components/InboxBell';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -47,6 +48,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <span className="inline-flex items-center justify-center bg-[#F07D1A] text-white font-heading font-bold text-xs px-1.5 py-0.5 rounded-md leading-none">OS</span>
         </div>
         <div className="flex items-center gap-1">
+          {isParticipant && <InboxBell />}
           <Button
             variant="ghost"
             size="icon"
@@ -90,6 +92,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 border-t border-sidebar-border space-y-2">
+          {isParticipant && (
+            <div className="flex items-center justify-between px-2">
+              <span className="text-xs text-muted-foreground">Notifications</span>
+              <InboxBell />
+            </div>
+          )}
           <div className="flex items-center justify-between px-2">
             <span className="text-xs text-muted-foreground">Theme</span>
             <Button

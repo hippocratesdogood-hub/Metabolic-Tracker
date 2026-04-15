@@ -595,6 +595,28 @@ class ApiClient {
       };
     }>("/reports/weekly");
   }
+
+  // ── Prompt Inbox ──
+  async getPromptInbox() {
+    return this.request<Array<{
+      id: string;
+      promptId: string;
+      firedAt: string;
+      status: "sent" | "failed" | "opened";
+      promptName: string;
+      promptKey: string;
+      category: "reminder" | "intervention" | "education";
+      channel: "in_app" | "email" | "sms";
+      renderedMessage: string;
+      triggerType: string | null;
+    }>>("/prompts/inbox");
+  }
+
+  async markPromptDeliveryOpened(id: string) {
+    return this.request<{ ok: boolean }>(`/prompts/inbox/${id}/opened`, {
+      method: "POST",
+    });
+  }
 }
 
 export const api = new ApiClient();
