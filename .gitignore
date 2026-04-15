@@ -12,3 +12,6 @@ vite.config.ts.*
 backups/*.sql.gz
 backups/*.meta.json
 backups/user-export-*
+
+# Local temp + dev backups (may contain PHI, never commit)
+.tmp/
