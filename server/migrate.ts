@@ -144,6 +144,55 @@ async function runIncrementalMigrations(pool: pg.Pool) {
     );
   `);
 
+  // Migration: Biomarker reference table (lab interpretation engine)
+  // Postgres lacks CREATE TYPE IF NOT EXISTS, so the DO block swallows
+  // duplicate_object on re-runs.
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "biomarker_category" AS ENUM (
+        'metabolic', 'lipid', 'inflammation', 'thyroid', 'hormones',
+        'nutrients', 'liver', 'kidney', 'cbc', 'derived'
+      );
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "flag_direction" AS ENUM (
+        'high_bad', 'low_bad', 'both_bad', 'high_good'
+      );
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "biomarkers" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "slug" varchar(64) NOT NULL UNIQUE,
+      "name" varchar(128) NOT NULL,
+      "abbreviation" varchar(32),
+      "unit" varchar(32) NOT NULL,
+      "category" "biomarker_category" NOT NULL,
+      "flag_direction" "flag_direction" NOT NULL DEFAULT 'both_bad',
+      "standard_low" real,
+      "standard_high" real,
+      "optimal_low" real,
+      "optimal_high" real,
+      "critical_low" real,
+      "critical_high" real,
+      "is_derived" boolean NOT NULL DEFAULT false,
+      "derivation_formula" varchar(256),
+      "clinical_note" text,
+      "description" text,
+      "patient_explanation" text,
+      "sort_order" integer NOT NULL DEFAULT 0,
+      "is_active" boolean NOT NULL DEFAULT true,
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+  const { seedBiomarkers } = await import("./biomarkerSeedData");
+  await seedBiomarkers(pool);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [

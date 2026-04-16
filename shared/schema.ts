@@ -15,6 +15,28 @@ export const promptChannelEnum = pgEnum("prompt_channel", ["in_app", "email", "s
 export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "missed"]);
 export const deliveryStatusEnum = pgEnum("delivery_status", ["sent", "failed", "opened"]);
 
+// Biomarker reference (lab interpretation engine)
+export const biomarkerCategoryEnum = pgEnum("biomarker_category", [
+  "metabolic",
+  "lipid",
+  "inflammation",
+  "thyroid",
+  "hormones",
+  "nutrients",
+  "liver",
+  "kidney",
+  "cbc",
+  "derived",
+]);
+// high_bad = flag when value too HIGH, low_bad = flag when too LOW,
+// both_bad = flag either direction, high_good = higher is better with a floor
+export const flagDirectionEnum = pgEnum("flag_direction", [
+  "high_bad",
+  "low_bad",
+  "both_bad",
+  "high_good",
+]);
+
 // Audit log enums
 export const auditActionEnum = pgEnum("audit_action", [
   // Authentication events
@@ -287,6 +309,36 @@ export const auditLogs = pgTable("audit_logs", {
   errorMessage: text("error_message"),
 });
 
+// Biomarker reference table — clinical lab interpretation thresholds
+// Seeded at boot via runIncrementalMigrations + seedBiomarkers().
+// "standard" = conventional lab reference range.
+// "optimal"  = Dr. Larson's tighter functional targets (used for scoring).
+// "critical" = values requiring urgent clinical attention.
+export const biomarkers = pgTable("biomarkers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 128 }).notNull(),
+  abbreviation: varchar("abbreviation", { length: 32 }),
+  unit: varchar("unit", { length: 32 }).notNull(),
+  category: biomarkerCategoryEnum("category").notNull(),
+  flagDirection: flagDirectionEnum("flag_direction").notNull().default("both_bad"),
+  standardLow: real("standard_low"),
+  standardHigh: real("standard_high"),
+  optimalLow: real("optimal_low"),
+  optimalHigh: real("optimal_high"),
+  criticalLow: real("critical_low"),
+  criticalHigh: real("critical_high"),
+  isDerived: boolean("is_derived").notNull().default(false),
+  derivationFormula: varchar("derivation_formula", { length: 256 }),
+  clinicalNote: text("clinical_note"),
+  description: text("description"),
+  patientExplanation: text("patient_explanation"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
@@ -382,3 +434,8 @@ export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditAction = InsertAuditLog["action"];
 export type AuditResult = InsertAuditLog["result"];
 export type AuditResourceType = InsertAuditLog["resourceType"];
+
+export type Biomarker = typeof biomarkers.$inferSelect;
+export type InsertBiomarker = typeof biomarkers.$inferInsert;
+export type BiomarkerCategory = (typeof biomarkerCategoryEnum.enumValues)[number];
+export type FlagDirection = (typeof flagDirectionEnum.enumValues)[number];
