@@ -339,6 +339,19 @@ export const biomarkers = pgTable("biomarkers", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Lab results — one row per (user, biomarker, collection_date).
+// Intentionally minimal. Panels/reports deferred to Phase 2 (PDF ingestion).
+export const labResults = pgTable("lab_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  biomarkerId: varchar("biomarker_id").references(() => biomarkers.id).notNull(),
+  value: real("value").notNull(),
+  collectedAt: timestamp("collected_at").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users, {
   email: z.string().email(),
@@ -439,3 +452,6 @@ export type Biomarker = typeof biomarkers.$inferSelect;
 export type InsertBiomarker = typeof biomarkers.$inferInsert;
 export type BiomarkerCategory = (typeof biomarkerCategoryEnum.enumValues)[number];
 export type FlagDirection = (typeof flagDirectionEnum.enumValues)[number];
+
+export type LabResult = typeof labResults.$inferSelect;
+export type InsertLabResult = typeof labResults.$inferInsert;

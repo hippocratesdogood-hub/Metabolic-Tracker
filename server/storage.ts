@@ -489,6 +489,61 @@ export class PostgresStorage implements IStorage {
     await db.delete(schema.recipes).where(eq(schema.recipes.id, recipeId));
   }
 
+  // Lab results (minimal — Phase 1 of lab interpretation)
+  // Hot path: biomarker-gated prompt rules fetch latest-per-biomarker with a
+  // maxAgeDays filter. The (user_id, biomarker_id, collected_at DESC) index
+  // turns this into an index-only seek.
+  async getLatestLabResultForUserAndBiomarker(
+    userId: string,
+    biomarkerSlug: string,
+    maxAgeDays: number
+  ): Promise<{ biomarker: schema.Biomarker; value: number; collectedAt: Date } | undefined> {
+    const rows = await db
+      .select({
+        value: schema.labResults.value,
+        collectedAt: schema.labResults.collectedAt,
+        biomarker: schema.biomarkers,
+      })
+      .from(schema.labResults)
+      .innerJoin(schema.biomarkers, eq(schema.labResults.biomarkerId, schema.biomarkers.id))
+      .where(and(
+        eq(schema.labResults.userId, userId),
+        eq(schema.biomarkers.slug, biomarkerSlug),
+        sql`${schema.labResults.collectedAt} > NOW() - (${maxAgeDays}::int || ' days')::interval`
+      ))
+      .orderBy(desc(schema.labResults.collectedAt))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return undefined;
+    return { biomarker: row.biomarker, value: row.value, collectedAt: row.collectedAt };
+  }
+
+  async getLabResultsForUser(
+    userId: string
+  ): Promise<Array<{ result: schema.LabResult; biomarker: schema.Biomarker }>> {
+    const rows = await db
+      .select({ result: schema.labResults, biomarker: schema.biomarkers })
+      .from(schema.labResults)
+      .innerJoin(schema.biomarkers, eq(schema.labResults.biomarkerId, schema.biomarkers.id))
+      .where(eq(schema.labResults.userId, userId))
+      .orderBy(desc(schema.labResults.collectedAt));
+    return rows;
+  }
+
+  async createLabResult(input: schema.InsertLabResult): Promise<schema.LabResult> {
+    const [row] = await db.insert(schema.labResults).values(input).returning();
+    return row;
+  }
+
+  async deleteLabResult(id: string, userId: string): Promise<boolean> {
+    const deleted = await db
+      .delete(schema.labResults)
+      .where(and(eq(schema.labResults.id, id), eq(schema.labResults.userId, userId)))
+      .returning({ id: schema.labResults.id });
+    return deleted.length > 0;
+  }
+
   // Prompt inbox
   async getPromptInboxForUser(userId: string, limit = 50): Promise<Array<{
     id: string;

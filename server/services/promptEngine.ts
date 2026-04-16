@@ -19,10 +19,11 @@
  * - Rate limiting per user
  */
 
-import { db } from "../storage";
+import { db, storage } from "../storage";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import { isBackfilledEntry } from "../storage";
+import { scoreBiomarker, type BiomarkerScore } from "./scoring";
 
 // ============================================================================
 // Types
@@ -74,6 +75,16 @@ export interface ConditionConfig {
   consecutiveDays?: number;
   /** Days without activity */
   inactiveDays?: number;
+
+  // ------ Biomarker conditions (Phase 1 lab interpretation) ------
+  /** Biomarker slug to evaluate (e.g., "hs_crp", "homa_ir"). When set,
+   *  routes to biomarker evaluation instead of metric comparison. */
+  biomarkerSlug?: string;
+  /** Match by severity label. Either this or operator+value must be set. */
+  biomarkerSeverity?: "optimal" | "borderline" | "abnormal" | "critical";
+  /** Ignore lab results older than this many days. Default: 180.
+   *  Enforced in SQL (storage layer) — never filtered in memory. */
+  maxAgeDays?: number;
 }
 
 export interface UserContext {
@@ -155,6 +166,33 @@ export function getLocalDateParts(
 // Prompt Engine Class
 // ============================================================================
 
+/**
+ * Lazy-fetch + cache biomarker scores for a single user within one
+ * evaluation pass. Each call hits storage with a SQL-level maxAgeDays
+ * filter (never fetch-then-discard in memory). Cache key includes
+ * maxAgeDays so two rules with different windows don't mask each other.
+ */
+type BiomarkerFetcher = (
+  slug: string,
+  maxAgeDays: number
+) => Promise<BiomarkerScore | null>;
+
+function createBiomarkerFetcher(userId: string): BiomarkerFetcher {
+  const cache = new Map<string, BiomarkerScore | null>();
+  return async (slug, maxAgeDays) => {
+    const cacheKey = `${slug}|${maxAgeDays}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+    const row = await storage.getLatestLabResultForUserAndBiomarker(
+      userId,
+      slug,
+      maxAgeDays
+    );
+    const score = row ? scoreBiomarker(row.value, row.biomarker) : null;
+    cache.set(cacheKey, score);
+    return score;
+  };
+}
+
 export class PromptEngine {
   /**
    * Evaluate all active rules for a user and fire matching prompts
@@ -166,6 +204,8 @@ export class PromptEngine {
     const context = await this.getUserContext(userId);
     if (!context) return results;
 
+    const fetchBiomarker = createBiomarkerFetcher(userId);
+
     // Get active rules ordered by priority
     const rules = await this.getActiveRules();
 
@@ -176,10 +216,10 @@ export class PromptEngine {
       }
 
       // Evaluate rule conditions
-      if (this.evaluateRule(rule, context)) {
+      if (await this.evaluateRule(rule, context, fetchBiomarker)) {
         const prompt = await this.getPrompt(rule.promptId);
         if (prompt && prompt.active) {
-          const result = await this.deliverPrompt(prompt, rule, context);
+          const result = await this.deliverPrompt(prompt, rule, context, fetchBiomarker);
           results.push(result);
         }
       }
@@ -233,6 +273,8 @@ export class PromptEngine {
     const context = await this.getUserContext(userId);
     if (!context) return results;
 
+    const fetchBiomarker = createBiomarkerFetcher(userId);
+
     // Get event-triggered rules for this metric type
     const rules = await this.getEventRulesForMetric(metricType);
 
@@ -241,10 +283,10 @@ export class PromptEngine {
         continue;
       }
 
-      if (this.evaluateRule(rule, context)) {
+      if (await this.evaluateRule(rule, context, fetchBiomarker)) {
         const prompt = await this.getPrompt(rule.promptId);
         if (prompt && prompt.active) {
-          const result = await this.deliverPrompt(prompt, rule, context);
+          const result = await this.deliverPrompt(prompt, rule, context, fetchBiomarker);
           results.push(result);
         }
       }
@@ -258,27 +300,76 @@ export class PromptEngine {
   // ============================================================================
 
   /**
-   * Evaluate if a rule's conditions are met
+   * Evaluate if a rule's conditions are met.
+   *
+   * Rules may optionally layer a biomarker gate on top of any trigger type:
+   * if conditionsJson has biomarkerSlug set, the biomarker state check runs
+   * alongside the normal trigger-type evaluation and both must pass.
    */
-  evaluateRule(rule: PromptRule, context: UserContext): boolean {
+  async evaluateRule(
+    rule: PromptRule,
+    context: UserContext,
+    fetchBiomarker: BiomarkerFetcher
+  ): Promise<boolean> {
     const conditions = rule.conditionsJson as ConditionConfig | null;
 
+    // Trigger-type gate (when the rule is eligible to run)
+    let triggerMatches: boolean;
     switch (rule.triggerType) {
       case "schedule":
-        return this.evaluateSchedule(
+        triggerMatches = this.evaluateSchedule(
           rule.scheduleJson as ScheduleConfig | null,
           context.timezone
         );
-
+        break;
       case "missed":
-        return this.evaluateMissedLogging(conditions, context);
-
+        triggerMatches = this.evaluateMissedLogging(conditions, context);
+        break;
       case "event":
-        return this.evaluateEventCondition(conditions, context);
-
+        // Event rules keyed on a biomarker (no metricType) skip the metric
+        // switch — we let the biomarker gate below decide.
+        if (conditions?.biomarkerSlug && !conditions.metricType) {
+          triggerMatches = true;
+        } else {
+          triggerMatches = this.evaluateEventCondition(conditions, context);
+        }
+        break;
       default:
         return false;
     }
+    if (!triggerMatches) return false;
+
+    // Optional biomarker gate — evaluated only after trigger matches so we
+    // never hit the DB for rules that aren't firing anyway.
+    if (conditions?.biomarkerSlug) {
+      return this.evaluateBiomarkerCondition(conditions, fetchBiomarker);
+    }
+
+    return true;
+  }
+
+  /**
+   * Evaluate a biomarker-gated condition against the patient's latest lab
+   * value (within conditions.maxAgeDays). Returns false if no matching lab
+   * exists — stale-data safety.
+   */
+  async evaluateBiomarkerCondition(
+    conditions: ConditionConfig,
+    fetchBiomarker: BiomarkerFetcher
+  ): Promise<boolean> {
+    if (!conditions.biomarkerSlug) return false;
+    const maxAgeDays = conditions.maxAgeDays ?? 180;
+    const score = await fetchBiomarker(conditions.biomarkerSlug, maxAgeDays);
+    if (!score) return false; // no lab or lab too old
+
+    if (conditions.biomarkerSeverity) {
+      return score.severity === conditions.biomarkerSeverity;
+    }
+    if (conditions.operator && conditions.value != null) {
+      return this.compare(score.value, conditions.operator, conditions.value);
+    }
+    // Misconfigured rule — either severity or operator+value is required.
+    return false;
   }
 
   /**
@@ -477,10 +568,38 @@ export class PromptEngine {
   // ============================================================================
 
   /**
-   * Replace tokens in message template with user-specific data
+   * Replace tokens in message template with user-specific data.
+   *
+   * Biomarker tokens (e.g. `{{biomarker.hs_crp.value}}`) are resolved from
+   * the `biomarkerScores` map. Any biomarker referenced in the template
+   * should be pre-fetched by the caller (see `deliverPrompt`) so this
+   * function stays synchronous.
    */
-  personalizeMessage(template: string, context: UserContext): string {
+  personalizeMessage(
+    template: string,
+    context: UserContext,
+    biomarkerScores?: Map<string, BiomarkerScore>
+  ): string {
     let message = template;
+
+    // Biomarker tokens: {{biomarker.<slug>.value|label|severity|unit}}
+    if (biomarkerScores) {
+      biomarkerScores.forEach((score, slug) => {
+        const escSlug = slug.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+        const tokens: Record<string, string> = {
+          value: score.value.toString(),
+          label: score.label,
+          severity: score.severity,
+          unit: score.unit,
+        };
+        for (const [key, val] of Object.entries(tokens)) {
+          message = message.replace(
+            new RegExp(`\\{\\{biomarker\\.${escSlug}\\.${key}\\}\\}`, "g"),
+            val
+          );
+        }
+      });
+    }
 
     // User info
     message = message.replace(/\{\{name\}\}/g, context.name || "there");
@@ -569,15 +688,39 @@ export class PromptEngine {
   // ============================================================================
 
   /**
-   * Deliver a prompt to a user
+   * Deliver a prompt to a user.
+   *
+   * Pre-fetches any biomarker tokens referenced in the message template so
+   * personalizeMessage can stay synchronous. Uses the caller's cached
+   * BiomarkerFetcher so we never issue duplicate queries.
    */
   async deliverPrompt(
     prompt: Prompt,
     rule: PromptRule,
-    context: UserContext
+    context: UserContext,
+    fetchBiomarker: BiomarkerFetcher
   ): Promise<DeliveryResult> {
     try {
-      const message = this.personalizeMessage(prompt.messageTemplate, context);
+      // Find {{biomarker.<slug>.*}} token slugs used in the template and
+      // resolve each via the cache (180d window for personalization — the
+      // stricter rule-evaluation window has already matched by now).
+      const biomarkerScores = new Map<string, BiomarkerScore>();
+      const tokenSlugs = new Set<string>();
+      const tokenRegex = /\{\{biomarker\.([a-z0-9_]+)\.[a-z]+\}\}/g;
+      let match: RegExpExecArray | null;
+      while ((match = tokenRegex.exec(prompt.messageTemplate)) !== null) {
+        tokenSlugs.add(match[1]);
+      }
+      for (const slug of Array.from(tokenSlugs)) {
+        const score = await fetchBiomarker(slug, 180);
+        if (score) biomarkerScores.set(slug, score);
+      }
+
+      const message = this.personalizeMessage(
+        prompt.messageTemplate,
+        context,
+        biomarkerScores
+      );
 
       // Record the delivery with the rendered message snapshot so the inbox
       // displays what was generated at fire time (not re-rendered later).

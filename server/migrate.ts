@@ -193,6 +193,26 @@ async function runIncrementalMigrations(pool: pg.Pool) {
   const { seedBiomarkers } = await import("./biomarkerSeedData");
   await seedBiomarkers(pool);
 
+  // Migration: Lab results table (minimal — panels/reports deferred to Phase 2)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "lab_results" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "user_id" varchar NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "biomarker_id" varchar NOT NULL REFERENCES "biomarkers"("id"),
+      "value" real NOT NULL,
+      "collected_at" timestamp NOT NULL,
+      "notes" text,
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+  // Composite index enables O(log n) "latest value per biomarker per user"
+  // lookups, which is the hot path for biomarker-gated rule evaluation.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "lab_results_user_biomarker_collected_idx"
+      ON "lab_results" ("user_id", "biomarker_id", "collected_at" DESC);
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [
