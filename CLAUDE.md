@@ -6,7 +6,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 - **Frontend:** React 19 + TypeScript + Vite, Tailwind, shadcn/ui, TanStack Query, lucide-react, sonner
 - **Backend:** Node 20+, Express 5, Passport (scrypt sessions), Drizzle ORM
-- **DB:** PostgreSQL — production is Railway; a stale Neon exists locally (see "Local dev" below)
+- **DB:** PostgreSQL — production is Railway; local dev runs against a fresh, pseudonymized Neon branch (see "Local dev" below)
 - **External:** OpenAI GPT-4o-mini (meal parsing + coaching), Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
 - **Hosting:** Railway, auto-deploys from GitHub `main` → app.doctorchadlarson.com
 
@@ -52,8 +52,9 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 - `npm run dev` → port 5000.
 - **macOS AirPlay Receiver squats on port 5000.** Disable in System Settings → General → AirDrop & Handoff.
-- Local `.env` `DATABASE_URL` points at a **stale Neon DB from Replit days**, not Railway prod. It has **real migrated patient PHI** — clean-up pending. Fresh test password reset for local testing: `LocalDev2026!` on `admin@example.com` and `larson817@gmail.com`.
-- Schema drift: the Neon DB was behind prod by several columns and two tables. Fixed in `runIncrementalMigrations()` with idempotent ADD COLUMN / CREATE TABLE IF NOT EXISTS — safe no-op on Railway.
+- Local `.env` `DATABASE_URL` points at a **fresh Neon dev project** (rotated April 2026 — old project with PHI was deleted to eliminate PITR exposure). All 13 real-patient rows were pseudonymized to `Patient 1-13` with `@dev.local` emails before the rotation; food entry raw text and metric notes for those rows were scrubbed to `[scrubbed for dev]`. Preserved seed/test accounts: `admin@example.com`, `coach@example.com`, `alex@example.com`, `jordan@example.com`, `larson817@gmail.com` — all share password `LocalDev2026!` locally.
+- Neon quirk: fresh projects default `search_path` to empty. Fixed via `ALTER ROLE neondb_owner SET search_path TO public` — already applied on the current dev DB. If you spin up another fresh Neon project, you'll need to apply this again.
+- Schema drift history: the old Neon DB was behind prod by several columns and two tables. Caught and fixed in `runIncrementalMigrations()` with idempotent ADD COLUMN / CREATE TABLE IF NOT EXISTS — safe no-op on Railway.
 
 ## Known pre-existing issues (don't chase these)
 
@@ -61,23 +62,25 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - [server/replit_integrations/](server/replit_integrations/) is leftover Replit code — Railway is prod now. Folder can be deleted.
 - Untracked `migrations/0001_curved_captain_midlands.sql` + `migrations/meta/` are Drizzle Kit-generated files that aren't used (we use `runIncrementalMigrations` instead).
 
-## Prompt engine (wired this session)
+## Prompt engine
 
 - [server/services/promptEngine.ts](server/services/promptEngine.ts) — evaluates rules from [server/services/coachingRules.ts](server/services/coachingRules.ts) and stores deliveries in `prompt_deliveries`.
 - **Event hook:** [server/routes.ts](server/routes.ts) `POST /api/metrics` fires `promptEngine.onMetricLogged()` fire-and-forget after insert.
 - **Hourly tick:** [server/services/scheduler.ts](server/services/scheduler.ts) uses `node-cron` at minute 0 each hour to call `processScheduledPrompts()`. Started after HTTP listen, stopped on SIGTERM/SIGINT.
 - **Timezone:** `evaluateSchedule()` computes local hour/day in the user's `timezone` (defaults to `America/Los_Angeles`) via `Intl.DateTimeFormat`. Rule `hour=8` fires at 8 AM local, not UTC.
-- **Inbox API:** `GET /api/prompts/inbox` and `POST /api/prompts/inbox/:id/opened`. No UI badge yet — next session.
+- **Inbox API:** `GET /api/prompts/inbox` and `POST /api/prompts/inbox/:id/opened`.
+- **UI badge:** [client/src/components/InboxBell.tsx](client/src/components/InboxBell.tsx) — bell icon + red unread badge in mobile header and desktop sidebar. Polls every 60s, auto-marks visible `sent` items as `opened` when the popover opens. Participants only.
 - **Delivery snapshot:** `deliverPrompt()` stores rendered message in `triggerContextJson.renderedMessage` at fire time so inbox shows what was generated, not a re-render.
 
 ## Testing / typecheck
 
 - `npm run check` — TypeScript. Three known error clusters listed above; anything else was likely introduced.
 - `npm test` — Vitest. 434+ tests at last count.
+- Tests live colocated as `*.test.ts` or in `tests/`, use Vitest, run via `npm test` — don't introduce custom assert-based test scripts.
 - No watch mode on `npm run dev` — restart the server after server-side edits.
 
 ## Things worth knowing about the business
 
 - Brand colors: `#004aad` (blue), `#fa7921` (orange), `#dcf0fa` (light blue). **Never teal** — that was a prior AI hallucination Dr. Larson corrected.
 - HIPAA: PHI encryption in storage, audit logging on PHI access, session security all implemented. Never log raw PHI — [server/index.ts](server/index.ts) has `sanitizeForLogging()`.
-- Users include 15 real migrated patients (from JawsDB) + seeded test accounts.
+- Users include 15 real migrated patients (from JawsDB) + seeded test accounts on **production only**. On the local dev DB those 15 were pseudonymized to `Patient 1-13` (with two rows kept as test accounts) before the Neon rotation — never reference real patient names when developing locally.
