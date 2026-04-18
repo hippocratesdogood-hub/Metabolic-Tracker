@@ -51,6 +51,7 @@ import { promptEngine } from "./services/promptEngine";
 // coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
 // Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
 import { calculateMealScore } from "./services/mealScore";
+import { scoreBiomarker } from "./services/scoring";
 
 // OpenAI is optional - only initialize if API key is provided
 const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
@@ -1830,6 +1831,109 @@ Do NOT include a qualityScore field — scoring is handled server-side.`;
       const limit = parseInt(req.query.limit as string) || 100;
       const deliveries = await storage.getPromptDeliveries(limit);
       res.json(deliveries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin - Biomarker reference + Lab Results
+  app.get("/api/admin/biomarkers", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const biomarkers = await storage.getBiomarkers();
+      res.json(biomarkers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/participants/:userId/lab-results", requireAuth, requireCoachOrAdmin, auditPhiRead("METRIC_ENTRY"), async (req, res) => {
+    try {
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(req.params.userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+      const rows = await storage.getLabResultsForUser(req.params.userId);
+      const withScores = rows.map(({ result, biomarker }) => ({
+        result,
+        biomarker,
+        score: scoreBiomarker(result.value, biomarker),
+      }));
+      res.json(withScores);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/lab-results", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const schema = z.object({
+        userId: z.string().min(1),
+        biomarkerId: z.string().min(1),
+        value: z.number().finite(),
+        collectedAt: z.string().min(1),
+        notes: z.string().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      const { userId, biomarkerId, value, collectedAt, notes } = parsed.data;
+
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+
+      const biomarker = await storage.getBiomarker(biomarkerId);
+      if (!biomarker) {
+        return res.status(400).json({ message: "Unknown biomarker" });
+      }
+
+      const collectedAtDate = new Date(collectedAt);
+      if (isNaN(collectedAtDate.getTime())) {
+        return res.status(400).json({ message: "Invalid collectedAt date" });
+      }
+
+      const labResult = await storage.createLabResult({
+        userId,
+        biomarkerId,
+        value,
+        collectedAt: collectedAtDate,
+        notes: notes || null,
+      });
+
+      const score = scoreBiomarker(value, biomarker);
+
+      await auditRecordCreate(req.user!, req, "METRIC_ENTRY", labResult.id);
+
+      res.json({ result: labResult, biomarker, score });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/lab-results/:id", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const existing = await storage.getLabResult(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(existing.userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+      const deleted = await storage.deleteLabResult(req.params.id, existing.userId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+      await auditRecordDelete(req.user!, req, "METRIC_ENTRY", req.params.id);
+      res.json({ message: "Deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

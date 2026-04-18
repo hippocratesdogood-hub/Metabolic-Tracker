@@ -30,6 +30,7 @@ const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
 const Participants = lazy(() => import("@/pages/Participants"));
 const AIReports = lazy(() => import("@/pages/AIReports"));
 const AdminAnalytics = lazy(() => import("@/pages/AdminAnalytics"));
+const LabResultsAdmin = lazy(() => import("@/pages/LabResultsAdmin"));
 
 // Loading fallback component
 function PageLoader() {
@@ -101,6 +102,7 @@ function Router() {
           <Route path="/admin/analytics">{() => <ProtectedRoute component={AdminAnalytics} allowedRoles={['admin', 'coach']} />}</Route>
           <Route path="/admin/ai-reports">{() => <ProtectedRoute component={AIReports} allowedRoles={['admin', 'coach']} />}</Route>
           <Route path="/admin/participants">{() => <ProtectedRoute component={Participants} allowedRoles={['admin', 'coach']} />}</Route>
+          <Route path="/admin/labs">{() => <ProtectedRoute component={LabResultsAdmin} allowedRoles={['admin', 'coach']} />}</Route>
           <Route path="/admin">{() => <ProtectedRoute component={AdminDashboard} allowedRoles={['admin', 'coach']} />}</Route>
 
           <Route component={NotFound} />

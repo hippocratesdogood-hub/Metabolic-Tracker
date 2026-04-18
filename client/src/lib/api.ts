@@ -517,6 +517,97 @@ class ApiClient {
     return this.request<any>(`/admin/analytics/demographics${query ? `?${query}` : ""}`);
   }
 
+  // Admin - Biomarkers + Lab Results
+  async getBiomarkers() {
+    return this.request<Array<{
+      id: string;
+      slug: string;
+      name: string;
+      abbreviation: string | null;
+      unit: string;
+      category: string;
+      flagDirection: string;
+      standardLow: number | null;
+      standardHigh: number | null;
+      optimalLow: number | null;
+      optimalHigh: number | null;
+      criticalLow: number | null;
+      criticalHigh: number | null;
+      clinicalNote: string | null;
+      description: string | null;
+      sortOrder: number;
+    }>>("/admin/biomarkers");
+  }
+
+  async getParticipantLabResults(userId: string) {
+    return this.request<Array<{
+      result: {
+        id: string;
+        userId: string;
+        biomarkerId: string;
+        value: number;
+        collectedAt: string;
+        notes: string | null;
+      };
+      biomarker: {
+        id: string;
+        slug: string;
+        name: string;
+        unit: string;
+        category: string;
+      };
+      score: {
+        flag: "none" | "high" | "low";
+        severity: "optimal" | "borderline" | "abnormal" | "critical";
+        label: string;
+        labelShort: string;
+        clinicalSummary: string;
+      };
+    }>>(`/admin/participants/${userId}/lab-results`);
+  }
+
+  async createLabResult(data: {
+    userId: string;
+    biomarkerId: string;
+    value: number;
+    collectedAt: string;
+    notes?: string;
+  }) {
+    return this.request<{
+      result: {
+        id: string;
+        userId: string;
+        biomarkerId: string;
+        value: number;
+        collectedAt: string;
+        notes: string | null;
+      };
+      biomarker: {
+        id: string;
+        slug: string;
+        name: string;
+        unit: string;
+        category: string;
+      };
+      score: {
+        flag: "none" | "high" | "low";
+        severity: "optimal" | "borderline" | "abnormal" | "critical";
+        label: string;
+        labelShort: string;
+        clinicalSummary: string;
+      };
+    }>("/admin/lab-results", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteLabResult(id: string) {
+    return this.request<{ message: string }>(`/admin/lab-results/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   // AI Report Assistant
   async askAIAssistant(messages: { role: "user" | "assistant"; content: string }[]) {
     return this.request<{ response: string }>("/admin/ai-assistant", {

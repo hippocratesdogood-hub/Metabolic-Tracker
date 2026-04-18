@@ -122,6 +122,11 @@ export default function AdminDashboard() {
               Manage Participants
             </Button>
           </Link>
+          <Link href="/admin/labs">
+            <Button variant="outline" data-testid="link-labs">
+              Manage Labs
+            </Button>
+          </Link>
           <Link href="/admin/prompts">
             <Button variant="outline" data-testid="link-prompts">
               Manage Prompts

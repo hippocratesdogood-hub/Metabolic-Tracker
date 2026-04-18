@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
       { href: '/admin/participants', label: 'Participants', icon: User },
+      { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
       { href: '/admin/prompts', label: 'Prompts', icon: Shield },
       { href: '/admin/ai-reports', label: 'AI Reports', icon: Sparkles },
       { href: '/messages', label: 'Messages', icon: MessageSquare },

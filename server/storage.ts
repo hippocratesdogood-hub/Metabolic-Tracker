@@ -490,6 +490,23 @@ export class PostgresStorage implements IStorage {
   }
 
   // Lab results (minimal — Phase 1 of lab interpretation)
+  async getBiomarkers(): Promise<schema.Biomarker[]> {
+    return db
+      .select()
+      .from(schema.biomarkers)
+      .where(eq(schema.biomarkers.isActive, true))
+      .orderBy(schema.biomarkers.category, schema.biomarkers.sortOrder);
+  }
+
+  async getBiomarker(id: string): Promise<schema.Biomarker | undefined> {
+    const [row] = await db
+      .select()
+      .from(schema.biomarkers)
+      .where(eq(schema.biomarkers.id, id))
+      .limit(1);
+    return row;
+  }
+
   // Hot path: biomarker-gated prompt rules fetch latest-per-biomarker with a
   // maxAgeDays filter. The (user_id, biomarker_id, collected_at DESC) index
   // turns this into an index-only seek.
@@ -533,6 +550,15 @@ export class PostgresStorage implements IStorage {
 
   async createLabResult(input: schema.InsertLabResult): Promise<schema.LabResult> {
     const [row] = await db.insert(schema.labResults).values(input).returning();
+    return row;
+  }
+
+  async getLabResult(id: string): Promise<schema.LabResult | undefined> {
+    const [row] = await db
+      .select()
+      .from(schema.labResults)
+      .where(eq(schema.labResults.id, id))
+      .limit(1);
     return row;
   }
 
