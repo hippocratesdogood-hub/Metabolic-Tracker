@@ -41,6 +41,45 @@ const SKIP_PATTERNS = [
   /\b(about|roughly|approximately)\b/i,
 ];
 
+// ── Unit compatibility ────────────────────────────────────────────────────
+// Nutritionix silently coerces unknown units (e.g., "slice" for mango becomes
+// "fruit without refuse"), producing wrong macros. These helpers let us reject
+// responses where the returned serving_unit doesn't honor what we asked for.
+
+const WEIGHT_UNITS = new Set([
+  "g", "gram", "grams", "oz", "ounce", "ounces", "lb", "lbs",
+  "pound", "pounds", "kg", "mg",
+]);
+
+function normalizeUnit(u: string): string {
+  return (u || "").toLowerCase().trim().replace(/s$/, "");
+}
+
+/**
+ * Returns true when every returned food's serving_unit is a reasonable match
+ * for the requested unit. Weight units are always trusted (unambiguous).
+ * "serving" is a generic fallback and accepts anything. Otherwise the unit
+ * must match (case/plural-insensitive). The specific "fruit without refuse"
+ * fallback is always treated as a mismatch — it's a Nutritionix DB artifact
+ * we never want surfaced to patients.
+ */
+function isUnitCompatible(
+  requestedUnit: string,
+  foods: Array<{ serving_unit?: string }>
+): boolean {
+  const req = normalizeUnit(requestedUnit);
+  if (WEIGHT_UNITS.has(req)) return true;
+  if (req === "serving" || req === "") return true;
+  return foods.every((f) => {
+    const ret = normalizeUnit(f.serving_unit || "");
+    if (ret.includes("fruit without refuse") || ret.includes("whole fruit")) {
+      return false;
+    }
+    if (WEIGHT_UNITS.has(ret)) return true;
+    return ret === req;
+  });
+}
+
 // ── Service ────────────────────────────────────────────────────────────────
 
 class NutritionLookupService {
@@ -411,6 +450,18 @@ class NutritionLookupService {
       const data = await response.json();
       const foods = data.foods || [];
       if (foods.length === 0) {
+        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        return null;
+      }
+
+      // Unit sanity check: Nutritionix silently rewrites unknown units. When
+      // asked for "2 slice mango" it returns serving_unit="fruit without
+      // refuse" with quantity=2, producing 2-whole-mango macros. Detect that
+      // mismatch and reject so the caller falls back to the LLM estimate,
+      // which has the user's original phrasing and can reason about slices.
+      if (!isUnitCompatible(unit, foods)) {
+        const seenUnits = foods.map((f: any) => `${f.serving_qty} ${f.serving_unit}`).join(', ');
+        console.log(`[Nutritionix] Rejecting "${query}" — unit mismatch (asked: "${unit}", got: ${seenUnits})`);
         cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
         return null;
       }
