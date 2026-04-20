@@ -99,22 +99,28 @@ class NutritionLookupService {
   async enrichFoodsDetected(foods: any[]): Promise<EnrichedFoodItem[]> {
     const results = await Promise.allSettled(
       foods.map(async (item) => {
-        const match = await this.searchFood(item.name);
+        // Route through lookupItemMacros so the quantity AND unit (e.g.,
+        // "2 slice mango") are honored. searchFood() alone doesn't know
+        // about units, so it silently treated "2 slices" as "2 whole
+        // mangoes" before this fix.
+        const qty = item.quantity || 1;
+        const unit = item.unit || 'serving';
+        const match = await this.lookupItemMacros(item.name, qty, unit);
 
-        if (match && match.matchConfidence >= 0.6) {
-          // Sanity check: reject matches where the macro profile is wildly different
-          // from the AI estimate — indicates a wrong food was matched (e.g., "egg noodles"
-          // instead of "egg"). Compare per-serving values (divide AI values by quantity).
-          const qty = item.quantity || 1;
-          const aiCalPerServing = (item.calories || 0) / qty;
-          const aiProPerServing = (item.protein || 0) / qty;
-          if (aiCalPerServing > 0 && match.calories > 0) {
-            const calRatio = Math.max(aiCalPerServing, match.calories) / Math.min(aiCalPerServing, match.calories);
-            const proRatio = aiProPerServing > 1 && match.protein > 1
-              ? Math.max(aiProPerServing, match.protein) / Math.min(aiProPerServing, match.protein)
+        if (match) {
+          // Sanity check: reject matches where the macro profile is wildly
+          // different from the AI estimate — indicates a wrong food matched
+          // (e.g., "egg noodles" for "egg"). Compare already-scaled totals
+          // since lookupItemMacros returns values for the full quantity.
+          const aiCal = item.calories || 0;
+          const aiPro = item.protein || 0;
+          if (aiCal > 0 && match.calories > 0) {
+            const calRatio = Math.max(aiCal, match.calories) / Math.min(aiCal, match.calories);
+            const proRatio = aiPro > 1 && match.protein > 1
+              ? Math.max(aiPro, match.protein) / Math.min(aiPro, match.protein)
               : 1;
             if (calRatio > 2.5 || proRatio > 2.5) {
-              console.log(`[NutritionLookup] Rejecting "${match.name}" for "${item.name}" — macro mismatch (cal ratio: ${calRatio.toFixed(1)}, pro ratio: ${proRatio.toFixed(1)})`);
+              console.log(`[NutritionLookup] Rejecting match for "${item.name}" — macro mismatch (cal ratio: ${calRatio.toFixed(1)}, pro ratio: ${proRatio.toFixed(1)})`);
               return {
                 ...item,
                 source: 'ai_estimate' as const,
@@ -125,21 +131,24 @@ class NutritionLookupService {
             }
           }
 
-          // Scale database per-serving values by quantity (e.g., 3 eggs = 3x one egg)
+          const sourceName =
+            match.source === 'nutritionix' ? 'Nutritionix'
+              : match.source === 'openfoodfacts' ? 'Open Food Facts'
+              : match.source === 'usda' ? 'USDA FoodData Central'
+              : null;
+
           return {
             ...item,
-            calories: Math.round(match.calories * qty),
-            protein: Math.round(match.protein * qty * 10) / 10,
-            fat: Math.round(match.fat * qty * 10) / 10,
-            totalCarbs: Math.round(match.totalCarbs * qty * 10) / 10,
-            fiber: Math.round(match.fiber * qty * 10) / 10,
-            netCarbs: Math.round(match.netCarbs * qty * 10) / 10,
+            calories: match.calories,
+            protein: match.protein,
+            fat: match.fat,
+            totalCarbs: match.totalCarbs,
+            fiber: match.fiber,
+            netCarbs: match.netCarbs,
             source: 'verified' as const,
-            sourceName: match.source === 'openfoodfacts'
-              ? 'Open Food Facts'
-              : 'USDA FoodData Central',
-            brand: match.brand,
-            matchConfidence: match.matchConfidence,
+            sourceName,
+            brand: null,
+            matchConfidence: 0.95,
             _aiEstimate: {
               calories: item.calories,
               protein: item.protein,
@@ -156,7 +165,7 @@ class NutritionLookupService {
           source: 'ai_estimate' as const,
           sourceName: null,
           brand: null,
-          matchConfidence: match?.matchConfidence || 0,
+          matchConfidence: 0,
         };
       })
     );
