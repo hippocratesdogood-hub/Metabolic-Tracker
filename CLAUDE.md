@@ -72,7 +72,8 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - **Files are ephemeral.** PDF buffer never hits disk and is discarded after the Anthropic call returns. The values in `lab_results` are the record of truth, not the PDF.
 - Slug matching: Claude returns biomarker slugs from the seeded list directly. Anything that can't be matched goes into `unmatched` (read-only in v1; we log raw names in audit metadata so we can grow seed data over time).
 - Audit: extraction logs `LAB_PDF_EXTRACT` with biomarker slugs + counts only (no values). Per-row value-level audit happens through the existing `auditRecordCreate` path when staff confirms.
-- ‼️ **HIPAA / BAA prerequisite — DO NOT enable in production until BAA is signed.** PDF extraction sends PHI (lab values, possibly patient identifiers on the report) to Anthropic. **Do not set `ANTHROPIC_API_KEY` in the Railway production environment until a signed Business Associate Agreement with Anthropic is in place.** Without the key set, the Upload PDF tab is visible but `Extract values` returns 503 — manual entry continues to work as before. Local dev should use test PDFs with no real patient data.
+- **Feature flag: `ENABLE_PDF_EXTRACTION`.** Set to `"true"` to render the Upload PDF tab. When unset or any other value, the tab is hidden entirely (manual entry still works). Server reads this at request time via `GET /api/config`, so toggling the env var + restarting the service is enough — no rebuild needed.
+- ‼️ **HIPAA / BAA prerequisite — DO NOT enable in production until BAA is signed.** PDF extraction sends PHI (lab values, possibly patient identifiers on the report) to Anthropic. **Do not set `ANTHROPIC_API_KEY` or `ENABLE_PDF_EXTRACTION=true` in the Railway production environment until a signed Business Associate Agreement with Anthropic is in place.** Manual entry continues to work as before. Local dev should use test PDFs with no real patient data.
 
 ## Prompt engine
 

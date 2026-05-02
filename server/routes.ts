@@ -384,6 +384,15 @@ export async function registerRoutes(
     }
   });
 
+  // Server-side feature flags. Read at request time so toggling an env var
+  // and restarting the service is enough to flip the flag — no rebuild
+  // required. PDF extraction is gated until a BAA with Anthropic is signed.
+  app.get("/api/config", requireAuth, (_req, res) => {
+    res.json({
+      pdfExtractionEnabled: process.env.ENABLE_PDF_EXTRACTION === "true",
+    });
+  });
+
   // User changes own password (for force reset flow)
   app.post("/api/auth/change-password", requireAuth, async (req, res) => {
     try {

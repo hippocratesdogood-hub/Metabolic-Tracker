@@ -42,6 +42,10 @@ class ApiClient {
     return this.request<{ user: any }>("/auth/me");
   }
 
+  async getConfig() {
+    return this.request<{ pdfExtractionEnabled: boolean }>("/config");
+  }
+
   async changePassword(newPassword: string) {
     return this.request<{ message: string }>("/auth/change-password", {
       method: "POST",

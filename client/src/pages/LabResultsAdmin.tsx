@@ -136,6 +136,13 @@ export default function LabResultsAdmin() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const { data: config } = useQuery({
+    queryKey: ['app-config'],
+    queryFn: () => api.getConfig(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const pdfExtractionEnabled = config?.pdfExtractionEnabled ?? false;
+
   const { data: participants = [] } = useQuery({
     queryKey: ['admin-participants'],
     queryFn: () => api.getParticipants(),
@@ -435,10 +442,12 @@ export default function LabResultsAdmin() {
           </div>
 
           <Tabs defaultValue="manual" className="w-full">
-            <TabsList className="grid grid-cols-2 w-full md:w-auto">
-              <TabsTrigger value="manual" data-testid="tab-manual">Manual entry</TabsTrigger>
-              <TabsTrigger value="pdf" data-testid="tab-pdf">Upload PDF</TabsTrigger>
-            </TabsList>
+            {pdfExtractionEnabled && (
+              <TabsList className="grid grid-cols-2 w-full md:w-auto">
+                <TabsTrigger value="manual" data-testid="tab-manual">Manual entry</TabsTrigger>
+                <TabsTrigger value="pdf" data-testid="tab-pdf">Upload PDF</TabsTrigger>
+              </TabsList>
+            )}
 
             <TabsContent value="manual" className="space-y-4 pt-4">
               <div className="space-y-2">
@@ -534,6 +543,7 @@ export default function LabResultsAdmin() {
               )}
             </TabsContent>
 
+            {pdfExtractionEnabled && (
             <TabsContent value="pdf" className="space-y-4 pt-4" data-testid="tab-pdf-content">
               {pdfState.kind === 'idle' && (
                 <div className="space-y-4">
@@ -778,6 +788,7 @@ export default function LabResultsAdmin() {
                 </div>
               )}
             </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>
