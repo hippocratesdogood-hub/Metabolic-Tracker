@@ -608,6 +608,64 @@ class ApiClient {
     });
   }
 
+  async extractLabPdf(file: File, userId: string) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("userId", userId);
+
+    const response = await fetch("/api/admin/lab-results/pdf/extract", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || "Failed to extract PDF");
+    }
+
+    return response.json() as Promise<{
+      labSource: string;
+      collectedAt: string | null;
+      collectedAtConfidence: number;
+      mixedDates: boolean;
+      extracted: Array<{
+        biomarkerId: string;
+        biomarkerSlug: string;
+        biomarkerName: string;
+        value: number;
+        unit: string;
+        confidence: number;
+        rawText: string;
+      }>;
+      unmatched: Array<{ rawName: string; rawValue: string }>;
+    }>;
+  }
+
+  async confirmLabPdfResults(payload: {
+    userId: string;
+    collectedAt: string;
+    results: Array<{ biomarkerId: string; value: number; notes?: string }>;
+  }) {
+    return this.request<{
+      saved: Array<{
+        result: { id: string; userId: string; biomarkerId: string; value: number; collectedAt: string; notes: string | null };
+        biomarker: { id: string; slug: string; name: string; unit: string; category: string };
+        score: {
+          flag: "none" | "high" | "low";
+          severity: "optimal" | "borderline" | "abnormal" | "critical";
+          label: string;
+          labelShort: string;
+          clinicalSummary: string;
+        };
+      }>;
+      failed: Array<{ biomarkerId: string; error: string }>;
+    }>("/admin/lab-results/pdf/confirm", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   // AI Report Assistant
   async askAIAssistant(messages: { role: "user" | "assistant"; content: string }[]) {
     return this.request<{ response: string }>("/admin/ai-assistant", {

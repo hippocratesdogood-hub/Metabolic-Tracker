@@ -206,6 +206,11 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       "updated_at" timestamp DEFAULT now() NOT NULL
     );
   `);
+
+  // Migration: Add LAB_PDF_EXTRACT to audit_action enum (Phase 2 PDF ingestion)
+  await pool.query(`
+    ALTER TYPE "audit_action" ADD VALUE IF NOT EXISTS 'LAB_PDF_EXTRACT';
+  `);
   // Composite index enables O(log n) "latest value per biomarker per user"
   // lookups, which is the hot path for biomarker-gated rule evaluation.
   await pool.query(`

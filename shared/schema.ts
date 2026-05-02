@@ -70,6 +70,8 @@ export const auditActionEnum = pgEnum("audit_action", [
   "USER_DEACTIVATED",
   "USER_REACTIVATED",
   "CONFIG_CHANGE",
+  // Lab PDF ingestion
+  "LAB_PDF_EXTRACT",
 ]);
 
 export const auditResultEnum = pgEnum("audit_result", ["SUCCESS", "FAILURE", "DENIED"]);
@@ -406,6 +408,7 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs, {
     "ROLE_CHANGE", "COACH_ASSIGNMENT", "PERMISSION_GRANTED", "PERMISSION_REVOKED",
     "AUTH_FAILURE", "ACCESS_DENIED", "RATE_LIMIT_EXCEEDED",
     "USER_CREATED", "USER_DEACTIVATED", "USER_REACTIVATED", "CONFIG_CHANGE",
+    "LAB_PDF_EXTRACT",
   ]),
   result: z.enum(["SUCCESS", "FAILURE", "DENIED"]),
   resourceType: z.enum([

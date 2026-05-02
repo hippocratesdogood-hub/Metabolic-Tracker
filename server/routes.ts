@@ -6,6 +6,7 @@ import { analyticsService } from "./analytics";
 import passport from "passport";
 import multer from "multer";
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -22,6 +23,7 @@ import {
   recordFailedLogin,
   recordSuccessfulLogin,
   validateFileSignature,
+  validatePdfSignature,
   errorResponse,
 } from "./middleware/security";
 import {
@@ -38,6 +40,7 @@ import {
   auditUserCreated,
   auditPasswordChange,
   auditAccessDenied,
+  auditLabPdfExtract,
   logAuditEvent,
 } from "./services/auditLogger";
 import {
@@ -61,6 +64,14 @@ const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_
     })
   : null;
 
+// Anthropic is optional - only initialize if API key is provided.
+// Used for PDF lab ingestion (Phase 2). PHI flows to Anthropic — a BAA is
+// required before enabling ANTHROPIC_API_KEY in the production environment.
+// See CLAUDE.md "Lab PDF ingestion" section.
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -69,6 +80,21 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Separate multer config for PDF lab uploads. Files are buffered in memory
+// and never persisted — extraction happens in-flight and the buffer is
+// discarded after the Anthropic call returns.
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
     }
   }
 });
@@ -1915,6 +1941,288 @@ Do NOT include a qualityScore field — scoring is handled server-side.`;
       res.status(500).json({ message: error.message });
     }
   });
+
+  // ── Lab PDF ingestion (Phase 2) ──────────────────────────────────────────
+  // Two-step flow: extract (AI parses PDF → returns proposed values for staff
+  // review) → confirm (staff-approved values save via the same path as manual
+  // entry). PDF buffer is never persisted; lab_results is the record of truth.
+  // Requires ANTHROPIC_API_KEY + a signed BAA — see CLAUDE.md.
+  app.post(
+    "/api/admin/lab-results/pdf/extract",
+    requireAuth,
+    requireCoachOrAdmin,
+    aiLimiter,
+    pdfUpload.single("file"),
+    async (req, res) => {
+      try {
+        if (!anthropic) {
+          return res.status(503).json({
+            message: "PDF extraction is not configured on this server.",
+          });
+        }
+        if (!req.file) {
+          return res.status(400).json({ message: "PDF file is required." });
+        }
+        if (!validatePdfSignature(req.file.buffer)) {
+          return res.status(400).json({
+            message: "Uploaded file is not a valid PDF.",
+          });
+        }
+
+        const userId = typeof req.body?.userId === "string" ? req.body.userId : "";
+        if (!userId) {
+          return res.status(400).json({ message: "userId is required." });
+        }
+        const participant = await storage.getUser(userId);
+        if (!participant) {
+          return res.status(404).json({ message: "Participant not found." });
+        }
+        if (req.user!.role === "coach" && participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+
+        const biomarkers = await storage.getBiomarkers();
+        const slugToBiomarker = new Map(biomarkers.map((b) => [b.slug, b]));
+
+        // Stable, byte-deterministic reference list for prompt caching.
+        const biomarkerReference = biomarkers
+          .map((b) => {
+            const aliases = b.abbreviation ? ` (aka ${b.abbreviation})` : "";
+            return `- ${b.slug} | ${b.name}${aliases} | unit: ${b.unit}`;
+          })
+          .join("\n");
+
+        const systemPrompt = `You extract structured biomarker values from lab result PDFs (Labcorp, Quest, Vibrant, and similar).
+
+You MUST only return slugs from the following reference list. If a biomarker on the PDF doesn't match any slug here, put it in "unmatched" instead — never invent slugs.
+
+Available biomarkers:
+${biomarkerReference}
+
+Confidence rubric (0.0–1.0):
+- 0.95–1.0: value and unit are unambiguous, clearly printed, no OCR concerns
+- 0.75–0.94: value is clear but unit was inferred from biomarker default, OR slight formatting ambiguity
+- 0.50–0.74: noticeable ambiguity (decimal placement, smudged digits, multiple candidate values)
+- < 0.50: barely legible or strong reason to doubt — staff must verify manually
+
+Date rules:
+- collectedAt format: YYYY-MM-DD
+- mixedDates: true only if biomarkers in this PDF were drawn on different dates
+- If you can't find a draw date, set collectedAt to null and collectedAtConfidence to 0
+
+Respond with ONLY valid JSON (no markdown fences, no preamble) matching this schema:
+{
+  "labSource": string,
+  "collectedAt": string | null,
+  "collectedAtConfidence": number,
+  "mixedDates": boolean,
+  "extracted": [
+    { "slug": string, "value": number, "unit"?: string, "confidence": number, "rawText"?: string }
+  ],
+  "unmatched": [
+    { "rawName": string, "rawValue": string }
+  ]
+}`;
+
+        const pdfBase64 = req.file.buffer.toString("base64");
+
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 8000,
+          system: [
+            {
+              type: "text",
+              text: systemPrompt,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: "application/pdf",
+                    data: pdfBase64,
+                  },
+                },
+                {
+                  type: "text",
+                  text: "Extract every biomarker on this lab report. Return only the JSON object — no other text.",
+                },
+              ],
+            },
+          ],
+        });
+
+        const textBlock = response.content.find((b) => b.type === "text");
+        if (!textBlock || textBlock.type !== "text") {
+          return res.status(502).json({
+            message: "Extraction service returned no text content.",
+          });
+        }
+
+        const ExtractedSchema = z.object({
+          labSource: z.string().default("Unknown"),
+          collectedAt: z.string().nullable(),
+          collectedAtConfidence: z.number().min(0).max(1),
+          mixedDates: z.boolean().default(false),
+          extracted: z
+            .array(
+              z.object({
+                slug: z.string(),
+                value: z.number().finite(),
+                unit: z.string().optional(),
+                confidence: z.number().min(0).max(1),
+                rawText: z.string().optional(),
+              })
+            )
+            .default([]),
+          unmatched: z
+            .array(z.object({ rawName: z.string(), rawValue: z.string() }))
+            .default([]),
+        });
+
+        let parsed: z.infer<typeof ExtractedSchema>;
+        try {
+          parsed = ExtractedSchema.parse(JSON.parse(textBlock.text));
+        } catch {
+          return res.status(502).json({
+            message: "Extraction service returned malformed output. Please retry or enter values manually.",
+          });
+        }
+
+        // Resolve slugs → biomarker rows. Anything Claude returned with a slug
+        // that's not in our reference table is dropped to unmatched.
+        const validExtracted = [];
+        const droppedToUnmatched = [];
+        for (const item of parsed.extracted) {
+          const biomarker = slugToBiomarker.get(item.slug);
+          if (!biomarker) {
+            droppedToUnmatched.push({ rawName: item.slug, rawValue: String(item.value) });
+            continue;
+          }
+          validExtracted.push({
+            biomarkerId: biomarker.id,
+            biomarkerSlug: biomarker.slug,
+            biomarkerName: biomarker.name,
+            value: item.value,
+            unit: item.unit ?? biomarker.unit,
+            confidence: item.confidence,
+            rawText: item.rawText ?? "",
+          });
+        }
+        const allUnmatched = [...parsed.unmatched, ...droppedToUnmatched];
+
+        await auditLabPdfExtract(req.user!, req, userId, {
+          extractedCount: validExtracted.length,
+          unmatchedCount: allUnmatched.length,
+          labSource: parsed.labSource,
+          biomarkerSlugs: validExtracted.map((x) => x.biomarkerSlug),
+          unmatchedNames: allUnmatched.map((x) => x.rawName),
+        });
+
+        res.json({
+          labSource: parsed.labSource,
+          collectedAt: parsed.collectedAt,
+          collectedAtConfidence: parsed.collectedAtConfidence,
+          mixedDates: parsed.mixedDates,
+          extracted: validExtracted,
+          unmatched: allUnmatched,
+        });
+      } catch (error: any) {
+        if (error instanceof Anthropic.RateLimitError) {
+          return res.status(429).json({ message: "Extraction service rate limit hit. Please try again shortly." });
+        }
+        if (error instanceof Anthropic.APIError) {
+          return res.status(502).json({ message: `Extraction service error: ${error.message}` });
+        }
+        if (error?.code === "LIMIT_FILE_SIZE") {
+          return res.status(413).json({ message: "PDF exceeds the 10 MB limit." });
+        }
+        console.error("[lab-pdf-extract]", error);
+        return res.status(500).json({ message: "PDF extraction failed." });
+      }
+    }
+  );
+
+  // Batch-save confirmed values from a reviewed PDF extraction. Thin wrapper
+  // around the existing single-row createLabResult path — same scoring, same
+  // per-row audit. Per-row failures are returned in `failed` so the UI can
+  // surface them without rolling back successes.
+  app.post(
+    "/api/admin/lab-results/pdf/confirm",
+    requireAuth,
+    requireCoachOrAdmin,
+    async (req, res) => {
+      try {
+        const bodySchema = z.object({
+          userId: z.string().min(1),
+          collectedAt: z.string().min(1),
+          results: z
+            .array(
+              z.object({
+                biomarkerId: z.string().min(1),
+                value: z.number().finite(),
+                notes: z.string().optional(),
+              })
+            )
+            .min(1),
+        });
+        const parsed = bodySchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ message: fromZodError(parsed.error).message });
+        }
+        const { userId, collectedAt, results } = parsed.data;
+
+        const collectedAtDate = new Date(collectedAt);
+        if (isNaN(collectedAtDate.getTime())) {
+          return res.status(400).json({ message: "Invalid collectedAt date" });
+        }
+
+        if (req.user!.role === "coach") {
+          const participant = await storage.getUser(userId);
+          if (!participant || participant.coachId !== req.user!.id) {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
+
+        const saved: Array<{ result: any; biomarker: any; score: any }> = [];
+        const failed: Array<{ biomarkerId: string; error: string }> = [];
+
+        for (const row of results) {
+          try {
+            const biomarker = await storage.getBiomarker(row.biomarkerId);
+            if (!biomarker) {
+              failed.push({ biomarkerId: row.biomarkerId, error: "Unknown biomarker" });
+              continue;
+            }
+            const labResult = await storage.createLabResult({
+              userId,
+              biomarkerId: row.biomarkerId,
+              value: row.value,
+              collectedAt: collectedAtDate,
+              notes: row.notes || null,
+            });
+            const score = scoreBiomarker(row.value, biomarker);
+            await auditRecordCreate(req.user!, req, "METRIC_ENTRY", labResult.id);
+            saved.push({ result: labResult, biomarker, score });
+          } catch (rowError: any) {
+            failed.push({
+              biomarkerId: row.biomarkerId,
+              error: rowError?.message ?? "Failed to save",
+            });
+          }
+        }
+
+        res.json({ saved, failed });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    }
+  );
 
   app.delete("/api/admin/lab-results/:id", requireAuth, requireCoachOrAdmin, async (req, res) => {
     try {

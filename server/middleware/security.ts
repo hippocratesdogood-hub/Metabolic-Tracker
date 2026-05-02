@@ -670,6 +670,15 @@ export function validateFileSignature(buffer: Buffer, declaredMimeType: string):
 }
 
 /**
+ * Validate that a buffer is a PDF by checking the %PDF- header.
+ * PDFs always begin with the bytes 25 50 44 46 2D ("%PDF-").
+ */
+export function validatePdfSignature(buffer: Buffer): boolean {
+  if (buffer.length < 5) return false;
+  return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+}
+
+/**
  * Get actual file type from magic bytes
  * @param buffer - File buffer
  * @returns Detected MIME type or null if unknown

@@ -7,7 +7,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - **Frontend:** React 19 + TypeScript + Vite, Tailwind, shadcn/ui, TanStack Query, lucide-react, sonner
 - **Backend:** Node 20+, Express 5, Passport (scrypt sessions), Drizzle ORM
 - **DB:** PostgreSQL — production is Railway; local dev runs against a fresh, pseudonymized Neon branch (see "Local dev" below)
-- **External:** OpenAI GPT-4o-mini (meal parsing + coaching), Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
+- **External:** OpenAI GPT-4o-mini (meal parsing + coaching), Anthropic Claude Sonnet 4.6 (lab PDF extraction — Phase 2, see "Lab PDF ingestion" below), Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
 - **Hosting:** Railway, auto-deploys from GitHub `main` → app.doctorchadlarson.com
 
 ## Folder structure
@@ -61,6 +61,18 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - [server/routes.ts](server/routes.ts) has a few TS errors flagged by `npm run check`: `ChatCompletionMessageToolCall.function` access and `metric.value_json` property access. These predate current work and don't affect runtime.
 - [server/replit_integrations/](server/replit_integrations/) is leftover Replit code — Railway is prod now. Folder can be deleted.
 - Untracked `migrations/0001_curved_captain_midlands.sql` + `migrations/meta/` are Drizzle Kit-generated files that aren't used (we use `runIncrementalMigrations` instead).
+
+## Lab PDF ingestion (Phase 2 — code complete, prod-gated on BAA)
+
+**Status:** Phase 2 is shipped. The `/admin/labs` page has an "Upload PDF" tab that calls the new endpoints, and the manual-entry path from Phase 1 is unchanged. Validated end-to-end against local dev DB with a sample PDF — extraction, confidence scoring, review UI, and confirm-save all working.
+
+- Two endpoints: `POST /api/admin/lab-results/pdf/extract` (PDF in → proposed values out) and `POST /api/admin/lab-results/pdf/confirm` (staff-approved values save via the same `storage.createLabResult()` path as manual entry).
+- Anthropic SDK is conditionally initialized in [server/routes.ts](server/routes.ts) right next to the OpenAI block — null-safe, returns 503 if `ANTHROPIC_API_KEY` is missing.
+- Model: `claude-sonnet-4-6`. PDF bytes are sent as a `document` content block (Anthropic native PDF support, no `pdf-parse` library). The biomarker reference list is in the system prompt with `cache_control: { type: "ephemeral" }` for prompt caching.
+- **Files are ephemeral.** PDF buffer never hits disk and is discarded after the Anthropic call returns. The values in `lab_results` are the record of truth, not the PDF.
+- Slug matching: Claude returns biomarker slugs from the seeded list directly. Anything that can't be matched goes into `unmatched` (read-only in v1; we log raw names in audit metadata so we can grow seed data over time).
+- Audit: extraction logs `LAB_PDF_EXTRACT` with biomarker slugs + counts only (no values). Per-row value-level audit happens through the existing `auditRecordCreate` path when staff confirms.
+- ‼️ **HIPAA / BAA prerequisite — DO NOT enable in production until BAA is signed.** PDF extraction sends PHI (lab values, possibly patient identifiers on the report) to Anthropic. **Do not set `ANTHROPIC_API_KEY` in the Railway production environment until a signed Business Associate Agreement with Anthropic is in place.** Without the key set, the Upload PDF tab is visible but `Extract values` returns 503 — manual entry continues to work as before. Local dev should use test PDFs with no real patient data.
 
 ## Prompt engine
 

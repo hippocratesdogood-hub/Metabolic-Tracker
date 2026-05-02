@@ -401,6 +401,42 @@ export async function auditPasswordChange(
 }
 
 /**
+ * Log a lab PDF extraction attempt.
+ *
+ * Records that a coach/admin uploaded a PDF for AI extraction against a
+ * specific participant. Captures slugs and counts only — never values, never
+ * file contents. Per-row value-level audit happens via auditRecordCreate when
+ * staff confirms the extracted values through the standard createLabResult
+ * path.
+ */
+export async function auditLabPdfExtract(
+  user: AuditUser,
+  req: Request,
+  targetUserId: string,
+  details: {
+    extractedCount: number;
+    unmatchedCount: number;
+    labSource: string;
+    biomarkerSlugs: string[];
+    unmatchedNames: string[];
+  }
+): Promise<void> {
+  await logAuditEvent("LAB_PDF_EXTRACT", "SUCCESS", "METRIC_ENTRY", {
+    user,
+    req,
+    targetUserId,
+    metadata: {
+      extractedCount: details.extractedCount,
+      unmatchedCount: details.unmatchedCount,
+      labSource: details.labSource,
+      // Joined to strings — sanitizeMetadata replaces nested objects/arrays with [OBJECT]
+      biomarkerSlugs: details.biomarkerSlugs.join(","),
+      unmatchedNames: details.unmatchedNames.join(","),
+    },
+  });
+}
+
+/**
  * Log report generation
  */
 export async function auditReportGenerated(
