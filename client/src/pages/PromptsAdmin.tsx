@@ -42,6 +42,11 @@ export default function PromptsAdmin() {
     queryFn: () => api.getDeliveries(50),
   });
 
+  const { data: biomarkers = [] } = useQuery({
+    queryKey: ['admin-biomarkers'],
+    queryFn: () => api.getBiomarkers(),
+  });
+
   const createPromptMutation = useMutation({
     mutationFn: (data: any) => api.createPrompt(data),
     onSuccess: () => {
@@ -523,6 +528,94 @@ export default function PromptsAdmin() {
                   onChange={(e) => setEditingRule((r: any) => ({ ...r, priority: parseInt(e.target.value) || 1 }))}
                   data-testid="input-rule-priority"
                 />
+              </div>
+            </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <div>
+                <Label className="text-sm font-semibold">Biomarker Condition (optional)</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Gate this rule on the patient's latest lab result. Leave blank to skip the biomarker check.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Biomarker</Label>
+                <Select
+                  value={editingRule?.conditionsJson?.biomarkerSlug || '__none__'}
+                  onValueChange={(v) => setEditingRule((r: any) => {
+                    const next = { ...(r.conditionsJson || {}) };
+                    if (v === '__none__') {
+                      delete next.biomarkerSlug;
+                      delete next.biomarkerSeverity;
+                      delete next.maxAgeDays;
+                    } else {
+                      next.biomarkerSlug = v;
+                    }
+                    return { ...r, conditionsJson: next };
+                  })}
+                >
+                  <SelectTrigger data-testid="select-rule-biomarker-slug">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {biomarkers.map((b: any) => (
+                      <SelectItem key={b.id} value={b.slug}>
+                        {b.name} ({b.slug})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Severity</Label>
+                  <Select
+                    value={editingRule?.conditionsJson?.biomarkerSeverity || '__any__'}
+                    onValueChange={(v) => setEditingRule((r: any) => {
+                      const next = { ...(r.conditionsJson || {}) };
+                      if (v === '__any__') {
+                        delete next.biomarkerSeverity;
+                      } else {
+                        next.biomarkerSeverity = v;
+                      }
+                      return { ...r, conditionsJson: next };
+                    })}
+                    disabled={!editingRule?.conditionsJson?.biomarkerSlug}
+                  >
+                    <SelectTrigger data-testid="select-rule-biomarker-severity">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__any__">Any</SelectItem>
+                      <SelectItem value="optimal">Optimal</SelectItem>
+                      <SelectItem value="borderline">Borderline</SelectItem>
+                      <SelectItem value="abnormal">Abnormal</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Max Age (days)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editingRule?.conditionsJson?.maxAgeDays ?? ''}
+                    placeholder="180"
+                    disabled={!editingRule?.conditionsJson?.biomarkerSlug}
+                    onChange={(e) => setEditingRule((r: any) => {
+                      const next = { ...(r.conditionsJson || {}) };
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        delete next.maxAgeDays;
+                      } else {
+                        const n = parseInt(raw, 10);
+                        if (!Number.isNaN(n) && n > 0) next.maxAgeDays = n;
+                      }
+                      return { ...r, conditionsJson: next };
+                    })}
+                    data-testid="input-rule-biomarker-max-age"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
