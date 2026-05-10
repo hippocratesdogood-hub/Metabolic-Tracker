@@ -128,7 +128,7 @@ interface MealCoachResult {
  */
 async function generateMealCoachMessage(
   userId: string,
-  ai: OpenAI | null,
+  ai: Anthropic | null,
   scoreBreakdown: {
     proteinScore: number;
     netCarbsScore: number;
@@ -220,18 +220,20 @@ LENGTH: 2-3 sentences maximum.
 OUTPUT: Return only the coaching message. No preamble.`;
 
   try {
-    const response = await ai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: "Generate the coaching message." },
-      ],
+    const response = await ai.messages.create({
+      model: "claude-haiku-4-5",
       max_tokens: 120,
       temperature: 0.6,
+      system: [{ type: "text", text: systemPrompt }],
+      messages: [{ role: "user", content: "Generate the coaching message." }],
     });
 
+    const textBlock = response.content.find((b) => b.type === "text");
+    const message =
+      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+
     return {
-      coachingMessage: response.choices[0]?.message?.content?.trim() || null,
+      coachingMessage: message || null,
       coachingMeta: meta,
     };
   } catch {
@@ -669,7 +671,7 @@ export async function registerRoutes(
       if (breakdown && legacyTarget) {
         try {
           const coachResult = await generateMealCoachMessage(
-            req.user!.id, openai, breakdown,
+            req.user!.id, anthropic, breakdown,
             { proteinG: legacyMacros.protein || 0, netCarbsG: legacyMacros.netCarbs || legacyMacros.carbs || 0, fatG: legacyMacros.fat || 0 },
             { proteinTargetG: legacyTarget.proteinG || 0, netCarbTargetG: legacyTarget.carbsG || 0 },
             entry.id
@@ -951,7 +953,7 @@ export async function registerRoutes(
       if (scoreResult && macroTarget) {
         try {
           const coachResult = await generateMealCoachMessage(
-            userId, openai, scoreResult.scoreBreakdown,
+            userId, anthropic, scoreResult.scoreBreakdown,
             { proteinG: aggregateMacros.protein, netCarbsG: aggregateMacros.netCarbs, fatG: aggregateMacros.fat },
             { proteinTargetG: macroTarget.proteinG || 0, netCarbTargetG: macroTarget.carbsG || 0 },
             parent.id
