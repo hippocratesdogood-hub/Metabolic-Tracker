@@ -240,6 +240,34 @@ function suggestMealType(): string {
   return "Snack";
 }
 
+// Returns the calendar date (YYYY-MM-DD) as it appears in `timezone`.
+function toISODateInTZ(date: Date, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+// Treats `dateStr` (YYYY-MM-DD) as noon wall-time in `timezone` and returns the
+// corresponding UTC Date. Noon avoids DST-transition ambiguity (transitions
+// happen near 02:00). Used to anchor backdated device-metric entries to a
+// stable mid-day timestamp regardless of when they were entered.
+function parseDateOnlyAsNoonInTZ(dateStr: string, timezone: string): Date {
+  const wallAsUtc = new Date(`${dateStr}T12:00:00Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    timeZoneName: "longOffset",
+  }).formatToParts(wallAsUtc);
+  const offsetStr = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+  const m = offsetStr.match(/GMT([+-])(\d{2}):(\d{2})/);
+  if (!m) return wallAsUtc;
+  const sign = m[1] === "+" ? 1 : -1;
+  const offsetMs = sign * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10)) * 60 * 1000;
+  return new Date(wallAsUtc.getTime() - offsetMs);
+}
+
 /**
  * Enrich AI-detected foods with database lookups (Open Food Facts / USDA).
  * Replaces AI macro estimates with verified data when a confident match is found.
@@ -470,20 +498,27 @@ export async function registerRoutes(
   // Metrics routes (PHI data - audit all access)
   app.post("/api/metrics", requireAuth, auditCreate("METRIC_ENTRY"), async (req, res) => {
     try {
-      const timestamp = req.body.timestamp ? new Date(req.body.timestamp) : new Date();
+      const user = await storage.getUser(req.user!.id);
+      const userTz = user?.timezone || "America/Los_Angeles";
 
-      // Server-side timestamp validation
+      const tsInput = req.body.timestamp;
+      let timestamp: Date;
+      if (typeof tsInput === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tsInput)) {
+        timestamp = parseDateOnlyAsNoonInTZ(tsInput, userTz);
+      } else if (tsInput) {
+        timestamp = new Date(tsInput);
+      } else {
+        timestamp = new Date();
+      }
+
       if (isNaN(timestamp.getTime())) {
         return res.status(400).json({ message: "Invalid timestamp format" });
       }
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const oneMinuteFromNow = new Date(now.getTime() + 60 * 1000);
-      if (timestamp > oneMinuteFromNow) {
+
+      const entryDateStr = toISODateInTZ(timestamp, userTz);
+      const todayDateStr = toISODateInTZ(new Date(), userTz);
+      if (entryDateStr > todayDateStr) {
         return res.status(400).json({ message: "Timestamp cannot be in the future" });
-      }
-      if (timestamp < thirtyDaysAgo) {
-        return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
       }
 
       const data = {
@@ -500,17 +535,22 @@ export async function registerRoutes(
 
       const entry = await storage.createMetricEntry(result.data);
 
-      // Fire event-triggered prompts (fire-and-forget — must not block response
-      // or fail the metric creation if the prompt engine errors).
-      void promptEngine
-        .onMetricLogged(req.user!.id, entry.type, {
-          timestamp: entry.timestamp,
-          createdAt: entry.createdAt,
-          valueJson: entry.valueJson,
-        })
-        .catch((err) => {
-          console.error("[promptEngine] onMetricLogged failed", err);
-        });
+      // Coaching guard: skip the prompt engine for backdated entries so they
+      // don't trigger retroactive notifications or pollute today's inbox.
+      const isBackdated = entryDateStr !== todayDateStr;
+      if (!isBackdated) {
+        // Fire event-triggered prompts (fire-and-forget — must not block response
+        // or fail the metric creation if the prompt engine errors).
+        void promptEngine
+          .onMetricLogged(req.user!.id, entry.type, {
+            timestamp: entry.timestamp,
+            createdAt: entry.createdAt,
+            valueJson: entry.valueJson,
+          })
+          .catch((err) => {
+            console.error("[promptEngine] onMetricLogged failed", err);
+          });
+      }
 
       res.json(entry);
     } catch (error: any) {

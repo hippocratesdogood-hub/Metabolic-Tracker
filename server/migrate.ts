@@ -218,6 +218,19 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       ON "lab_results" ("user_id", "biomarker_id", "collected_at" DESC);
   `);
 
+  // Migration: Glucose context for backdated/today device-metric entries.
+  // Nullable — existing rows stay NULL; new entries opt in.
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "glucose_context" AS ENUM ('fasting', 'random', 'post_meal');
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    ALTER TABLE "metric_entries"
+      ADD COLUMN IF NOT EXISTS "glucose_context" "glucose_context";
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [
