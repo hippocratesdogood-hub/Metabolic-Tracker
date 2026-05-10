@@ -72,6 +72,14 @@ const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
 
+// Claude (especially Haiku) sometimes wraps JSON output in markdown fences
+// despite explicit instructions otherwise. Strip them defensively before
+// JSON.parse. Returns the inner content if fenced, the trimmed input otherwise.
+function stripJsonFences(text: string): string {
+  const fenced = text.match(/^\s*```(?:json)?\s*\n([\s\S]*?)\n\s*```\s*$/);
+  return fenced ? fenced[1] : text.trim();
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -1199,14 +1207,15 @@ export async function registerRoutes(
         return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
       }
 
-      if (!openai) {
-        return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
+      if (!anthropic) {
+        return res.status(503).json({ message: "AI food analysis is not configured. Add ANTHROPIC_API_KEY to .env to enable this feature." });
       }
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
 
       // ── STAGE 1: LLM parses food items and quantities only ──
       const parsePrompt = `You are a food parsing assistant. Parse the meal description into individual food items with quantities. Do NOT estimate nutrition — only identify what was eaten.
+
 Return a JSON object with this exact structure:
 {
   "items": [
@@ -1215,25 +1224,52 @@ Return a JSON object with this exact structure:
   "notes": "brief coaching note about the meal",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack"
 }
+
 Rules:
 - Identify each distinct food item separately
 - Use standard units (cup, oz, g, piece, tbsp, slice, serving)
 - If quantity is unclear, estimate a reasonable default
-- Do NOT include any macro or calorie estimates`;
+- Do NOT include any macro or calorie estimates
 
-      const parseResponse = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: parsePrompt },
-          { role: "user", content: `Parse this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}` }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 400,
+Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
+
+      const parseSchema = z.object({
+        items: z
+          .array(
+            z.object({
+              food: z.string(),
+              quantity: z.number().default(1),
+              unit: z.string().default("serving"),
+            })
+          )
+          .default([]),
+        notes: z.string().optional(),
+        suggestedMealType: z.enum(["Breakfast", "Lunch", "Dinner", "Snack"]).optional(),
       });
 
-      const parseContent = parseResponse.choices[0]?.message?.content || "{}";
-      const parsed = JSON.parse(parseContent);
-      const parsedItems = parsed.items || [];
+      let parsed: z.infer<typeof parseSchema> = { items: [] };
+      try {
+        const parseResponse = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 400,
+          system: [{ type: "text", text: parsePrompt }],
+          messages: [
+            {
+              role: "user",
+              content: `Parse this meal: ${rawText}\n\nCurrent time suggests: ${mealTypeSuggestion}`,
+            },
+          ],
+        });
+        const textBlock = parseResponse.content.find((b) => b.type === "text");
+        if (textBlock && textBlock.type === "text") {
+          parsed = parseSchema.parse(JSON.parse(stripJsonFences(textBlock.text)));
+        }
+      } catch (parseErr) {
+        console.error("[Food Analyze] Parse stage failed, returning empty items:", parseErr);
+        // parsed retains its empty default — graceful degradation matches the
+        // existing fallback-stage behavior on JSON parse failure.
+      }
+      const parsedItems = parsed.items;
 
       // ── STAGE 2: Look up macros for each item (Nutritionix → OFF/USDA → LLM fallback) ──
       const foodsDetected: any[] = [];
@@ -1269,34 +1305,66 @@ Rules:
       }
 
       // LLM fallback for items not found in any database
-      if (llmFallbackItems.length > 0 && openai) {
-        const fallbackPrompt = `Estimate nutrition for these food items. Return a JSON object:
+      if (llmFallbackItems.length > 0) {
+        const fallbackPrompt = `Estimate nutrition for these food items.
+
+Return a JSON object with this exact structure:
 {
   "items": [
     {"food": "name", "quantity": 1, "unit": "cup", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0}
   ]
 }
-netCarbs = totalCarbs - fiber. Use standard USDA values. 1 oz = 28g, 1 lb = 454g.`;
+
+Rules:
+- netCarbs = totalCarbs - fiber
+- Use standard USDA values
+- 1 oz = 28g, 1 lb = 454g
+
+Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
 
         const fallbackQuery = llmFallbackItems
           .map((i: any) => `${i.quantity || 1} ${i.unit || 'serving'} ${i.food}`)
           .join(', ');
 
+        const fallbackSchema = z.object({
+          items: z
+            .array(
+              z
+                .object({
+                  food: z.string().optional(),
+                  name: z.string().optional(),
+                  quantity: z.number().default(1),
+                  unit: z.string().default("serving"),
+                  calories: z.number().default(0),
+                  protein: z.number().default(0),
+                  fat: z.number().default(0),
+                  totalCarbs: z.number().default(0),
+                  fiber: z.number().default(0),
+                  netCarbs: z.number().default(0),
+                })
+                .refine((i) => Boolean(i.food || i.name), { message: "food or name required" })
+            )
+            .default([]),
+        });
+
         try {
-          const fallbackResponse = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-              { role: "system", content: fallbackPrompt },
-              { role: "user", content: fallbackQuery }
-            ],
-            response_format: { type: "json_object" },
+          const fallbackResponse = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
             max_tokens: 1200,
+            system: [{ type: "text", text: fallbackPrompt }],
+            messages: [{ role: "user", content: fallbackQuery }],
           });
 
-          const fallbackContent = fallbackResponse.choices[0]?.message?.content || "{}";
-          let fallbackParsed: any;
-          try { fallbackParsed = JSON.parse(fallbackContent); } catch { fallbackParsed = { items: [] }; }
-          for (const item of (fallbackParsed.items || [])) {
+          const fallbackTextBlock = fallbackResponse.content.find((b) => b.type === "text");
+          let fallbackParsed: z.infer<typeof fallbackSchema> = { items: [] };
+          if (fallbackTextBlock && fallbackTextBlock.type === "text") {
+            try {
+              fallbackParsed = fallbackSchema.parse(JSON.parse(stripJsonFences(fallbackTextBlock.text)));
+            } catch {
+              fallbackParsed = { items: [] };
+            }
+          }
+          for (const item of fallbackParsed.items) {
             foodsDetected.push({
               name: item.food || item.name,
               quantity: item.quantity || 1,
