@@ -1432,8 +1432,8 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
         return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
       }
 
-      if (!openai) {
-        return res.status(503).json({ message: "AI food analysis is not configured. Add OPENAI_API_KEY to .env to enable this feature." });
+      if (!anthropic) {
+        return res.status(503).json({ message: "AI food analysis is not configured. Add ANTHROPIC_API_KEY to .env to enable this feature." });
       }
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });
@@ -1450,9 +1450,10 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
       const mealTypeSuggestion = suggestMealType();
 
       const base64Image = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
+      const mimeType = req.file.mimetype as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
       const systemPrompt = `You are a nutrition analysis AI with vision capabilities. Analyze the food in the image and identify each individual food item with its macros.
+
 Return a JSON object with this exact structure:
 {
   "foods_detected": [
@@ -1464,49 +1465,86 @@ Return a JSON object with this exact structure:
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.65, "high": 0.85}
 }
+
 Each item in foods_detected must have its own macro breakdown representing the TOTAL for that item's quantity — not per-unit values. The "macros" field must be the sum of all items.
 "netCarbs" = totalCarbs - fiber. "carbs" should equal "netCarbs" for compatibility.
 CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
 Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
-Do NOT include a qualityScore field — scoring is handled server-side.`;
+Do NOT include a qualityScore field — scoring is handled server-side.
 
-      const userContent: any[] = [
+Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
+
+      const userContent: Anthropic.ContentBlockParam[] = [
         {
-          type: "image_url",
-          image_url: { url: `data:${mimeType};base64,${base64Image}` }
-        }
+          type: "image",
+          source: { type: "base64", media_type: mimeType, data: base64Image },
+        },
       ];
-      
+
       if (additionalText) {
         userContent.push({
           type: "text",
-          text: `Additional context: ${additionalText}\nCurrent time suggests: ${mealTypeSuggestion}`
+          text: `Additional context: ${additionalText}\nCurrent time suggests: ${mealTypeSuggestion}`,
         });
       } else {
         userContent.push({
-          type: "text", 
-          text: `Current time suggests: ${mealTypeSuggestion}`
+          type: "text",
+          text: `Current time suggests: ${mealTypeSuggestion}`,
         });
       }
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 1200,
-      });
+      const analysisSchema = z.object({
+        foods_detected: z.array(z.object({
+          name: z.string(),
+          quantity: z.number().default(1),
+          unit: z.string().default("serving"),
+          calories: z.number().default(0),
+          protein: z.number().default(0),
+          fat: z.number().default(0),
+          totalCarbs: z.number().default(0),
+          fiber: z.number().default(0),
+          netCarbs: z.number().default(0),
+          confidence: z.number().default(0.7),
+        })).default([]),
+        macros: z.object({
+          calories: z.number().default(0),
+          protein: z.number().default(0),
+          carbs: z.number().default(0),
+          fat: z.number().default(0),
+          fiber: z.number().default(0),
+          totalCarbs: z.number().default(0),
+          netCarbs: z.number().default(0),
+        }).default({}),
+        notes: z.string().optional(),
+        description: z.string().optional(),
+        suggestedMealType: z.enum(["Breakfast", "Lunch", "Dinner", "Snack"]).optional(),
+        confidence: z.object({
+          low: z.number().default(0.65),
+          high: z.number().default(0.85),
+        }).default({}),
+      }).passthrough();
 
-      const content = response.choices[0]?.message?.content || "{}";
-      let analysis: any;
+      let analysis: z.infer<typeof analysisSchema> = {
+        foods_detected: [],
+        macros: { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 },
+        confidence: { low: 0.65, high: 0.85 },
+      };
       try {
-        analysis = JSON.parse(content);
-      } catch {
-        // LLM response was truncated — attempt to salvage by closing the JSON
-        const repaired = content.replace(/,?\s*$/, '') + ']}';
-        try { analysis = JSON.parse(repaired); } catch { analysis = {}; }
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1200,
+          system: [{ type: "text", text: systemPrompt }],
+          messages: [{ role: "user", content: userContent }],
+        });
+
+        const textBlock = response.content.find((b) => b.type === "text");
+        if (textBlock && textBlock.type === "text") {
+          analysis = analysisSchema.parse(JSON.parse(stripJsonFences(textBlock.text)));
+        }
+      } catch (parseErr) {
+        console.error("[Image Analysis] LLM call or parse failed, returning empty analysis:", parseErr);
+        // analysis retains its empty default — graceful degradation; UI shows
+        // "no foods detected" rather than 500.
       }
 
       // Enrich with database lookups (Open Food Facts / USDA)
@@ -1518,6 +1556,12 @@ Do NOT include a qualityScore field — scoring is handled server-side.`;
       });
     } catch (error: any) {
       console.error("Image analysis error:", error);
+      if (error instanceof Anthropic.RateLimitError) {
+        return res.status(429).json({ message: "AI service rate limit hit. Please try again shortly." });
+      }
+      if (error instanceof Anthropic.APIError) {
+        return res.status(502).json({ message: `AI service error: ${error.message}` });
+      }
       res.status(500).json({ message: error.message });
     }
   });
