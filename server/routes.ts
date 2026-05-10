@@ -5,7 +5,6 @@ import { setupAuth, crypto } from "./auth";
 import { analyticsService } from "./analytics";
 import passport from "passport";
 import multer from "multer";
-import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { z } from "zod";
@@ -56,18 +55,10 @@ import { promptEngine } from "./services/promptEngine";
 import { calculateMealScore } from "./services/mealScore";
 import { scoreBiomarker } from "./services/scoring";
 
-// OpenAI is optional - only initialize if API key is provided
-const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    })
-  : null;
-
-// Anthropic is optional - only initialize if API key is provided.
-// Used for PDF lab ingestion (Phase 2). PHI flows to Anthropic — a BAA is
-// required before enabling ANTHROPIC_API_KEY in the production environment.
-// See CLAUDE.md "Lab PDF ingestion" section.
+// Anthropic is the sole LLM vendor (consolidated from OpenAI for HIPAA BAA
+// purposes). Conditionally initialized — null-safe degradation if the API key
+// is missing. PHI flows to Anthropic, so a signed BAA is required before
+// enabling ANTHROPIC_API_KEY in the production environment. See CLAUDE.md.
 const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
@@ -109,7 +100,7 @@ const pdfUpload = multer({
 
 // ── Coaching Message Generator ────────────────────────────────────────────
 // Assembles a four-layer coaching prompt, evaluates rules, and calls the LLM.
-// Returns null if no flags triggered, no OpenAI configured, or on error.
+// Returns null if no flags triggered, no LLM client configured, or on error.
 
 type CoachIssue = 'hardCeil' | 'timing' | 'lowProtein' | 'positive';
 
@@ -2601,103 +2592,82 @@ GUIDELINES:
 7. Keep responses concise but thorough. Use bullet points for multiple data points.
 8. When querying metrics, use specific date ranges to keep results focused.`;
 
-  const aiAssistantTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  const aiAssistantTools: Anthropic.Tool[] = [
     {
-      type: "function",
-      function: {
-        name: "search_participants",
-        description: "Search for participants by name or email. Use this to find a participant's ID before querying their data.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "Name or email to search for (case-insensitive partial match)" },
-          },
-          required: ["query"],
+      name: "search_participants",
+      description: "Search for participants by name or email. Use this to find a participant's ID before querying their data.",
+      input_schema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Name or email to search for (case-insensitive partial match)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "get_participant_metrics",
+      description: "Get health metric entries for a specific participant. Types: BP, WEIGHT, GLUCOSE, KETONES, WAIST.",
+      input_schema: {
+        type: "object",
+        properties: {
+          participantId: { type: "string", description: "The participant's user ID (get from search_participants first)" },
+          metricType: { type: "string", enum: ["BP", "WEIGHT", "GLUCOSE", "KETONES", "WAIST"], description: "Filter by metric type. Omit for all." },
+          fromDate: { type: "string", description: "Start date (YYYY-MM-DD)" },
+          toDate: { type: "string", description: "End date (YYYY-MM-DD)" },
+        },
+        required: ["participantId"],
+      },
+    },
+    {
+      name: "get_participant_food",
+      description: "Get food log entries for a participant. Returns meal descriptions, macros (calories, protein, carbs, fat), and quality scores.",
+      input_schema: {
+        type: "object",
+        properties: {
+          participantId: { type: "string", description: "The participant's user ID" },
+          fromDate: { type: "string", description: "Start date (YYYY-MM-DD)" },
+          toDate: { type: "string", description: "End date (YYYY-MM-DD)" },
+        },
+        required: ["participantId"],
+      },
+    },
+    {
+      name: "get_analytics_overview",
+      description: "Get program-wide overview: total/active/inactive participants, adherence rates, logging streaks.",
+      input_schema: {
+        type: "object",
+        properties: {
+          range: { type: "number", description: "Days to look back (default: 7)" },
         },
       },
     },
     {
-      type: "function",
-      function: {
-        name: "get_participant_metrics",
-        description: "Get health metric entries for a specific participant. Types: BP, WEIGHT, GLUCOSE, KETONES, WAIST.",
-        parameters: {
-          type: "object",
-          properties: {
-            participantId: { type: "string", description: "The participant's user ID (get from search_participants first)" },
-            metricType: { type: "string", enum: ["BP", "WEIGHT", "GLUCOSE", "KETONES", "WAIST"], description: "Filter by metric type. Omit for all." },
-            fromDate: { type: "string", description: "Start date (YYYY-MM-DD)" },
-            toDate: { type: "string", description: "End date (YYYY-MM-DD)" },
-          },
-          required: ["participantId"],
+      name: "get_health_flags",
+      description: "Get flagged participants with health concerns: high glucose, elevated BP, missed logging, low ketones.",
+      input_schema: {
+        type: "object",
+        properties: {
+          range: { type: "number", description: "Days to look back (default: 7)" },
         },
       },
     },
     {
-      type: "function",
-      function: {
-        name: "get_participant_food",
-        description: "Get food log entries for a participant. Returns meal descriptions, macros (calories, protein, carbs, fat), and quality scores.",
-        parameters: {
-          type: "object",
-          properties: {
-            participantId: { type: "string", description: "The participant's user ID" },
-            fromDate: { type: "string", description: "Start date (YYYY-MM-DD)" },
-            toDate: { type: "string", description: "End date (YYYY-MM-DD)" },
-          },
-          required: ["participantId"],
+      name: "get_macro_adherence",
+      description: "Get nutrition compliance data: participants meeting protein targets, over carb limits, etc.",
+      input_schema: {
+        type: "object",
+        properties: {
+          range: { type: "number", description: "Days to look back (default: 7)" },
         },
       },
     },
     {
-      type: "function",
-      function: {
-        name: "get_analytics_overview",
-        description: "Get program-wide overview: total/active/inactive participants, adherence rates, logging streaks.",
-        parameters: {
-          type: "object",
-          properties: {
-            range: { type: "number", description: "Days to look back (default: 7)" },
-          },
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_health_flags",
-        description: "Get flagged participants with health concerns: high glucose, elevated BP, missed logging, low ketones.",
-        parameters: {
-          type: "object",
-          properties: {
-            range: { type: "number", description: "Days to look back (default: 7)" },
-          },
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_macro_adherence",
-        description: "Get nutrition compliance data: participants meeting protein targets, over carb limits, etc.",
-        parameters: {
-          type: "object",
-          properties: {
-            range: { type: "number", description: "Days to look back (default: 7)" },
-          },
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "get_outcome_metrics",
-        description: "Get aggregate outcome trends: average weight change, waist change, fasting glucose change across all participants.",
-        parameters: {
-          type: "object",
-          properties: {
-            range: { type: "number", description: "Days to look back (default: 30)" },
-          },
+      name: "get_outcome_metrics",
+      description: "Get aggregate outcome trends: average weight change, waist change, fasting glucose change across all participants.",
+      input_schema: {
+        type: "object",
+        properties: {
+          range: { type: "number", description: "Days to look back (default: 30)" },
         },
       },
     },
@@ -2764,8 +2734,8 @@ GUIDELINES:
 
   app.post("/api/admin/ai-assistant", requireAuth, requireCoachOrAdmin, aiLimiter, async (req, res) => {
     try {
-      if (!openai) {
-        return res.status(503).json({ message: "AI assistant is not configured. Add OPENAI_API_KEY to .env." });
+      if (!anthropic) {
+        return res.status(503).json({ message: "AI assistant is not configured. Add ANTHROPIC_API_KEY to .env." });
       }
 
       const parsed = aiAssistantSchema.safeParse(req.body);
@@ -2781,45 +2751,63 @@ GUIDELINES:
         metadata: { feature: "ai-assistant", queryPreview: clientMessages[clientMessages.length - 1]?.content.substring(0, 100) },
       });
 
-      const openaiMessages: any[] = [
-        { role: "system", content: AI_ASSISTANT_SYSTEM_PROMPT },
-        ...clientMessages,
-      ];
+      // Anthropic separates system from messages — incoming clientMessages are
+      // already the user/assistant turn history, no transformation needed for
+      // the first iteration. Each loop iteration may append assistant messages
+      // with tool_use blocks and user messages with tool_result blocks.
+      const anthropicMessages: Anthropic.MessageParam[] = [...clientMessages];
 
       const MAX_ITERATIONS = 5;
 
       for (let i = 0; i < MAX_ITERATIONS; i++) {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: openaiMessages,
-          tools: aiAssistantTools,
-          tool_choice: "auto",
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
           max_tokens: 2000,
+          system: [{ type: "text", text: AI_ASSISTANT_SYSTEM_PROMPT }],
+          tools: aiAssistantTools,
+          messages: anthropicMessages,
         });
 
-        const assistantMessage = response.choices[0].message;
-
-        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-          return res.json({ response: assistantMessage.content || "I wasn't able to generate a response." });
+        if (response.stop_reason !== "tool_use") {
+          const textBlock = response.content.find((b) => b.type === "text");
+          const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
+          return res.json({ response: text || "I wasn't able to generate a response." });
         }
 
-        openaiMessages.push(assistantMessage);
+        // Append the full assistant turn — text blocks AND tool_use blocks must
+        // be preserved so the model has its own reasoning context on the next turn.
+        anthropicMessages.push({ role: "assistant", content: response.content });
 
-        for (const toolCall of assistantMessage.tool_calls) {
-          const args = JSON.parse(toolCall.function.arguments);
-          let result: any;
-          try {
-            result = await executeAIToolCall(toolCall.function.name, args, { id: req.user!.id, role: req.user!.role });
-          } catch (err: any) {
-            result = { error: err.message };
+        // Execute every tool_use block; collect tool_result blocks into a single
+        // user message (Anthropic's standard tool-result shape).
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const block of response.content) {
+          if (block.type === "tool_use") {
+            let result: any;
+            try {
+              result = await executeAIToolCall(block.name, block.input, { id: req.user!.id, role: req.user!.role });
+            } catch (err: any) {
+              result = { error: err.message };
+            }
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            });
           }
-          openaiMessages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
         }
+        anthropicMessages.push({ role: "user", content: toolResults });
       }
 
       res.json({ response: "I needed too many data lookups to answer that. Could you try a more specific question?" });
     } catch (error: any) {
       console.error("AI assistant error:", error);
+      if (error instanceof Anthropic.RateLimitError) {
+        return res.status(429).json({ message: "AI service rate limit hit. Please try again shortly." });
+      }
+      if (error instanceof Anthropic.APIError) {
+        return res.status(502).json({ message: `AI service error: ${error.message}` });
+      }
       res.status(500).json({ message: error.message });
     }
   });

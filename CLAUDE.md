@@ -7,7 +7,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - **Frontend:** React 19 + TypeScript + Vite, Tailwind, shadcn/ui, TanStack Query, lucide-react, sonner
 - **Backend:** Node 20+, Express 5, Passport (scrypt sessions), Drizzle ORM
 - **DB:** PostgreSQL — production is Railway; local dev runs against a fresh, pseudonymized Neon branch (see "Local dev" below)
-- **External:** OpenAI GPT-4o-mini (meal parsing + coaching), Anthropic Claude Sonnet 4.6 (lab PDF extraction — Phase 2, see "Lab PDF ingestion" below), Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
+- **External:** Anthropic Claude (sole LLM vendor — consolidated from OpenAI for HIPAA BAA purposes; see "AI vendor consolidation" below). Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
 - **Hosting:** Railway, auto-deploys from GitHub `main` → app.doctorchadlarson.com
 
 ## Folder structure
@@ -58,9 +58,10 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 ## Known pre-existing issues (don't chase these)
 
-- [server/routes.ts](server/routes.ts) has a few TS errors flagged by `npm run check`: `ChatCompletionMessageToolCall.function` access and `metric.value_json` property access. These predate current work and don't affect runtime.
-- [server/replit_integrations/](server/replit_integrations/) is leftover Replit code — Railway is prod now. Folder can be deleted.
+- [server/routes.ts](server/routes.ts) has TS errors flagged by `npm run check` around `metric.value_json` property access and a couple of `logAuditEvent` argument-count mismatches. These predate current work and don't affect runtime.
 - Untracked `migrations/0001_curved_captain_midlands.sql` + `migrations/meta/` are Drizzle Kit-generated files that aren't used (we use `runIncrementalMigrations` instead).
+- AI assistant's system prompt interpolates `Today is ${date}` at server **startup** (it's a `const`, not a function). A long-running server reports its boot date as "today" forever. Tracked as a follow-up — fix by making the prompt a function or moving the date out of the system prompt. Captured during the OpenAI→Claude migration.
+- Meal-image system prompt (`/api/food/analyze-image`) produces cheerleader-y notes (`"Excellent!"`, `"Great choice!"`) — tone doesn't match the clinical voice used in `generateMealCoachMessage`'s prompt. Tracked as a follow-up prompt-cleanup pass.
 
 ## Lab PDF ingestion (Phase 2 — code complete, prod-gated on BAA)
 
@@ -74,6 +75,24 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - Audit: extraction logs `LAB_PDF_EXTRACT` with biomarker slugs + counts only (no values). Per-row value-level audit happens through the existing `auditRecordCreate` path when staff confirms.
 - **Feature flag: `ENABLE_PDF_EXTRACTION`.** Set to `"true"` to render the Upload PDF tab. When unset or any other value, the tab is hidden entirely (manual entry still works). Server reads this at request time via `GET /api/config`, so toggling the env var + restarting the service is enough — no rebuild needed.
 - ‼️ **HIPAA / BAA prerequisite — DO NOT enable in production until BAA is signed.** PDF extraction sends PHI (lab values, possibly patient identifiers on the report) to Anthropic. **Do not set `ANTHROPIC_API_KEY` or `ENABLE_PDF_EXTRACTION=true` in the Railway production environment until a signed Business Associate Agreement with Anthropic is in place.** Manual entry continues to work as before. Local dev should use test PDFs with no real patient data.
+
+## AI vendor consolidation
+
+Anthropic is the sole LLM vendor. The migration from OpenAI happened in four staged commits; OpenAI SDK has been removed.
+
+Per-call-site model selection:
+
+| Call site | Model | Rationale |
+|---|---|---|
+| `/api/food/analyze` (text parse + macro fallback) | `claude-haiku-4-5` | Lightweight parsing — cost-optimized |
+| `generateMealCoachMessage()` (post-meal coaching) | `claude-haiku-4-5` | Short plain-text output, simple task |
+| `/api/food/analyze-image` (vision meal analysis) | `claude-sonnet-4-6` | Vision accuracy matters; granular item detection |
+| `/api/admin/ai-assistant` (multi-turn + tool use) | `claude-sonnet-4-6` | Reasoning over participant data, multi-turn context |
+| `/api/admin/lab-results/pdf/extract` (Phase 2 PDF) | `claude-sonnet-4-6` | PDF document extraction with confidence scoring |
+
+JSON output strategy across all call sites: prompt-instruction + Zod validation + a defensive `stripJsonFences()` helper (Haiku especially likes to wrap JSON in markdown fences). No `output_config.format` / structured outputs — kept simple to match the existing PDF endpoint pattern.
+
+Pre-existing code paths that **will graceful-degrade** if `ANTHROPIC_API_KEY` is missing: every endpoint returns 503 with a clear message rather than 500. Manual entry paths (food log, lab results) continue to work in degraded mode.
 
 ## Prompt engine
 
