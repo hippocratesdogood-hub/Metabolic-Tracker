@@ -60,8 +60,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 - [server/routes.ts](server/routes.ts) has TS errors flagged by `npm run check` around `metric.value_json` property access and a couple of `logAuditEvent` argument-count mismatches. These predate current work and don't affect runtime.
 - Untracked `migrations/0001_curved_captain_midlands.sql` + `migrations/meta/` are Drizzle Kit-generated files that aren't used (we use `runIncrementalMigrations` instead).
-- AI assistant's system prompt interpolates `Today is ${date}` at server **startup** (it's a `const`, not a function). A long-running server reports its boot date as "today" forever. Tracked as a follow-up — fix by making the prompt a function or moving the date out of the system prompt. Captured during the OpenAI→Claude migration.
-- Meal-image system prompt (`/api/food/analyze-image`) produces cheerleader-y notes (`"Excellent!"`, `"Great choice!"`) — tone doesn't match the clinical voice used in `generateMealCoachMessage`'s prompt. Tracked as a follow-up prompt-cleanup pass.
+- Five calendar-drift test failures (pre-existing, unrelated to current work): `backfillAnalytics.test.ts:1101`, `historicalEdgeCases.test.ts:107` and `:147`, `import.test.ts:260`. They hardcode "X years ago" baselines that decay as the calendar moves forward and will fail more often over time. Fix by switching to relative date helpers or `vi.useFakeTimers()` with a frozen clock.
 
 ## Lab PDF ingestion (Phase 2 — code complete, prod-gated on BAA)
 
