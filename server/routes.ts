@@ -1214,7 +1214,7 @@ Return a JSON object with this exact structure:
   "items": [
     { "food": "food name", "quantity": 1, "unit": "cup|oz|g|piece|tbsp|slice|serving" }
   ],
-  "notes": "brief coaching note about the meal",
+  "notes": "brief clinical observation about the meal — neutral, factual, no praise",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack"
 }
 
@@ -1223,6 +1223,8 @@ Rules:
 - Use standard units (cup, oz, g, piece, tbsp, slice, serving)
 - If quantity is unclear, estimate a reasonable default
 - Do NOT include any macro or calorie estimates
+
+Tone for the "notes" field: clinical and direct. State observations factually (composition, macro balance, notable absences). Do not use praise language ("Excellent", "Great", "nice job"), exclamation marks, or encouragement. If the meal is well-balanced, say so plainly; if it's skewed, note the skew.
 
 Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
 
@@ -1451,7 +1453,7 @@ Return a JSON object with this exact structure:
     {"name": "food item name", "quantity": 1, "unit": "piece|oz|g|cup|tbsp|slice|serving", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "confidence": 0.85}
   ],
   "macros": {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "totalCarbs": 0, "netCarbs": 0},
-  "notes": "brief coaching note about the meal",
+  "notes": "brief clinical observation about the meal — neutral, factual, no praise",
   "description": "brief description of what you see",
   "suggestedMealType": "Breakfast" | "Lunch" | "Dinner" | "Snack",
   "confidence": {"low": 0.65, "high": 0.85}
@@ -1462,6 +1464,8 @@ Each item in foods_detected must have its own macro breakdown representing the T
 CRITICAL — weight conversions: 1 oz = 28g (NOT 50g or 100g). 1 lb = 454g. Always convert oz/lb to grams before estimating macros.
 Reference calibration: 1 oz (28g) salmon ≈ 40 cal, 6g protein, 2g fat. 1 oz (28g) chicken breast ≈ 46 cal, 9g protein, 1g fat. 1 large egg ≈ 70 cal, 6g protein, 5g fat. So 2 oz salmon = 56g = ~80 cal, 11g protein. 3 oz chicken = 85g = ~140 cal, 26g protein.
 Do NOT include a qualityScore field — scoring is handled server-side.
+
+Tone for the "notes" field: clinical and direct. State observations factually (composition, macro balance, notable absences). Do not use praise language ("Excellent", "Great", "nice job"), exclamation marks, or encouragement. If the meal is well-balanced, say so plainly; if it's skewed, note the skew.
 
 Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
 
@@ -2584,7 +2588,7 @@ AVAILABLE DATA TYPES:
 
 GUIDELINES:
 1. When asked about a specific participant, ALWAYS use search_participants first to find their ID, then query their data.
-2. For date ranges, use ISO 8601 format (YYYY-MM-DD). "Last week" means the last 7 days. "Last month" means the last 30 days. Today is ${new Date().toISOString().split('T')[0]}.
+2. For date ranges, use ISO 8601 format (YYYY-MM-DD). "Last week" means the last 7 days. "Last month" means the last 30 days.
 3. Present data clearly with relevant context. Include units (lbs, mg/dL, mmol/L, mmHg).
 4. Flag concerning patterns (high glucose >110 mg/dL, elevated BP >140/90, missed logging >3 days).
 5. When summarizing trends, mention both the direction and magnitude of change.
@@ -2759,11 +2763,16 @@ GUIDELINES:
 
       const MAX_ITERATIONS = 5;
 
+      const todayIso = new Date().toISOString().split('T')[0];
+
       for (let i = 0; i < MAX_ITERATIONS; i++) {
         const response = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 2000,
-          system: [{ type: "text", text: AI_ASSISTANT_SYSTEM_PROMPT }],
+          system: [
+            { type: "text", text: AI_ASSISTANT_SYSTEM_PROMPT },
+            { type: "text", text: `Today is ${todayIso}.` },
+          ],
           tools: aiAssistantTools,
           messages: anthropicMessages,
         });
