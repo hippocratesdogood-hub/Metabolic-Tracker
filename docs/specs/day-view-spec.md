@@ -1,9 +1,9 @@
 # Day View — v1 Spec
 
-**Status:** Draft for implementation
+**Status:** Draft for implementation (product decisions resolved)
 **Owner:** Chad Larson
 **Target route:** `/log/:date`
-**Last updated:** 2026-05-11
+**Last updated:** 2026-05-11 (rev 2 — §8 product decisions resolved)
 
 ---
 
@@ -32,7 +32,7 @@ The route is `/log/:date`, not `/food/:date`. The page is *currently* food-focus
 | Route shape | `/log/:date` with ISO `YYYY-MM-DD` | Neutral, forward-compatible with unified day view |
 | Date navigator | Prev / Next arrows + date display + calendar picker | Reuse existing `DatePicker`; familiar pattern |
 | Totals strip | Calories, Carbs (net or total), Fat, Protein | Match existing macro tracking surface |
-| Carb display mode | Net carbs **if** fiber tracking is on for this user; total otherwise | Pre-flight check below |
+| Carb display mode | **Default to net carbs always.** Per clinical preference — participants should always see net carbs. User-level override field reserved for v2. | — |
 | Carb runway | Surface remaining carbs with actionable food equivalents via existing coaching rules | Discovery step below — may need data buildout |
 | Meal sections | Breakfast / Lunch / Dinner / Snacks, each with subtotal row | Matches existing categorization in food entries |
 | Edit interaction | Tap food entry → open existing food edit modal | Reuse, don't rebuild |
@@ -76,7 +76,7 @@ The user has confirmed targets are *probably* somewhere but not sure where. Loca
 
 Also determine:
 
-- [ ] Is there a per-user flag for **net vs. total carb display**? (e.g., `track_fiber`, `carb_display_mode` on user profile.) If not, derive heuristically: if more than 50% of the user's recent entries have `fiber_g IS NOT NULL`, display net carbs; otherwise total.
+- [ ] **Carb display mode:** default `carbDisplayMode` to `'net'` always. If pre-flight discovers a per-user setting (e.g., `track_fiber`, `carb_display_mode`), respect it; otherwise `'net'` is the v1 default. Net is computed as `total_carbs - fiber_g`. If an entry has no fiber data, its net = total for that entry (slightly conservative, clinically acceptable).
 
 ### 3c. Coaching rules — discovery required
 
@@ -245,7 +245,7 @@ New route: `PUT /api/log/day/:date/meals/:category/feel-state`
 - Standard session check.
 - Validate `:category` against the four allowed values.
 - Validate `feelState` against the allowed enum (plus null).
-- **No 7-day cap on this endpoint** — feel-state tagging is allowed on any historical date, since the data is reflective rather than entered. (Confirm this is desired during review.)
+- **30-day cap on this endpoint.** Feel-state tagging is allowed on dates up to 30 days old, since the data is reflective rather than entered — but older than that, recall accuracy degrades and the data becomes noise. Reject with 403 + clear error code if `(todayInUserTZ - queriedDate) > 30 days`.
 
 ### 4d. Frontend — Routing & page shell
 
@@ -274,7 +274,7 @@ New component: `client/src/components/DailyTotals.tsx`
 - The **Carbs** tile additionally renders the carb-runway phrase below the progress bar:
   - `remaining > 0`: "**18g remaining** ≈ 1 cup non-starchy vegetables, cooked"
   - `remaining === 0`: "**At target**"
-  - `remaining < 0`: "**Over by 4g**" (neutral framing, no warning color in v1)
+  - `remaining < 0`: "**Over by 4g — hydrate and walk**" (soft, physical, clinically-aligned nudge — both hydration and walking lower postprandial glucose. Keep copy brief and non-punitive.)
 - Use the `carbRunway.suggestion` from the API response — do **not** compute suggestions on the client.
 
 ### 4g. Frontend — Meal sections
@@ -303,7 +303,7 @@ New component: `client/src/components/FeelStatePicker.tsx`
   - 🌫️ Brain fog
 - Tap selects (highlight). Tap selected pill again to clear.
 - Updates persist immediately via `PUT` to the feel-state endpoint (optimistic update; revert on error with toast).
-- **Available on any date** — unlike food entry editing, feel-state tagging is not capped at 7 days.
+- **Available on dates up to 30 days old** — wider than food editing's 7-day cap (since feel-state is reflective) but capped to avoid low-quality recall data. Hide or disable pills when displayed date > 30 days ago.
 
 ### 4i. Frontend — Read-only mode
 
@@ -311,7 +311,7 @@ When `isReadOnly` is true:
 - All "+ Add food" buttons disabled.
 - Tapping a food entry still opens the edit modal but in **read-only mode** (verify the modal supports this; if not, suppress the click handler and add a tooltip).
 - A subtle banner above the totals strip: *"Older than 7 days — view only. Last 7 days are editable."*
-- Feel-state pills remain interactive (per §4h).
+- Feel-state pills remain interactive when displayed date is within the **30-day** feel-state window, even if `isReadOnly` (which is gated at 7 days for food editing). Beyond 30 days, feel-state pills are also disabled.
 
 ### 4j. Frontend — Loading & error states
 
@@ -408,8 +408,15 @@ These are noted here so reviewers and future Claude Code sessions don't accident
 
 ---
 
-## 8. Open Questions for Product Review
+## 8. Resolved Decisions (Product Review)
 
-- Should feel-state tagging really be uncapped (any date), or also limited to 7 days for consistency? Spec assumes uncapped — flag for review.
-- Carb runway copy when `remaining < 0`: keep neutral ("Over by 4g") or add a clinically-grounded nudge? V1 stays neutral; revisit after pilot feedback.
+The following were flagged for review during spec drafting and have been resolved:
+
+- **Feel-state tagging window:** 30-day cap (not uncapped, not 7-day). Balances reflective utility against recall-accuracy noise.
+- **Carb runway over-target copy:** "Over by 4g — hydrate and walk" — brief, physical, clinically-aligned nudge. Hydration and walking both lower postprandial glucose, so the copy carries genuine clinical weight.
+- **`/log` (no date):** Redirects to `/log/<today-in-user-TZ>`. URL always reflects the day being viewed; shared URLs always point to a specific day.
+- **Net vs total carb display:** Default to net carbs always. User-level override field reserved for v2.
+
+### Still Open
+
 - Should the carb runway equivalents be user-context-aware (e.g., adjust for fasting state, time of day)? V1 is context-free; rule engine can add context later without changing the API contract.
