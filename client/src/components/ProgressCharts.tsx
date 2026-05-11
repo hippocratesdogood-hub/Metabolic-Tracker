@@ -22,6 +22,28 @@ interface MetricEntry {
   valueJson: any;
   timestamp: string | Date;
   type: string;
+  glucoseContext?: string | null;
+}
+
+// Display label for a glucose context value. Prefers the new glucose_context
+// column; falls back to the legacy valueJson.context string (which used "1hr"
+// / "2hr" instead of "post_meal_1h" / "post_meal_2h"). Returns null for
+// missing / unrecognized values.
+function glucoseContextLabel(
+  glucoseContext: string | null | undefined,
+  valueJsonContext: string | null | undefined,
+): string | null {
+  const raw = glucoseContext ?? valueJsonContext ?? null;
+  if (!raw) return null;
+  switch (raw) {
+    case "fasting": return "Fasting";
+    case "post_meal_1h":
+    case "1hr": return "1h Post-Meal";
+    case "post_meal_2h":
+    case "2hr": return "2h Post-Meal";
+    case "random": return "Random";
+    default: return null;
+  }
 }
 
 interface ProgressChartsProps {
@@ -51,12 +73,14 @@ function toDisplayValue(val: number, type: string, unitsPref: UnitsPreference): 
   }
 }
 
-// Prepare chart data: filter to 30 days, sort chronologically, convert units
+// Prepare chart data: filter to 30 days, sort chronologically, convert units.
+// For glucose, also attach a contextLabel (drawn from glucose_context column
+// with valueJson.context as legacy fallback) so the tooltip can show it.
 function prepareData(
   entries: MetricEntry[],
   type: string,
   unitsPref: UnitsPreference,
-): Array<{ date: string; value: number; ts: number }> {
+): Array<{ date: string; value: number; ts: number; contextLabel: string | null }> {
   const cutoff = THIRTY_DAYS_AGO();
   return entries
     .filter(e => new Date(e.timestamp) >= cutoff)
@@ -68,13 +92,19 @@ function prepareData(
       } else {
         val = (e.valueJson as { value?: number })?.value ?? null;
       }
-      return val != null ? {
+      if (val == null) return null;
+      const contextLabel =
+        type === 'GLUCOSE'
+          ? glucoseContextLabel(e.glucoseContext, (e.valueJson as { context?: string })?.context)
+          : null;
+      return {
         date: format(new Date(e.timestamp), 'MMM d'),
         value: Math.round(val * 100) / 100,
         ts: new Date(e.timestamp).getTime(),
-      } : null;
+        contextLabel,
+      };
     })
-    .filter((d): d is { date: string; value: number; ts: number } => d != null);
+    .filter((d): d is { date: string; value: number; ts: number; contextLabel: string | null } => d != null);
 }
 
 // Prepare BP data: two values per entry
@@ -99,6 +129,12 @@ function prepareBpData(entries: MetricEntry[]): Array<{ date: string; systolic: 
 // Custom tooltip
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
+  // Glucose-series points carry a contextLabel on payload[0].payload.
+  // Show it as a secondary line under the value when present.
+  const contextLabel: string | null =
+    (payload[0]?.payload && typeof payload[0].payload.contextLabel === 'string'
+      ? payload[0].payload.contextLabel
+      : null);
   return (
     <div className="bg-popover border border-border rounded-lg px-3 py-2 shadow-md text-sm">
       <p className="text-muted-foreground font-medium mb-1">{label}</p>
@@ -107,6 +143,9 @@ function ChartTooltip({ active, payload, label }: any) {
           {p.name}: {typeof p.value === 'number' ? p.value.toFixed(1) : p.value}
         </p>
       ))}
+      {contextLabel && (
+        <p className="text-xs text-muted-foreground mt-0.5">{contextLabel}</p>
+      )}
     </div>
   );
 }

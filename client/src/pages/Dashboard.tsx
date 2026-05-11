@@ -23,6 +23,10 @@ export default function Dashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<MetricType | null>(null);
   const [unifiedModalOpen, setUnifiedModalOpen] = useState(false);
+  // Persisted across consecutive entries in the same Dashboard session so
+  // participants backfilling many days don't re-pick every time. Resets to
+  // today on Dashboard unmount (route change).
+  const [lastUsedDate, setLastUsedDate] = useState<Date>(new Date());
   const unitsPref = (authUser?.unitsPreference ?? "US") as UnitsPreference;
   const unitLabels = getUnitLabels(unitsPref);
 
@@ -352,10 +356,14 @@ export default function Dashboard() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         type={selectedType}
+        lastUsedDate={lastUsedDate}
+        onDateChange={setLastUsedDate}
       />
       <UnifiedMetricModal
         isOpen={unifiedModalOpen}
         onClose={() => setUnifiedModalOpen(false)}
+        lastUsedDate={lastUsedDate}
+        onDateChange={setLastUsedDate}
       />
     </div>
   );

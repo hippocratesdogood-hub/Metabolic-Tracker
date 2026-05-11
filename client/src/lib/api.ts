@@ -67,8 +67,9 @@ class ApiClient {
     valueJson: any;
     normalizedValue?: number | null;
     rawUnit?: string;
-    timestamp?: Date;
+    timestamp?: Date | string;
     notes?: string;
+    glucoseContext?: "fasting" | "post_meal_1h" | "post_meal_2h" | "random" | null;
   }) {
     return this.request<MetricEntry>("/metrics", {
       method: "POST",

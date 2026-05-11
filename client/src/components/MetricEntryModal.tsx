@@ -12,7 +12,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { MetricType, useData } from '@/lib/dataAdapter';
 import { useAuth } from '@/lib/auth';
-import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
+import { format, startOfDay, isAfter, isToday } from 'date-fns';
 import { CalendarIcon, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -22,14 +22,17 @@ interface MetricEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   type: MetricType | null;
+  lastUsedDate?: Date;
+  onDateChange?: (date: Date) => void;
 }
+
+type GlucoseContext = "fasting" | "post_meal_1h" | "post_meal_2h" | "random";
 
 // Validation schemas with meaningful error messages
 const glucoseSchema = z.object({
   value: z.coerce.number()
     .min(20, "Glucose seems too low - please verify (min 20 mg/dL)")
     .max(600, "Glucose seems too high - please verify (max 600 mg/dL)"),
-  context: z.string().optional(),
 });
 
 const weightSchema = z.object({
@@ -62,7 +65,7 @@ const bpSchema = z.object({
   path: ["systolic"],
 });
 
-export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryModalProps) {
+export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, onDateChange }: MetricEntryModalProps) {
   const { addMetric } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -71,14 +74,18 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
   const [systolic, setSystolic] = React.useState('');
   const [diastolic, setDiastolic] = React.useState('');
   const [value, setValue] = React.useState('');
-  const [context, setContext] = React.useState('fasting');
-  const [entryDate, setEntryDate] = React.useState<Date>(new Date());
+  const [context, setContext] = React.useState<GlucoseContext | null>(null);
+  const [entryDate, setEntryDate] = React.useState<Date>(lastUsedDate ?? new Date());
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [formError, setFormError] = React.useState<string | null>(null);
 
-  const minDate = subDays(startOfDay(new Date()), 7);
-  const maxDate = new Date();
+  // Sync local entryDate when parent's lastUsedDate changes (e.g. on modal re-open).
+  React.useEffect(() => {
+    if (isOpen && lastUsedDate) setEntryDate(lastUsedDate);
+  }, [isOpen, lastUsedDate]);
+
+  const maxDate = startOfDay(new Date());
   const isBackfill = !isToday(entryDate);
 
   // Clear errors when modal opens or type changes
@@ -112,10 +119,7 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
       if (type === 'BP') {
         bpSchema.parse({ systolic: Number(systolic), diastolic: Number(diastolic) });
       } else {
-        const data = type === 'GLUCOSE'
-          ? { value: Number(value), context }
-          : { value: Number(value) };
-        schema.parse(data);
+        schema.parse({ value: Number(value) });
       }
       return true;
     } catch (err) {
@@ -144,6 +148,12 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
     setFormError(null);
 
     try {
+      // Send backdated entries as YYYY-MM-DD (server converts to noon in user TZ).
+      // Today's entries send a full Date so the actual timestamp is preserved.
+      const timestampPayload: Date | string = isBackfill
+        ? format(entryDate, 'yyyy-MM-dd')
+        : new Date();
+
       if (type === 'BP') {
         const normalized = normalizeMetricForStorage({
           type: 'BP',
@@ -155,8 +165,8 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
           type,
           normalizedValue: normalized.normalizedValue,
           rawUnit: normalized.rawUnit,
-          valueJson: { ...normalized.valueJson, context: undefined },
-          timestamp: entryDate,
+          valueJson: normalized.valueJson,
+          timestamp: timestampPayload,
         });
       } else {
         const normalized = normalizeMetricForStorage({
@@ -168,8 +178,9 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
           type,
           normalizedValue: normalized.normalizedValue,
           rawUnit: normalized.rawUnit,
-          valueJson: { ...normalized.valueJson, context: type === 'GLUCOSE' ? context : undefined },
-          timestamp: entryDate,
+          valueJson: normalized.valueJson,
+          timestamp: timestampPayload,
+          ...(type === 'GLUCOSE' && context ? { glucoseContext: context } : {}),
         });
       }
 
@@ -179,11 +190,14 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
         description: `Your ${titles[type].replace('Log ', '').toLowerCase()} reading has been logged.`,
       });
 
-      // Reset and close
+      // Persist last-used date to the parent so the next entry defaults to it.
+      onDateChange?.(entryDate);
+
+      // Reset value fields but keep entryDate — parent owns the persisted date.
       setSystolic('');
       setDiastolic('');
       setValue('');
-      setEntryDate(new Date());
+      setContext(null);
       setErrors({});
       onClose();
     } catch (error) {
@@ -252,16 +266,15 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
                   mode="single"
                   selected={entryDate}
                   onSelect={(date) => date && setEntryDate(date)}
-                  disabled={(date) => isBefore(date, minDate) || isAfter(date, maxDate)}
+                  disabled={(date) => isAfter(date, maxDate)}
                   initialFocus
                 />
-                <div className="p-2 border-t text-xs text-muted-foreground text-center">
-                  Backfill entries up to 7 days
-                </div>
               </PopoverContent>
             </Popover>
             {isBackfill && (
-              <p className="text-xs text-amber-600">Backfilling for a past date</p>
+              <p className="text-xs font-medium text-amber-600">
+                Logging for {format(entryDate, 'MMM d, yyyy')}
+              </p>
             )}
           </div>
           {type === 'BP' ? (
@@ -357,15 +370,19 @@ export default function MetricEntryModal({ isOpen, onClose, type }: MetricEntryM
 
               {type === 'GLUCOSE' && (
                 <div className="space-y-2">
-                  <Label htmlFor="glucose-context">Context</Label>
-                  <Select value={context} onValueChange={setContext} disabled={isSubmitting}>
+                  <Label htmlFor="glucose-context">Context (optional)</Label>
+                  <Select
+                    value={context ?? undefined}
+                    onValueChange={(v) => setContext(v as GlucoseContext)}
+                    disabled={isSubmitting}
+                  >
                     <SelectTrigger id="glucose-context" aria-label="Glucose measurement context">
-                      <SelectValue />
+                      <SelectValue placeholder="Not specified" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="fasting">Fasting (Morning)</SelectItem>
-                      <SelectItem value="1hr">1h Post-Meal</SelectItem>
-                      <SelectItem value="2hr">2h Post-Meal</SelectItem>
+                      <SelectItem value="post_meal_1h">1h Post-Meal</SelectItem>
+                      <SelectItem value="post_meal_2h">2h Post-Meal</SelectItem>
                       <SelectItem value="random">Random</SelectItem>
                     </SelectContent>
                   </Select>

@@ -231,6 +231,41 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       ADD COLUMN IF NOT EXISTS "glucose_context" "glucose_context";
   `);
 
+  // Migration: Expand glucose_context enum from 3 → 4 values.
+  // Replaces the initial (fasting, random, post_meal) shape with
+  // (fasting, post_meal_1h, post_meal_2h, random) to preserve the
+  // 1h/2h clinical distinction. Column has zero rows populated at
+  // this point, so drop + recreate is safe. The conditional check
+  // detects the *old* enum (presence of 'post_meal') so the drop
+  // only fires the first time this block runs against a DB seeded
+  // with the prior shape. Subsequent boots are no-ops.
+  await pool.query(`
+    DO $$
+    DECLARE
+      has_old_enum boolean;
+    BEGIN
+      SELECT EXISTS (
+        SELECT 1 FROM pg_enum e
+        JOIN pg_type t ON e.enumtypid = t.oid
+        WHERE t.typname = 'glucose_context' AND e.enumlabel = 'post_meal'
+      ) INTO has_old_enum;
+      IF has_old_enum THEN
+        ALTER TABLE "metric_entries" DROP COLUMN IF EXISTS "glucose_context";
+        DROP TYPE "glucose_context";
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "glucose_context" AS ENUM ('fasting', 'post_meal_1h', 'post_meal_2h', 'random');
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    ALTER TABLE "metric_entries"
+      ADD COLUMN IF NOT EXISTS "glucose_context" "glucose_context";
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [

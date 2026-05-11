@@ -6,12 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useData } from '@/lib/dataAdapter';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { queryClient } from '@/lib/queryClient';
-import { Heart, Droplet, Activity, Scale, Ruler, Loader2, AlertCircle } from 'lucide-react';
+import { format, isAfter, isToday, startOfDay } from 'date-fns';
+import { Heart, Droplet, Activity, Scale, Ruler, Loader2, AlertCircle, CalendarIcon, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getUnitLabels, normalizeMetricForStorage, type UnitsPreference } from '@shared/units';
@@ -19,7 +22,11 @@ import { getUnitLabels, normalizeMetricForStorage, type UnitsPreference } from '
 interface UnifiedMetricModalProps {
   isOpen: boolean;
   onClose: () => void;
+  lastUsedDate?: Date;
+  onDateChange?: (date: Date) => void;
 }
+
+type GlucoseContext = "fasting" | "post_meal_1h" | "post_meal_2h" | "random";
 
 // Validation schemas — same ranges as MetricEntryModal but all optional
 const bpSchema = z.object({
@@ -50,7 +57,7 @@ const waistSchema = z.coerce.number()
   .min(15, "Too low (min 15)")
   .max(100, "Too high (max 100)");
 
-export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricModalProps) {
+export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDateChange }: UnifiedMetricModalProps) {
   const { refreshMetrics } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -60,25 +67,33 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
   const [systolic, setSystolic] = useState('');
   const [diastolic, setDiastolic] = useState('');
   const [glucose, setGlucose] = useState('');
-  const [glucoseContext, setGlucoseContext] = useState('fasting');
+  const [glucoseContext, setGlucoseContext] = useState<GlucoseContext | null>(null);
   const [ketones, setKetones] = useState('');
   const [weight, setWeight] = useState('');
   const [waist, setWaist] = useState('');
   const [notes, setNotes] = useState('');
+  const [entryDate, setEntryDate] = useState<Date>(lastUsedDate ?? new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
+  const maxDate = startOfDay(new Date());
+  const isBackfill = !isToday(entryDate);
+
   const resetForm = () => {
     setSystolic(''); setDiastolic('');
-    setGlucose(''); setGlucoseContext('fasting');
+    setGlucose(''); setGlucoseContext(null);
     setKetones(''); setWeight(''); setWaist('');
     setNotes(''); setErrors({}); setFormError(null);
   };
 
   React.useEffect(() => {
-    if (isOpen) { setErrors({}); setFormError(null); }
-  }, [isOpen]);
+    if (isOpen) {
+      setErrors({});
+      setFormError(null);
+      if (lastUsedDate) setEntryDate(lastUsedDate);
+    }
+  }, [isOpen, lastUsedDate]);
 
   const hasBP = systolic.trim() !== '' || diastolic.trim() !== '';
   const hasGlucose = glucose.trim() !== '';
@@ -133,7 +148,11 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
 
     setIsSubmitting(true);
     setFormError(null);
-    const timestamp = new Date();
+    // Backdated entries are sent as YYYY-MM-DD (server anchors to noon in user TZ).
+    // Today's entries send a full Date so the actual instant is preserved.
+    const timestamp: Date | string = isBackfill
+      ? format(entryDate, 'yyyy-MM-dd')
+      : new Date();
     const saved: string[] = [];
     const failed: string[] = [];
 
@@ -159,7 +178,8 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
           });
           await api.createMetricEntry({
             type: 'GLUCOSE', normalizedValue: normalized.normalizedValue, rawUnit: normalized.rawUnit,
-            valueJson: { ...normalized.valueJson, context: glucoseContext }, timestamp, notes: notes || undefined,
+            valueJson: normalized.valueJson, timestamp, notes: notes || undefined,
+            ...(glucoseContext ? { glucoseContext } : {}),
           });
           saved.push('Glucose');
         } catch { failed.push('Glucose'); }
@@ -204,6 +224,9 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
         } catch { failed.push('Waist'); }
       }
 
+      // Persist last-used date to the parent so the next entry defaults to it.
+      onDateChange?.(entryDate);
+
       // Refresh once after all saves
       await refreshMetrics();
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
@@ -235,7 +258,7 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-heading text-center">Add Today's Health Metrics</DialogTitle>
+          <DialogTitle className="text-xl font-heading text-center">Log Health Metrics</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 pt-2">
@@ -245,6 +268,46 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
               <AlertDescription>{formError}</AlertDescription>
             </Alert>
           )}
+
+          {/* Date picker — defaults to today, supports backdating without limit */}
+          <div className="space-y-2">
+            <Label htmlFor="entry-date">Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  id="entry-date"
+                  className={cn(
+                    "w-full justify-start gap-2",
+                    isBackfill && "border-amber-500 text-amber-600"
+                  )}
+                  data-testid="button-unified-metric-date"
+                  disabled={isSubmitting}
+                >
+                  <CalendarIcon className="w-4 h-4" />
+                  {isToday(entryDate)
+                    ? `Today, ${format(entryDate, 'MMM d')}`
+                    : format(entryDate, 'MMM d, yyyy')}
+                  {isBackfill && <Clock className="w-3 h-3 ml-auto" />}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={entryDate}
+                  onSelect={(date) => date && setEntryDate(date)}
+                  disabled={(date) => isAfter(date, maxDate)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            {isBackfill && (
+              <p className="text-xs font-medium text-amber-600">
+                Logging for {format(entryDate, 'MMM d, yyyy')}
+              </p>
+            )}
+          </div>
 
           <div className="space-y-5">
             {/* Blood Pressure */}
@@ -324,15 +387,19 @@ export default function UnifiedMetricModal({ isOpen, onClose }: UnifiedMetricMod
             {/* Glucose context — only when glucose has a value */}
             {hasGlucose && (
               <div className="space-y-2 -mt-2 pl-6">
-                <Label className="text-sm text-muted-foreground">Glucose Context</Label>
-                <Select value={glucoseContext} onValueChange={setGlucoseContext} disabled={isSubmitting}>
+                <Label className="text-sm text-muted-foreground">Glucose Context (optional)</Label>
+                <Select
+                  value={glucoseContext ?? undefined}
+                  onValueChange={(v) => setGlucoseContext(v as GlucoseContext)}
+                  disabled={isSubmitting}
+                >
                   <SelectTrigger className="h-9">
-                    <SelectValue />
+                    <SelectValue placeholder="Not specified" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="fasting">Fasting (Morning)</SelectItem>
-                    <SelectItem value="1hr">1h Post-Meal</SelectItem>
-                    <SelectItem value="2hr">2h Post-Meal</SelectItem>
+                    <SelectItem value="post_meal_1h">1h Post-Meal</SelectItem>
+                    <SelectItem value="post_meal_2h">2h Post-Meal</SelectItem>
                     <SelectItem value="random">Random</SelectItem>
                   </SelectContent>
                 </Select>

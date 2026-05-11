@@ -7,6 +7,7 @@ import { z } from "zod";
 export const roleEnum = pgEnum("role", ["participant", "coach", "admin"]);
 export const unitsPreferenceEnum = pgEnum("units_preference", ["US", "Metric"]);
 export const metricTypeEnum = pgEnum("metric_type", ["BP", "WAIST", "GLUCOSE", "KETONES", "WEIGHT"]);
+export const glucoseContextEnum = pgEnum("glucose_context", ["fasting", "post_meal_1h", "post_meal_2h", "random"]);
 export const entrySourceEnum = pgEnum("entry_source", ["manual", "import"]);
 export const foodInputTypeEnum = pgEnum("food_input_type", ["text", "photo", "voice"]);
 export const mealTypeEnum = pgEnum("meal_type", ["Breakfast", "Lunch", "Dinner", "Snack"]);
@@ -128,6 +129,7 @@ export const metricEntries = pgTable("metric_entries", {
   editedAt: timestamp("edited_at"),
   editedBy: varchar("edited_by").references(() => users.id),
   previousValueJson: jsonb("previous_value_json"), // Stores value before edit for audit
+  glucoseContext: glucoseContextEnum("glucose_context"), // Optional per-reading context for GLUCOSE entries
 }, (table) => ({
   // Unique constraint to prevent duplicate imports
   uniqueUserTimestampType: uniqueIndex("metric_entries_user_timestamp_type_idx")
