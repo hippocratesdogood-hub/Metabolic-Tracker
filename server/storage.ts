@@ -27,6 +27,7 @@ import type {
   InsertMessage,
   MacroTarget,
   InsertMacroTarget,
+  MealFeelState,
   Prompt,
   PromptRule,
   AuditLog,
@@ -36,6 +37,14 @@ import type {
   RecipeIngredient,
   InsertRecipeIngredient,
 } from "@shared/schema";
+
+type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack";
+type FeelState =
+  | "energized"
+  | "neutral"
+  | "sluggish"
+  | "gut_symptoms"
+  | "brain_fog";
 
 // Configure PostgreSQL pool with SSL in production
 export const pool = new pg.Pool({
@@ -79,6 +88,15 @@ export interface IStorage {
   // Macro Targets
   getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
   upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget>;
+
+  // Day View — per-meal feel-state tags
+  getMealFeelStatesForDay(userId: string, dateStr: string): Promise<MealFeelState[]>;
+  upsertMealFeelState(
+    userId: string,
+    dateStr: string,
+    mealType: MealType,
+    feelState: FeelState | null,
+  ): Promise<MealFeelState>;
 
   // Messaging
   getOrCreateConversation(participantId: string, coachId: string): Promise<Conversation>;
@@ -417,6 +435,55 @@ export class PostgresStorage implements IStorage {
         .returning();
       return results[0];
     }
+  }
+
+  // Day View — per-meal feel-state tags
+  async getMealFeelStatesForDay(userId: string, dateStr: string): Promise<MealFeelState[]> {
+    return await db
+      .select()
+      .from(schema.mealFeelStates)
+      .where(
+        and(
+          eq(schema.mealFeelStates.userId, userId),
+          eq(schema.mealFeelStates.date, dateStr),
+        ),
+      );
+  }
+
+  // Clearing pattern: setting feelState to null NULLs the column rather than
+  // deleting the row. The unique constraint on (user_id, date, meal_type)
+  // remains satisfied either way, and keeping the row preserves the
+  // updated_at audit trail of when the participant last touched this meal's
+  // tag — useful for the future "feel-state × macro composition" analysis.
+  async upsertMealFeelState(
+    userId: string,
+    dateStr: string,
+    mealType: MealType,
+    feelState: FeelState | null,
+  ): Promise<MealFeelState> {
+    const existing = await db
+      .select()
+      .from(schema.mealFeelStates)
+      .where(
+        and(
+          eq(schema.mealFeelStates.userId, userId),
+          eq(schema.mealFeelStates.date, dateStr),
+          eq(schema.mealFeelStates.mealType, mealType),
+        ),
+      );
+    if (existing[0]) {
+      const results = await db
+        .update(schema.mealFeelStates)
+        .set({ feelState, updatedAt: new Date() })
+        .where(eq(schema.mealFeelStates.id, existing[0].id))
+        .returning();
+      return results[0];
+    }
+    const results = await db
+      .insert(schema.mealFeelStates)
+      .values({ userId, date: dateStr, mealType, feelState })
+      .returning();
+    return results[0];
   }
 
   // Recipes

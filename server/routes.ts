@@ -53,6 +53,10 @@ import { promptEngine } from "./services/promptEngine";
 import { toISODateInTZ, parseDateOnlyAsNoonInTZ } from "./utils/timezone";
 // coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
 // Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
+import {
+  getCarbRunwaySuggestion,
+  getCarbOverTargetCopy,
+} from "./services/coachingRules";
 import { calculateMealScore } from "./services/mealScore";
 import { scoreBiomarker } from "./services/scoring";
 
@@ -1182,6 +1186,322 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Day View — consolidated daily diary
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // Macros live in jsonb on food_entries, not flat columns. Read order is
+  // (userCorrectionsJson ?? aiOutputJson).macros — user corrections win.
+  //
+  // Parent/child aggregation rule (verified in three places):
+  //   • client/src/pages/FoodLog.tsx:732 — `if (e.parentMealId) return false`
+  //   • client/src/pages/FoodLog.tsx:1414/1421 — list filter `!parentMealId`
+  //   • server/routes.ts:2437 (/api/macro-progress) — same filter
+  //
+  // Recipes generate a parent entry whose `macros` field already holds the
+  // sum of its child entries (maintained by POST/PUT/DELETE /api/food). Summing
+  // both parents and children would double-count. We therefore sum from
+  // parent-or-legacy entries only (parentMealId IS NULL) and return only
+  // those rows in the day response.
+  app.get(
+    "/api/log/day/:date",
+    requireAuth,
+    auditPhiRead("FOOD_ENTRY"),
+    async (req, res) => {
+      try {
+        const user = await storage.getUser(req.user!.id);
+        const userTz = user?.timezone || "America/Los_Angeles";
+
+        // Validate :date param. Mirror the body-parsing pattern from
+        // POST /api/metrics (routes.ts:477-495) — regex + TZ-aware future check.
+        const dateParam = req.params.date;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          return res
+            .status(400)
+            .json({ code: "INVALID_DATE_FORMAT", message: "Date must be YYYY-MM-DD" });
+        }
+        const dateAnchor = parseDateOnlyAsNoonInTZ(dateParam, userTz);
+        if (isNaN(dateAnchor.getTime())) {
+          return res
+            .status(400)
+            .json({ code: "INVALID_DATE_FORMAT", message: "Date is not a valid calendar date" });
+        }
+        const entryDateStr = toISODateInTZ(dateAnchor, userTz);
+        const todayDateStr = toISODateInTZ(new Date(), userTz);
+        if (entryDateStr > todayDateStr) {
+          return res
+            .status(400)
+            .json({ code: "FUTURE_DATE", message: "Cannot view a future date" });
+        }
+
+        // Day-offset for the 30-day editing/tagging window. Computed on the
+        // noon-anchored UTC instants so DST transitions don't drift the count.
+        const todayAnchor = parseDateOnlyAsNoonInTZ(todayDateStr, userTz);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const daysAgo = Math.round(
+          (todayAnchor.getTime() - dateAnchor.getTime()) / dayMs,
+        );
+        const withinWindow = daysAgo >= 0 && daysAgo <= 30;
+
+        // Pull a generous ±36h window around the noon anchor and filter
+        // precisely via toISODateInTZ. This is bulletproof against DST
+        // transitions and TZ edge cases at midnight, and the dataset is
+        // small (at most a couple dozen rows per day).
+        const fetchFrom = new Date(dateAnchor.getTime() - 36 * 60 * 60 * 1000);
+        const fetchTo = new Date(dateAnchor.getTime() + 36 * 60 * 60 * 1000);
+        const allEntries = await storage.getFoodEntries(req.user!.id, fetchFrom, fetchTo);
+        const dayEntries = allEntries.filter(
+          (e) => toISODateInTZ(e.timestamp, userTz) === entryDateStr,
+        );
+
+        // Aggregation: parent/legacy entries only (see rule comment above).
+        const parentEntries = dayEntries.filter((e) => !e.parentMealId);
+
+        const mealTypes = ["Breakfast", "Lunch", "Dinner", "Snack"] as const;
+        type MealType = (typeof mealTypes)[number];
+
+        type MacroSum = {
+          calories: number;
+          protein: number;
+          fat: number;
+          fiber: number;
+          totalCarbs: number;
+          netCarbs: number;
+        };
+        const zeroSum = (): MacroSum => ({
+          calories: 0,
+          protein: 0,
+          fat: 0,
+          fiber: 0,
+          totalCarbs: 0,
+          netCarbs: 0,
+        });
+
+        const totalsSum: MacroSum = zeroSum();
+        const perMealSum: Record<MealType, MacroSum> = {
+          Breakfast: zeroSum(),
+          Lunch: zeroSum(),
+          Dinner: zeroSum(),
+          Snack: zeroSum(),
+        };
+        const perMealEntries: Record<MealType, typeof parentEntries> = {
+          Breakfast: [],
+          Lunch: [],
+          Dinner: [],
+          Snack: [],
+        };
+
+        for (const entry of parentEntries) {
+          const macros =
+            ((entry.userCorrectionsJson as any)?.macros ??
+              (entry.aiOutputJson as any)?.macros) || null;
+          // Per-entry net carbs: prefer the pre-computed netCarbs; otherwise
+          // fall back to totalCarbs - fiber; otherwise use carbs. When fiber
+          // is missing on a totalCarbs-bearing entry, net = total (slightly
+          // conservative — clinically acceptable per spec §3b).
+          const calories = Number(macros?.calories) || 0;
+          const protein = Number(macros?.protein) || 0;
+          const fat = Number(macros?.fat) || 0;
+          const fiber = Number(macros?.fiber) || 0;
+          const totalCarbs =
+            Number(macros?.totalCarbs) ||
+            (Number(macros?.netCarbs) || 0) + fiber ||
+            Number(macros?.carbs) || 0;
+          const netCarbs =
+            (macros?.netCarbs != null
+              ? Number(macros.netCarbs)
+              : macros?.totalCarbs != null
+                ? Number(macros.totalCarbs) - fiber
+                : Number(macros?.carbs)) || 0;
+
+          totalsSum.calories += calories;
+          totalsSum.protein += protein;
+          totalsSum.fat += fat;
+          totalsSum.fiber += fiber;
+          totalsSum.totalCarbs += totalCarbs;
+          totalsSum.netCarbs += netCarbs;
+
+          const bucket: MealType = (mealTypes as readonly string[]).includes(
+            entry.mealType,
+          )
+            ? (entry.mealType as MealType)
+            : "Snack";
+          perMealSum[bucket].calories += calories;
+          perMealSum[bucket].protein += protein;
+          perMealSum[bucket].fat += fat;
+          perMealSum[bucket].fiber += fiber;
+          perMealSum[bucket].totalCarbs += totalCarbs;
+          perMealSum[bucket].netCarbs += netCarbs;
+          perMealEntries[bucket].push(entry);
+        }
+
+        const target = await storage.getMacroTarget(req.user!.id);
+        // Targets are returned as the participant-facing display values.
+        // v1 hard-codes net carbs display (per spec §2), so targets.carbs
+        // is the stored carbsG (treated as a net-carb target).
+        const targets = {
+          calories: target?.calories ?? null,
+          carbs: target?.carbsG ?? null,
+          fat: target?.fatG ?? null,
+          protein: target?.proteinG ?? null,
+        };
+
+        const feelStates = await storage.getMealFeelStatesForDay(
+          req.user!.id,
+          entryDateStr,
+        );
+        const feelStateByMeal = new Map<MealType, string | null>();
+        for (const row of feelStates) {
+          feelStateByMeal.set(row.mealType as MealType, row.feelState);
+        }
+
+        const meals: Record<
+          MealType,
+          {
+            entries: any[];
+            subtotals: { calories: number; carbs: number; fat: number; protein: number };
+            feelState: string | null;
+          }
+        > = {
+          Breakfast: {} as any,
+          Lunch: {} as any,
+          Dinner: {} as any,
+          Snack: {} as any,
+        };
+        for (const mt of mealTypes) {
+          const s = perMealSum[mt];
+          meals[mt] = {
+            entries: perMealEntries[mt],
+            subtotals: {
+              calories: Math.round(s.calories),
+              carbs: Math.round(s.netCarbs),
+              fat: Math.round(s.fat),
+              protein: Math.round(s.protein),
+            },
+            feelState: feelStateByMeal.get(mt) ?? null,
+          };
+        }
+
+        const carbTargetG = targets.carbs;
+        const remainingGrams =
+          carbTargetG != null ? carbTargetG - totalsSum.netCarbs : 0;
+        const suggestion =
+          carbTargetG != null
+            ? getCarbRunwaySuggestion(remainingGrams)
+            : null;
+        const overTargetCopy =
+          carbTargetG != null && remainingGrams < 0
+            ? getCarbOverTargetCopy(remainingGrams)
+            : null;
+
+        res.json({
+          date: entryDateStr,
+          canAddEntries: withinWindow,
+          canTagFeelState: withinWindow,
+          targets,
+          totals: {
+            calories: Math.round(totalsSum.calories),
+            totalCarbs: Math.round(totalsSum.totalCarbs),
+            netCarbs: Math.round(totalsSum.netCarbs),
+            fiber: Math.round(totalsSum.fiber),
+            fat: Math.round(totalsSum.fat),
+            protein: Math.round(totalsSum.protein),
+          },
+          meals,
+          carbRunway: {
+            remainingGrams: Math.round(remainingGrams),
+            suggestion,
+            overTargetCopy,
+          },
+        });
+      } catch (error: any) {
+        console.error("[day-view] GET failed:", error);
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
+
+  // PUT /api/log/day/:date/meals/:mealType/feel-state
+  // Upsert pattern (NULL on clear) chosen for audit-trail preservation —
+  // see comment on storage.upsertMealFeelState.
+  app.put(
+    "/api/log/day/:date/meals/:mealType/feel-state",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const user = await storage.getUser(req.user!.id);
+        const userTz = user?.timezone || "America/Los_Angeles";
+
+        // Validate :date
+        const dateParam = req.params.date;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          return res
+            .status(400)
+            .json({ code: "INVALID_DATE_FORMAT", message: "Date must be YYYY-MM-DD" });
+        }
+        const dateAnchor = parseDateOnlyAsNoonInTZ(dateParam, userTz);
+        if (isNaN(dateAnchor.getTime())) {
+          return res
+            .status(400)
+            .json({ code: "INVALID_DATE_FORMAT", message: "Date is not a valid calendar date" });
+        }
+        const entryDateStr = toISODateInTZ(dateAnchor, userTz);
+        const todayDateStr = toISODateInTZ(new Date(), userTz);
+        if (entryDateStr > todayDateStr) {
+          return res
+            .status(400)
+            .json({ code: "FUTURE_DATE", message: "Cannot tag a future date" });
+        }
+        const todayAnchor = parseDateOnlyAsNoonInTZ(todayDateStr, userTz);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const daysAgo = Math.round(
+          (todayAnchor.getTime() - dateAnchor.getTime()) / dayMs,
+        );
+        if (daysAgo > 30) {
+          return res.status(403).json({
+            code: "OUTSIDE_FEEL_STATE_WINDOW",
+            message: "Feel-state tagging is only allowed for dates within the last 30 days",
+          });
+        }
+
+        // Validate :mealType
+        const mealTypeParam = req.params.mealType;
+        const allowedMeals = ["Breakfast", "Lunch", "Dinner", "Snack"] as const;
+        if (!(allowedMeals as readonly string[]).includes(mealTypeParam)) {
+          return res.status(400).json({
+            code: "INVALID_MEAL_TYPE",
+            message: "mealType must be one of Breakfast | Lunch | Dinner | Snack",
+          });
+        }
+
+        // Validate body.feelState (enum or explicit null)
+        const bodySchema = z.object({
+          feelState: z
+            .enum(["energized", "neutral", "sluggish", "gut_symptoms", "brain_fog"])
+            .nullable(),
+        });
+        const parsed = bodySchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({
+            code: "INVALID_FEEL_STATE",
+            message: fromZodError(parsed.error).message,
+          });
+        }
+
+        const row = await storage.upsertMealFeelState(
+          req.user!.id,
+          entryDateStr,
+          mealTypeParam as (typeof allowedMeals)[number],
+          parsed.data.feelState,
+        );
+        res.json(row);
+      } catch (error: any) {
+        console.error("[day-view] PUT feel-state failed:", error);
+        res.status(500).json({ message: error.message });
+      }
+    },
+  );
 
   // ── Barcode Lookup ───────────────────────────────────────────────────
   app.post("/api/food/barcode-lookup", requireAuth, async (req, res) => {

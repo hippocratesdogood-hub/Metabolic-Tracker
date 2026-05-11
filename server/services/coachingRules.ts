@@ -370,3 +370,64 @@ function countConsecutive(
   }
   return count;
 }
+
+// ============================================================================
+// Carb runway — food-equivalent suggestions for remaining net-carb budget.
+// Consumed by the Day View totals strip (server/routes.ts GET /api/log/day/:date).
+// Sorted ascending by grams so the selection logic can scan to find the
+// largest entry that fits the remaining budget.
+//
+// CLINICAL REVIEW REQUIRED before merge — the gram values and labels here
+// are starter content drawn from common low-carb portion guidance. Dr.
+// Larson should adjust to match the program's patient-education materials.
+// ============================================================================
+
+export interface CarbRunwayEquivalent {
+  grams: number;
+  label: string;
+}
+
+export const CARB_RUNWAY_EQUIVALENTS: ReadonlyArray<CarbRunwayEquivalent> = [
+  { grams: 4, label: "½ cup mixed berries" },
+  { grams: 6, label: "1 small green salad with vinaigrette" },
+  { grams: 8, label: "1 oz nuts (almonds or walnuts)" },
+  { grams: 10, label: "1 cup non-starchy vegetables, cooked" },
+  { grams: 12, label: "½ apple with a tablespoon of nut butter" },
+  { grams: 15, label: "1 cup plain Greek yogurt with berries" },
+  { grams: 20, label: "½ cup cooked lentils or black beans" },
+  { grams: 25, label: "1 small sweet potato (≈ 3 oz)" },
+  { grams: 30, label: "½ cup cooked quinoa or brown rice" },
+];
+
+/**
+ * Pick the food-equivalent label that best fits the participant's remaining
+ * net-carb budget for the day. Returns null when there's no headroom (target
+ * met or exceeded); returns a "very little headroom" phrase when the budget
+ * is positive but smaller than the smallest equivalent.
+ *
+ * Selection: the largest entry where `grams <= remainingGrams`. Pure / sync.
+ */
+export function getCarbRunwaySuggestion(remainingGrams: number): string | null {
+  if (remainingGrams <= 0) return null;
+  if (remainingGrams < CARB_RUNWAY_EQUIVALENTS[0].grams) {
+    return "Very little headroom — keep the next bite protein- or fat-forward";
+  }
+  let pick: CarbRunwayEquivalent | null = null;
+  for (const entry of CARB_RUNWAY_EQUIVALENTS) {
+    if (entry.grams <= remainingGrams) {
+      pick = entry;
+    } else {
+      break;
+    }
+  }
+  return pick ? pick.label : null;
+}
+
+/**
+ * Server-rendered copy when net carbs are over target. Brief, physical,
+ * clinically-aligned nudge — hydration and walking both lower postprandial
+ * glucose, so the copy carries real clinical weight without being punitive.
+ */
+export function getCarbOverTargetCopy(overGrams: number): string {
+  return `Over by ${Math.abs(Math.round(overGrams))}g — hydrate and walk`;
+}
