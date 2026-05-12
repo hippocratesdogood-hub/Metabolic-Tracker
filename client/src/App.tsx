@@ -19,6 +19,7 @@ import Onboarding from "@/pages/Onboarding";
 // Lazy load non-critical routes for better initial bundle size
 const Trends = lazy(() => import("@/pages/Trends"));
 const FoodLog = lazy(() => import("@/pages/FoodLog"));
+const DayViewPage = lazy(() => import("@/pages/DayViewPage"));
 const Messages = lazy(() => import("@/pages/Messages"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
@@ -93,6 +94,8 @@ function Router() {
           <Route path="/reset-password">{() => <ProtectedRoute component={ResetPassword} allowForceReset />}</Route>
           <Route path="/trends">{() => <ProtectedRoute component={Trends} allowedRoles={['participant']} />}</Route>
           <Route path="/food">{() => <ProtectedRoute component={FoodLog} allowedRoles={['participant']} />}</Route>
+          <Route path="/log/:date">{() => <ProtectedRoute component={DayViewPage} allowedRoles={['participant']} />}</Route>
+          <Route path="/log">{() => <Redirect to={`/log/${new Date().toLocaleDateString('en-CA')}`} />}</Route>
           <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
           <Route path="/reports">{() => <ProtectedRoute component={Reports} allowedRoles={['participant']} />}</Route>
           <Route path="/metabolic-age">{() => <ProtectedRoute component={MetabolicAge} allowedRoles={['participant']} />}</Route>

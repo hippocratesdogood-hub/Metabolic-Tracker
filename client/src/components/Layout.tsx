@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/', label: 'Today', icon: LayoutDashboard },
       { href: '/trends', label: 'Trends', icon: TrendingUp },
       { href: '/food', label: 'Food', icon: Utensils },
+      { href: '/log', label: 'Day', icon: CalendarDays },
       { href: '/metabolic-age', label: 'Met Age', icon: Calculator },
       { href: '/messages', label: 'Coach', icon: MessageSquare },
       { href: '/reports', label: 'Reports', icon: FileText },
@@ -77,7 +78,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-4 py-6 space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location === item.href;
+            const isActive = item.href === '/log'
+              ? location === '/log' || location.startsWith('/log/')
+              : location === item.href;
             return (
               <Link key={item.href} href={item.href} className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group cursor-pointer",
@@ -137,7 +140,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border h-16 flex items-center justify-around z-50 pb-safe">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location === item.href;
+          const isActive = item.href === '/log'
+            ? location === '/log' || location.startsWith('/log/')
+            : location === item.href;
           return (
             <Link key={item.href} href={item.href} className={cn(
                 "flex flex-col items-center justify-center w-full h-full gap-1 pt-1 cursor-pointer",

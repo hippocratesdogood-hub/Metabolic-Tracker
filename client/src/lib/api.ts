@@ -335,6 +335,28 @@ class ApiClient {
     });
   }
 
+  // Day View — consolidated daily diary
+  async getDayLog(date: string) {
+    return this.request<any>(`/log/day/${date}`);
+  }
+
+  async setMealFeelState(
+    date: string,
+    mealType: "Breakfast" | "Lunch" | "Dinner" | "Snack",
+    feelState:
+      | "energized"
+      | "neutral"
+      | "sluggish"
+      | "gut_symptoms"
+      | "brain_fog"
+      | null,
+  ) {
+    return this.request<any>(
+      `/log/day/${date}/meals/${mealType}/feel-state`,
+      { method: "PUT", body: JSON.stringify({ feelState }) },
+    );
+  }
+
   async getMacroProgress(date?: string) {
     if (!date) {
       // Send local-time day boundaries so the server doesn't use UTC midnight,

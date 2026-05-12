@@ -7,12 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import DatePicker from '@/components/DatePicker';
 import { MetricType, useData } from '@/lib/dataAdapter';
 import { useAuth } from '@/lib/auth';
-import { format, startOfDay, isAfter, isToday } from 'date-fns';
+import { format, startOfDay, isToday } from 'date-fns';
 import { CalendarIcon, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -253,24 +252,13 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
 
           <div className="space-y-2">
             <Label htmlFor="metric-date">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-full justify-start gap-2", isBackfill && "border-amber-500 text-amber-600")} data-testid="button-metric-date">
-                  <CalendarIcon className="w-4 h-4" />
-                  {isToday(entryDate) ? `Today, ${format(entryDate, 'MMM d')}` : format(entryDate, 'MMM d, yyyy')}
-                  {isBackfill && <Clock className="w-3 h-3 ml-auto" />}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={entryDate}
-                  onSelect={(date) => date && setEntryDate(date)}
-                  disabled={(date) => isAfter(date, maxDate)}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <DatePicker value={entryDate} onChange={setEntryDate} max={maxDate} align="start">
+              <Button variant="outline" className={cn("w-full justify-start gap-2", isBackfill && "border-amber-500 text-amber-600")} data-testid="button-metric-date">
+                <CalendarIcon className="w-4 h-4" />
+                {isToday(entryDate) ? `Today, ${format(entryDate, 'MMM d')}` : format(entryDate, 'MMM d, yyyy')}
+                {isBackfill && <Clock className="w-3 h-3 ml-auto" />}
+              </Button>
+            </DatePicker>
             {isBackfill && (
               <p className="text-xs font-medium text-amber-600">
                 Logging for {format(entryDate, 'MMM d, yyyy')}
