@@ -99,7 +99,24 @@ export default function FoodLog() {
   const recognitionRef = useRef<any>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
   const hasSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
-  
+
+  // Read ?mealType= and ?date= once on mount so the Day View can deep-link
+  // into a pre-filled add-food form. Defensive: ignore unknown values.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const mt = sp.get('mealType');
+    if (mt && (['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const).includes(mt as MealType)) {
+      setMealType(mt as MealType);
+    }
+    const dt = sp.get('date');
+    if (dt && /^\d{4}-\d{2}-\d{2}$/.test(dt)) {
+      const parsed = new Date(`${dt}T00:00:00`);
+      if (!isNaN(parsed.getTime())) setEntryDate(parsed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const minDate = subDays(startOfDay(new Date()), 7);
   const maxDate = new Date();
 
