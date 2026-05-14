@@ -388,15 +388,15 @@ export interface CarbRunwayEquivalent {
 }
 
 export const CARB_RUNWAY_EQUIVALENTS: ReadonlyArray<CarbRunwayEquivalent> = [
-  { grams: 4, label: "½ cup mixed berries" },
-  { grams: 6, label: "1 small green salad with vinaigrette" },
-  { grams: 8, label: "1 oz nuts (almonds or walnuts)" },
+  { grams:  4, label: "½ cup mixed berries" },
+  { grams:  5, label: "1 medium avocado with sea salt" },
+  { grams:  6, label: "1 small green salad with vinaigrette" },
+  { grams:  8, label: "1 oz nuts (almonds or walnuts)" },
+  { grams:  9, label: "1 oz dark chocolate, 85%+ cacao" },
   { grams: 10, label: "1 cup non-starchy vegetables, cooked" },
+  { grams: 11, label: "½ cup blueberries" },
   { grams: 12, label: "½ apple with a tablespoon of nut butter" },
   { grams: 15, label: "1 cup plain Greek yogurt with berries" },
-  { grams: 20, label: "½ cup cooked lentils or black beans" },
-  { grams: 25, label: "1 small sweet potato (≈ 3 oz)" },
-  { grams: 30, label: "½ cup cooked quinoa or brown rice" },
 ];
 
 /**

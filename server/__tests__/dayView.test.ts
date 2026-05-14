@@ -60,14 +60,21 @@ describe("Day View — carb runway helpers", () => {
     });
 
     it("returns the largest fitting entry when remaining is comfortably above smallest", () => {
-      // Find a "between-entries" point and verify we pick the lower of the two
-      const lo = CARB_RUNWAY_EQUIVALENTS[0];
-      const hi = CARB_RUNWAY_EQUIVALENTS[1];
-      const between = Math.floor((lo.grams + hi.grams) / 2);
-      // Sanity: the test only makes sense if there's a gap between adjacent entries
-      if (between > lo.grams && between < hi.grams) {
+      // Find the first adjacent pair with a real gap (≥ 2g) so the
+      // "between" point lands strictly between them. The test no-ops
+      // if no such pair exists, but in practice the seed list always has
+      // at least one gap that big.
+      let pairFound = false;
+      for (let i = 1; i < CARB_RUNWAY_EQUIVALENTS.length; i++) {
+        const lo = CARB_RUNWAY_EQUIVALENTS[i - 1];
+        const hi = CARB_RUNWAY_EQUIVALENTS[i];
+        if (hi.grams - lo.grams < 2) continue;
+        const between = lo.grams + 1;
         expect(getCarbRunwaySuggestion(between)).toBe(lo.label);
+        pairFound = true;
+        break;
       }
+      expect(pairFound).toBe(true);
     });
 
     it("returns the largest entry's label when remaining is huge", () => {
