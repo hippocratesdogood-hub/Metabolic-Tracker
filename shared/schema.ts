@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum, uniqueIndex, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, real, pgEnum, uniqueIndex, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,6 +11,7 @@ export const glucoseContextEnum = pgEnum("glucose_context", ["fasting", "post_me
 export const entrySourceEnum = pgEnum("entry_source", ["manual", "import"]);
 export const foodInputTypeEnum = pgEnum("food_input_type", ["text", "photo", "voice"]);
 export const mealTypeEnum = pgEnum("meal_type", ["Breakfast", "Lunch", "Dinner", "Snack"]);
+export const feelStateEnum = pgEnum("feel_state", ["energized", "neutral", "sluggish", "gut_symptoms", "brain_fog"]);
 export const promptCategoryEnum = pgEnum("prompt_category", ["reminder", "intervention", "education"]);
 export const promptChannelEnum = pgEnum("prompt_channel", ["in_app", "email", "sms"]);
 export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "missed"]);
@@ -185,6 +186,22 @@ export const macroTargets = pgTable("macro_targets", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Per-meal feel-state tags for the Day View (v1).
+// Keyed by (user_id, date, meal_type) so a single nullable tag exists per
+// meal occurrence on a day, independent of how many food entries it contains.
+export const mealFeelStates = pgTable("meal_feel_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  date: date("date").notNull(), // YYYY-MM-DD in user's TZ
+  mealType: mealTypeEnum("meal_type").notNull(),
+  feelState: feelStateEnum("feel_state"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserDateMeal: uniqueIndex("meal_feel_states_user_date_meal_idx")
+    .on(table.userId, table.date, table.mealType),
+}));
 
 // User-authored recipes — reusable meal templates with linear macro scaling
 export const recipes = pgTable("recipes", {
@@ -375,6 +392,11 @@ export const insertFoodEntrySchema = createInsertSchema(foodEntries, {
 
 export const insertMacroTargetSchema = createInsertSchema(macroTargets).omit({ id: true, createdAt: true, updatedAt: true });
 
+export const insertMealFeelStateSchema = createInsertSchema(mealFeelStates, {
+  mealType: z.enum(["Breakfast", "Lunch", "Dinner", "Snack"]),
+  feelState: z.enum(["energized", "neutral", "sluggish", "gut_symptoms", "brain_fog"]).nullable(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
 export const insertRecipeSchema = createInsertSchema(recipes, {
   name: z.string().min(1).max(200),
 }).omit({ id: true, createdAt: true });
@@ -438,6 +460,9 @@ export type PromptRule = typeof promptRules.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MacroTarget = typeof macroTargets.$inferSelect;
 export type InsertMacroTarget = z.infer<typeof insertMacroTargetSchema>;
+
+export type MealFeelState = typeof mealFeelStates.$inferSelect;
+export type InsertMealFeelState = z.infer<typeof insertMealFeelStateSchema>;
 
 export type Recipe = typeof recipes.$inferSelect;
 export type InsertRecipe = z.infer<typeof insertRecipeSchema>;

@@ -3,6 +3,7 @@ import pg from "pg";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import { encryptPHI, decryptPHI } from "./utils/encryption";
+import { toISODateInTZ } from "./utils/timezone";
 
 /**
  * Determines if an entry is backfilled by comparing timestamp to createdAt.
@@ -27,6 +28,7 @@ import type {
   InsertMessage,
   MacroTarget,
   InsertMacroTarget,
+  MealFeelState,
   Prompt,
   PromptRule,
   AuditLog,
@@ -36,6 +38,14 @@ import type {
   RecipeIngredient,
   InsertRecipeIngredient,
 } from "@shared/schema";
+
+type MealType = "Breakfast" | "Lunch" | "Dinner" | "Snack";
+type FeelState =
+  | "energized"
+  | "neutral"
+  | "sluggish"
+  | "gut_symptoms"
+  | "brain_fog";
 
 // Configure PostgreSQL pool with SSL in production
 export const pool = new pg.Pool({
@@ -79,6 +89,15 @@ export interface IStorage {
   // Macro Targets
   getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
   upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget>;
+
+  // Day View — per-meal feel-state tags
+  getMealFeelStatesForDay(userId: string, dateStr: string): Promise<MealFeelState[]>;
+  upsertMealFeelState(
+    userId: string,
+    dateStr: string,
+    mealType: MealType,
+    feelState: FeelState | null,
+  ): Promise<MealFeelState>;
 
   // Messaging
   getOrCreateConversation(participantId: string, coachId: string): Promise<Conversation>;
@@ -372,10 +391,34 @@ export class PostgresStorage implements IStorage {
   }
 
   async getFoodEntriesByDate(userId: string, date: Date): Promise<FoodEntry[]> {
-    const startOfDay = new Date(date);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setUTCHours(23, 59, 59, 999);
+    // Bucket entries by the user's local calendar date, not UTC. Day-view
+    // semantics: an entry logged at 19:00 PT on 2026-05-09 belongs to that
+    // PT day even though its UTC instant is 02:00 on 2026-05-10. Resolve the
+    // user's TZ from their record (falls back to America/Los_Angeles for
+    // parity with the rest of the codebase).
+    const user = await this.getUser(userId);
+    const timezone = user?.timezone || "America/Los_Angeles";
+
+    // Date-only intent vs. instant. `new Date("2026-05-13")` and other
+    // YYYY-MM-DD parses produce exactly midnight UTC — the caller meant
+    // "the calendar day", not the UTC instant. Use the UTC date string in
+    // that case so the result matches GET /api/log/day/:date semantics.
+    // For any non-midnight-UTC input (e.g., `new Date()` for "now"), pick
+    // the user-TZ calendar date for that instant.
+    const isDateOnly =
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0;
+    const targetDateStr = isDateOnly
+      ? date.toISOString().slice(0, 10)
+      : toISODateInTZ(date, timezone);
+
+    // SQL window stays generous (±36h) so DST shifts and TZ offsets at
+    // midnight can't drop entries; final bucketing is the JS toISODateInTZ
+    // filter. Mirrors the pattern used by GET /api/log/day/:date.
+    const fetchFrom = new Date(date.getTime() - 36 * 60 * 60 * 1000);
+    const fetchTo = new Date(date.getTime() + 36 * 60 * 60 * 1000);
 
     const entries = await db
       .select()
@@ -383,12 +426,14 @@ export class PostgresStorage implements IStorage {
       .where(
         and(
           eq(schema.foodEntries.userId, userId),
-          gte(schema.foodEntries.timestamp, startOfDay),
-          lte(schema.foodEntries.timestamp, endOfDay)
+          gte(schema.foodEntries.timestamp, fetchFrom),
+          lte(schema.foodEntries.timestamp, fetchTo)
         )
       )
       .orderBy(schema.foodEntries.timestamp);
-    return entries.map((e) => this.decryptFoodRawText(e));
+    return entries
+      .filter((e) => toISODateInTZ(e.timestamp, timezone) === targetDateStr)
+      .map((e) => this.decryptFoodRawText(e));
   }
 
   // Macro Targets
@@ -417,6 +462,55 @@ export class PostgresStorage implements IStorage {
         .returning();
       return results[0];
     }
+  }
+
+  // Day View — per-meal feel-state tags
+  async getMealFeelStatesForDay(userId: string, dateStr: string): Promise<MealFeelState[]> {
+    return await db
+      .select()
+      .from(schema.mealFeelStates)
+      .where(
+        and(
+          eq(schema.mealFeelStates.userId, userId),
+          eq(schema.mealFeelStates.date, dateStr),
+        ),
+      );
+  }
+
+  // Clearing pattern: setting feelState to null NULLs the column rather than
+  // deleting the row. The unique constraint on (user_id, date, meal_type)
+  // remains satisfied either way, and keeping the row preserves the
+  // updated_at audit trail of when the participant last touched this meal's
+  // tag — useful for the future "feel-state × macro composition" analysis.
+  async upsertMealFeelState(
+    userId: string,
+    dateStr: string,
+    mealType: MealType,
+    feelState: FeelState | null,
+  ): Promise<MealFeelState> {
+    const existing = await db
+      .select()
+      .from(schema.mealFeelStates)
+      .where(
+        and(
+          eq(schema.mealFeelStates.userId, userId),
+          eq(schema.mealFeelStates.date, dateStr),
+          eq(schema.mealFeelStates.mealType, mealType),
+        ),
+      );
+    if (existing[0]) {
+      const results = await db
+        .update(schema.mealFeelStates)
+        .set({ feelState, updatedAt: new Date() })
+        .where(eq(schema.mealFeelStates.id, existing[0].id))
+        .returning();
+      return results[0];
+    }
+    const results = await db
+      .insert(schema.mealFeelStates)
+      .values({ userId, date: dateStr, mealType, feelState })
+      .returning();
+    return results[0];
   }
 
   // Recipes

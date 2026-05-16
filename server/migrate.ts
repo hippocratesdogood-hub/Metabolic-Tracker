@@ -266,6 +266,62 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       ADD COLUMN IF NOT EXISTS "glucose_context" "glucose_context";
   `);
 
+  // Migration: Day View per-meal feel-state tags.
+  // Keyed by (user_id, date, meal_type) so a single nullable tag exists per
+  // meal occurrence on a day, independent of food-entry edits/deletes.
+  // Reuses the existing "meal_type" enum (Breakfast|Lunch|Dinner|Snack) and
+  // uses a dedicated "feel_state" enum for consistency with the rest of
+  // the codebase's pgEnum convention.
+  //
+  // Schema swap (text+CHECK → enum): if a prior boot created the table with
+  // a text feel_state column, drop it here so the recreate below picks up
+  // the enum type. Guarded so the drop only fires once — subsequent boots
+  // see feel_state as USER-DEFINED and skip. Mirrors the conditional-drop
+  // pattern used for the glucose_context enum expansion above.
+  await pool.query(`
+    DO $$
+    DECLARE
+      has_text_feel_state boolean;
+    BEGIN
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'meal_feel_states'
+          AND column_name = 'feel_state'
+          AND data_type = 'text'
+      ) INTO has_text_feel_state;
+      IF has_text_feel_state THEN
+        DROP TABLE "meal_feel_states";
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "feel_state" AS ENUM (
+        'energized', 'neutral', 'sluggish', 'gut_symptoms', 'brain_fog'
+      );
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "meal_feel_states" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "user_id" varchar NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "date" date NOT NULL,
+      "meal_type" "meal_type" NOT NULL,
+      "feel_state" "feel_state",
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "meal_feel_states_user_date_meal_idx"
+      ON "meal_feel_states" ("user_id", "date", "meal_type");
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "idx_meal_feel_states_user_date"
+      ON "meal_feel_states" ("user_id", "date");
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [
