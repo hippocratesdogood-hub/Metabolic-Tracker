@@ -91,6 +91,24 @@ Open work items that are real but non-blocking. Each item has enough context tha
 
 ---
 
+### 6. Meal entry timestamp defaults to 12:00 AM
+
+**Status:** open
+**Where:** Client-side time picker initialization, likely `client/src/pages/FoodLog.tsx`
+**Why deferred:** Surfaced 2026-05-18 during v1.1 verification; non-blocking but corrupts time-series data on the forward path.
+
+**What's wrong:** The meal entry form's timestamp picker defaults to 12:00 AM (start of day) rather than the current time or a mealType-appropriate hour. Patients must manually adjust on every entry, or their timestamps cluster at midnight — this corrupts time-series analysis and breaks any time-of-day clinical patterns.
+
+**Suggested approach:**
+- Default the timestamp to `now`, or apply a mealType-aware heuristic:
+  - Breakfast → 7–8 AM
+  - Lunch → 12–1 PM
+  - Dinner → 6–7 PM
+  - Snack → current time
+- Scope is client-side time picker initialization, likely in `FoodLog.tsx`.
+
+---
+
 ## Completed
 
 _Move items here with the commit/PR hash when shipped. Format: `- <item title> — <hash> — <date>`_
