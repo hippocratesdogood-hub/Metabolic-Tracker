@@ -119,3 +119,129 @@ describe("Day View — :date param validation predicates", () => {
     expect(Math.round((31 * dayMs) / dayMs) <= 30).toBe(false); // 31 days
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Graceful-degradation spec (food-analysis-graceful-degradation-spec.md §7):
+// manual entries and unanalyzed entries must aggregate correctly in Day View
+// with no Day View code change. This mirrors the route's leaf-only reducer
+// (server/routes.ts ~1260–1316) as a pure helper — same convention as the
+// predicate tests above (no Express).
+// ───────────────────────────────────────────────────────────────────────────
+
+interface FoodEntryLike {
+  parentMealId: string | null;
+  mealType: "Breakfast" | "Lunch" | "Dinner" | "Snack";
+  aiOutputJson: any;
+  userCorrectionsJson: any;
+}
+
+function aggregateLeafMacros(entries: FoodEntryLike[]) {
+  // Leaf-only: parent/legacy rows only — children (parentMealId set) are
+  // never summed, so a parent+children meal is not double-counted.
+  const parentEntries = entries.filter((e) => !e.parentMealId);
+
+  const totals = { calories: 0, protein: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 };
+  const counted: FoodEntryLike[] = [];
+
+  for (const entry of parentEntries) {
+    counted.push(entry); // retained for Day View regardless of macro presence
+    const macros =
+      (entry.userCorrectionsJson?.macros ?? entry.aiOutputJson?.macros) || null;
+
+    const calories = Number(macros?.calories) || 0;
+    const protein = Number(macros?.protein) || 0;
+    const fat = Number(macros?.fat) || 0;
+    const fiber = Number(macros?.fiber) || 0;
+    const netCarbs =
+      (macros?.netCarbs != null
+        ? Number(macros.netCarbs)
+        : macros?.totalCarbs != null
+          ? Number(macros.totalCarbs) - fiber
+          : Number(macros?.carbs)) || 0;
+
+    totals.calories += calories;
+    totals.protein += protein;
+    totals.fat += fat;
+    totals.fiber += fiber;
+    totals.netCarbs += netCarbs;
+  }
+
+  return { totals, countedCount: counted.length };
+}
+
+describe("Day View — graceful-degradation aggregation", () => {
+  const manualEntry: FoodEntryLike = {
+    parentMealId: null,
+    mealType: "Lunch",
+    aiOutputJson: null,
+    userCorrectionsJson: {
+      macros: { calories: 500, protein: 40, fat: 20, carbs: 30, totalCarbs: 30, netCarbs: 25, fiber: 0 },
+    },
+  };
+  const unanalyzedEntry: FoodEntryLike = {
+    parentMealId: null,
+    mealType: "Snack",
+    aiOutputJson: null,
+    userCorrectionsJson: null,
+  };
+
+  it("sums a manual entry's userCorrectionsJson.macros into daily totals", () => {
+    const { totals, countedCount } = aggregateLeafMacros([manualEntry]);
+    expect(totals.calories).toBe(500);
+    expect(totals.protein).toBe(40);
+    expect(totals.fat).toBe(20);
+    expect(totals.netCarbs).toBe(25);
+    expect(countedCount).toBe(1);
+  });
+
+  it("counts a both-jsonb-null entry in Day View but contributes zero macros (no error, no pending math)", () => {
+    const { totals, countedCount } = aggregateLeafMacros([unanalyzedEntry]);
+    expect(countedCount).toBe(1); // appears under its mealType
+    expect(totals).toEqual({ calories: 0, protein: 0, fat: 0, fiber: 0, totalCarbs: 0, netCarbs: 0 });
+  });
+
+  it("mixes analyzed + manual + unanalyzed without double-counting; unanalyzed adds nothing", () => {
+    const aiEntry: FoodEntryLike = {
+      parentMealId: null,
+      mealType: "Breakfast",
+      aiOutputJson: { macros: { calories: 300, protein: 20, fat: 10, netCarbs: 15 } },
+      userCorrectionsJson: null,
+    };
+    const { totals, countedCount } = aggregateLeafMacros([aiEntry, manualEntry, unanalyzedEntry]);
+    expect(totals.calories).toBe(800); // 300 + 500 + 0
+    expect(totals.protein).toBe(60); // 20 + 40 + 0
+    expect(totals.netCarbs).toBe(40); // 15 + 25 + 0
+    expect(countedCount).toBe(3);
+  });
+
+  it("never sums child rows (parentMealId set) — leaf-only, no double-count", () => {
+    const parent: FoodEntryLike = {
+      parentMealId: null,
+      mealType: "Dinner",
+      aiOutputJson: { macros: { calories: 700, protein: 50, fat: 30, netCarbs: 40 } },
+      userCorrectionsJson: null,
+    };
+    const child: FoodEntryLike = {
+      parentMealId: "parent-id",
+      mealType: "Dinner",
+      aiOutputJson: { macros: { calories: 700, protein: 50, fat: 30, netCarbs: 40 } },
+      userCorrectionsJson: null,
+    };
+    const { totals, countedCount } = aggregateLeafMacros([parent, child]);
+    expect(totals.calories).toBe(700); // child excluded
+    expect(countedCount).toBe(1);
+  });
+
+  it("userCorrectionsJson.macros wins over aiOutputJson.macros (manual correction precedence)", () => {
+    const corrected: FoodEntryLike = {
+      parentMealId: null,
+      mealType: "Lunch",
+      aiOutputJson: { macros: { calories: 999, protein: 1, fat: 99, netCarbs: 99 } },
+      userCorrectionsJson: { macros: { calories: 450, protein: 35, fat: 15, netCarbs: 20 } },
+    };
+    const { totals } = aggregateLeafMacros([corrected]);
+    expect(totals.calories).toBe(450);
+    expect(totals.protein).toBe(35);
+    expect(totals.netCarbs).toBe(20);
+  });
+});

@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode, ChefHat } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode, ChefHat, ClipboardList } from 'lucide-react';
 import BarcodeScannerModal, { type ScannedFoodItem } from '@/components/BarcodeScannerModal';
 import RecipeBuilderModal from '@/components/RecipeBuilderModal';
+import ManualMacroEntryModal from '@/components/ManualMacroEntryModal';
 import FoodEditModal from '@/components/FoodEditModal';
 import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -94,10 +95,16 @@ export default function FoodLog() {
   const [consentPending, setConsentPending] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [recipeBuilderOpen, setRecipeBuilderOpen] = useState(false);
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  // True after an AI-unavailable (503 AI_UNAVAILABLE) analyze attempt —
+  // drives the inline non-AI logging affordances (D4). Cleared on a fresh
+  // analyze attempt and after a successful save.
+  const [aiUnavailable, setAiUnavailable] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const analysisRef = useRef<HTMLDivElement>(null);
+  const favoritesRef = useRef<HTMLDivElement>(null);
   const hasSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   // Read ?mealType= and ?date= once on mount so the Day View can deep-link
@@ -292,6 +299,7 @@ export default function FoodLog() {
     const notes = entry.userCorrectionsJson?.notes || entry.aiOutputJson?.notes;
     const foods_detected = entry.userCorrectionsJson?.foods_detected || entry.aiOutputJson?.foods_detected;
 
+    setAiUnavailable(false);
     setInput(entry.rawText || '');
     setMealType(entry.mealType as MealType || suggestMealType());
     setAnalysisResult({
@@ -386,6 +394,7 @@ export default function FoodLog() {
 
   const doAnalyze = async () => {
     setIsAnalyzing(true);
+    setAiUnavailable(false);
     toast.info('Analyzing your meal...');
     
     try {
@@ -449,14 +458,25 @@ export default function FoodLog() {
       }, 100);
     } catch (error: any) {
       console.error('Food analysis error:', error);
-      toast.error(error.message || 'Failed to analyze meal. Please try again.');
+      if (error?.code === 'AI_UNAVAILABLE') {
+        // Patient-appropriate copy + surface the non-AI logging paths
+        // inline (D2/D4). Never expose the server message, status, or
+        // env/vendor internals here.
+        setAiUnavailable(true);
+        toast.error('Automatic meal analysis is temporarily unavailable. You can still log this meal — pick from your favorites, scan a barcode, or enter macros manually below.');
+      } else {
+        toast.error('Something went wrong analyzing your meal');
+      }
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const handleSave = async () => {
-    if (!analysisResult) return;
+    // Decoupled from analysisResult (spec B1): a meal can be saved with no
+    // AI analysis at all. The primary no-AI macro path is the manual-entry
+    // modal (which saves directly); this branch is the safety net so the
+    // inline Confirm Log flow never silently no-ops.
 
     // Clear previous coaching message before saving new meal
     setCoachingMessage(null);
@@ -480,16 +500,16 @@ export default function FoodLog() {
           brand: item.brand || null,
         })),
         mealType,
-        rawText: input || analysisResult.description || 'Photo analysis',
+        rawText: input || analysisResult?.description || 'Photo analysis',
         timestamp: entryDate,
         eaten_at: entryDate.toISOString(),
-        qualityScore: analysisResult.qualityScore,
-        notes: analysisResult.notes,
+        qualityScore: analysisResult?.qualityScore,
+        notes: analysisResult?.notes,
         inputType: selectedImage ? 'photo' : 'text',
         tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
       });
       newCoachingMessage = result.coachingMessage;
-    } else {
+    } else if (analysisResult) {
       // Legacy flow: save as single entry
       const savedMacros = scaleMacros(analysisResult.macros, servingMultiplier);
       const result = await createFoodMutation.mutateAsync({
@@ -507,10 +527,28 @@ export default function FoodLog() {
         tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
       });
       newCoachingMessage = (result as any).coachingMessage ?? null;
+    } else {
+      // No analysis and no items — log the meal "unanalyzed" so it is
+      // never lost (spec B1). Both jsonb fields stay null; it shows in
+      // Day View with no macro contribution and no pending badge (B3).
+      if (!input.trim()) {
+        toast.error('Add a description, or use Favorites, a barcode, or manual macros');
+        return;
+      }
+      const result = await createFoodMutation.mutateAsync({
+        inputType: selectedImage ? 'photo' : 'text',
+        mealType,
+        rawText: input,
+        timestamp: entryDate,
+        eaten_at: entryDate.toISOString(),
+        tags: personalNote.trim() ? { personalNote: personalNote.trim() } : undefined,
+      });
+      newCoachingMessage = (result as any).coachingMessage ?? null;
     }
 
     setInput('');
     setAnalysisResult(null);
+    setAiUnavailable(false);
     setEditableItems([]);
     setServingMultiplier(1);
     setPersonalNote('');
@@ -699,7 +737,7 @@ export default function FoodLog() {
       )}
 
       {favorites.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2" ref={favoritesRef}>
           <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
             <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
             Favorites
@@ -927,6 +965,65 @@ export default function FoodLog() {
                 )}
               </Button>
             </div>
+
+            {/* AI-unavailable inline affordances (spec D4). Shown only after
+                an AI_UNAVAILABLE analyze attempt; surfaces the non-AI paths
+                right where the patient is, not just in the toast. */}
+            {aiUnavailable && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/20 p-3 space-y-2.5">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  Automatic meal analysis is temporarily unavailable. You can still log this meal:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {favorites.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => favoritesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      data-testid="button-aiunavail-favorites"
+                    >
+                      <Heart className="w-4 h-4 mr-1.5 text-rose-500" />
+                      Log from Favorites
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBarcodeScannerOpen(true)}
+                    data-testid="button-aiunavail-barcode"
+                  >
+                    <ScanBarcode className="w-4 h-4 mr-1.5" />
+                    Scan barcode
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setManualEntryOpen(true)}
+                    data-testid="button-aiunavail-manual"
+                  >
+                    <ClipboardList className="w-4 h-4 mr-1.5" />
+                    Enter macros manually
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Manual macro entry — first-class, always available (spec B2 /
+                §8.4), not a fallback-only path. Hidden only while the richer
+                AI-unavailable panel above already offers it. */}
+            {!aiUnavailable && (
+              <div className="flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setManualEntryOpen(true)}
+                  className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1.5 transition-colors"
+                  data-testid="button-manual-entry"
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  Enter macros manually
+                </button>
+              </div>
+            )}
           </div>
 
           {analysisResult && (
@@ -1358,7 +1455,7 @@ export default function FoodLog() {
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm text-muted-foreground space-y-2 py-2">
-            <p>Your food descriptions and photos will be sent to OpenAI's API for analysis. This means:</p>
+            <p>Your food descriptions and photos will be sent to a third-party AI analysis service. This means:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Meal text and images are processed by a third-party AI service</li>
               <li>Data is sent securely and not used to train AI models</li>
@@ -1385,6 +1482,7 @@ export default function FoodLog() {
         isOpen={barcodeScannerOpen}
         onClose={() => setBarcodeScannerOpen(false)}
         onItemFound={(item) => {
+          setAiUnavailable(false);
           // Add scanned item to editable items list
           setEditableItems(prev => [...prev, item]);
           // If no analysis result yet, create a minimal one so the items section renders
@@ -1404,6 +1502,19 @@ export default function FoodLog() {
         onClose={() => setRecipeBuilderOpen(false)}
         onMealLogged={() => {
           queryClient.invalidateQueries({ queryKey: ['food'] });
+          queryClient.invalidateQueries({ queryKey: ['food-streak'] });
+        }}
+      />
+
+      <ManualMacroEntryModal
+        isOpen={manualEntryOpen}
+        onClose={() => setManualEntryOpen(false)}
+        defaultMealType={mealType}
+        defaultDate={entryDate}
+        onLogged={() => {
+          setAiUnavailable(false);
+          queryClient.invalidateQueries({ queryKey: ['food'] });
+          queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
           queryClient.invalidateQueries({ queryKey: ['food-streak'] });
         }}
       />

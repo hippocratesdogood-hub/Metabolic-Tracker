@@ -51,6 +51,7 @@ import {
 import { nutritionLookup } from "./services/nutritionLookup";
 import { promptEngine } from "./services/promptEngine";
 import { toISODateInTZ, parseDateOnlyAsNoonInTZ } from "./utils/timezone";
+import { aiUnavailableBody } from "./utils/aiUnavailable";
 // coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
 // Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
 import {
@@ -1534,7 +1535,7 @@ export async function registerRoutes(
       }
 
       if (!anthropic) {
-        return res.status(503).json({ message: "AI food analysis is not configured. Add ANTHROPIC_API_KEY to .env to enable this feature." });
+        return res.status(503).json(aiUnavailableBody());
       }
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
@@ -1759,7 +1760,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
       }
 
       if (!anthropic) {
-        return res.status(503).json({ message: "AI food analysis is not configured. Add ANTHROPIC_API_KEY to .env to enable this feature." });
+        return res.status(503).json(aiUnavailableBody());
       }
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });

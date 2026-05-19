@@ -1,5 +1,23 @@
 import type { User, MetricEntry, FoodEntry, Conversation, Message } from "@shared/schema";
 
+/**
+ * Error thrown by the API client. Preserves the server's structured
+ * `code` and HTTP `status` so callers can branch (e.g. the food-log UI
+ * branches on `code === "AI_UNAVAILABLE"` to show patient-appropriate
+ * copy + non-AI logging paths). Still a plain `Error` with `.message`,
+ * so existing `err.message` consumers keep working unchanged.
+ */
+export class ApiError extends Error {
+  code?: string;
+  status: number;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 class ApiClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`/api${endpoint}`, {
@@ -13,7 +31,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: "Request failed" }));
-      throw new Error(error.message || "Request failed");
+      throw new ApiError(error.message || "Request failed", response.status, error.code);
     }
 
     return response.json();
@@ -99,7 +117,9 @@ class ApiClient {
     mealType?: string;
     rawText?: string;
     timestamp?: Date;
+    eaten_at?: string;
     aiOutputJson?: any;
+    userCorrectionsJson?: any;
     tags?: any;
   }) {
     return this.request<FoodEntry>("/food", {
@@ -310,9 +330,9 @@ class ApiClient {
     
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || 'Failed to analyze image');
+      throw new ApiError(error.message || 'Failed to analyze image', response.status, error.code);
     }
-    
+
     return response.json();
   }
 
