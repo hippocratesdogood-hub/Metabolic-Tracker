@@ -15,3 +15,6 @@ backups/user-export-*
 
 # Local temp + dev backups (may contain PHI, never commit)
 .tmp/
+
+# VS Code workspace files (per-user, not shared)
+*.code-workspace
