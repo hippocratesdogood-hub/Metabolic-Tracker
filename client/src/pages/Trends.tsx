@@ -4,19 +4,49 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import MetricEntryModal from '@/components/MetricEntryModal';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays } from 'date-fns';
-import { TrendingUp, StickyNote } from 'lucide-react';
+import { TrendingUp, StickyNote, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { getUnitLabels, fromKg, fromCm, fromMgdl, type UnitsPreference } from '@shared/units';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import type { MetricEntry } from '@shared/schema';
 
 export default function Trends() {
-  const { getMetricsByType } = useData();
+  const { getMetricsByType, deleteMetric } = useData();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('WEIGHT');
   const [range, setRange] = useState('30');
+  const [editEntry, setEditEntry] = useState<MetricEntry | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const unitsPref = (user?.unitsPreference ?? "US") as UnitsPreference;
   const unitLabels = getUnitLabels(unitsPref);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await deleteMetric(deleteTarget.id);
+      toast({ title: 'Entry deleted', description: 'The reading has been removed.' });
+      setDeleteTarget(null);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Delete failed',
+        description: 'Unable to delete the entry. Please try again.',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const metrics = getMetricsByType(selectedMetric);
 
@@ -70,6 +100,7 @@ export default function Trends() {
         time: format(m.timestamp, 'h:mm a'),
         displayValue,
         notes: (m as any).notes as string | null,
+        raw: m,
       };
     });
 
@@ -198,12 +229,71 @@ export default function Trends() {
                       </div>
                     )}
                   </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      onClick={() => setEditEntry(entry.raw)}
+                      aria-label={`Edit entry from ${entry.date}`}
+                      data-testid={`button-edit-metric-${entry.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => setDeleteTarget({ id: entry.id, label: `${entry.displayValue} on ${entry.date}` })}
+                      aria-label={`Delete entry from ${entry.date}`}
+                      data-testid={`button-delete-metric-${entry.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Edit modal — reuses the entry form in edit mode */}
+      <MetricEntryModal
+        isOpen={!!editEntry}
+        onClose={() => setEditEntry(null)}
+        type={(editEntry?.type as MetricType) ?? null}
+        editEntry={editEntry}
+      />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? `This will permanently remove ${deleteTarget.label}.` : ''} This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete(); }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -572,6 +572,30 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
+      // Normalize an edited timestamp the same way POST does. The client sends a
+      // YYYY-MM-DD date-only string when the entry's day is moved; anchor it to
+      // noon in the entry owner's timezone so daily averages land on the right day.
+      if (req.body.timestamp !== undefined) {
+        const owner = await storage.getUser(existing.userId);
+        const userTz = owner?.timezone || "America/Los_Angeles";
+        const tsInput = req.body.timestamp;
+        let timestamp: Date;
+        if (typeof tsInput === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tsInput)) {
+          timestamp = parseDateOnlyAsNoonInTZ(tsInput, userTz);
+        } else {
+          timestamp = new Date(tsInput);
+        }
+        if (isNaN(timestamp.getTime())) {
+          return res.status(400).json({ message: "Invalid timestamp format" });
+        }
+        const entryDateStr = toISODateInTZ(timestamp, userTz);
+        const todayDateStr = toISODateInTZ(new Date(), userTz);
+        if (entryDateStr > todayDateStr) {
+          return res.status(400).json({ message: "Timestamp cannot be in the future" });
+        }
+        req.body.timestamp = timestamp;
+      }
+
       // Track if this is a backfilled entry being edited (for audit purposes)
       const wasBackfilled = isBackfilledEntry(existing);
 

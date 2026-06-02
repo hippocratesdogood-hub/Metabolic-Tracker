@@ -15,7 +15,8 @@ import { format, startOfDay, isToday } from 'date-fns';
 import { CalendarIcon, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { getUnitLabels, normalizeMetricForStorage, type UnitsPreference } from '@shared/units';
+import { getUnitLabels, normalizeMetricForStorage, fromKg, fromCm, fromMgdl, type UnitsPreference } from '@shared/units';
+import type { MetricEntry } from '@shared/schema';
 
 interface MetricEntryModalProps {
   isOpen: boolean;
@@ -23,9 +24,37 @@ interface MetricEntryModalProps {
   type: MetricType | null;
   lastUsedDate?: Date;
   onDateChange?: (date: Date) => void;
+  /** When provided, the modal edits this existing entry instead of creating a new one. */
+  editEntry?: MetricEntry | null;
+}
+
+/**
+ * Pre-fill value for the edit form, converted from storage units to the user's
+ * current display unit so the round-trip matches what the history table shows.
+ */
+function editDisplayValue(entry: MetricEntry, type: MetricType, unitsPref: UnitsPreference): string {
+  const vj = (entry.valueJson ?? {}) as Record<string, any>;
+  if (entry.normalizedValue != null) {
+    switch (type) {
+      case 'WEIGHT': return String(Math.round(fromKg(entry.normalizedValue, unitsPref === 'Metric' ? 'kg' : 'lbs') * 10) / 10);
+      case 'WAIST': return String(Math.round(fromCm(entry.normalizedValue, unitsPref === 'Metric' ? 'cm' : 'inches') * 10) / 10);
+      case 'GLUCOSE': return String(Math.round(fromMgdl(entry.normalizedValue, unitsPref === 'Metric' ? 'mmol/L' : 'mg/dL') * 10) / 10);
+      case 'KETONES': return String(Math.round(entry.normalizedValue * 10) / 10);
+    }
+  }
+  // Legacy entries without a normalizedValue: fall back to the raw entered value.
+  return vj.value != null ? String(vj.value) : '';
 }
 
 type GlucoseContext = "fasting" | "post_meal_1h" | "post_meal_2h" | "random";
+
+const baseTitles: Record<MetricType, string> = {
+  BP: 'Blood Pressure',
+  WAIST: 'Waist Circumference',
+  GLUCOSE: 'Glucose',
+  KETONES: 'Ketones',
+  WEIGHT: 'Weight',
+};
 
 // Validation schemas with meaningful error messages
 const glucoseSchema = z.object({
@@ -64,8 +93,9 @@ const bpSchema = z.object({
   path: ["systolic"],
 });
 
-export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, onDateChange }: MetricEntryModalProps) {
-  const { addMetric } = useData();
+export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, onDateChange, editEntry }: MetricEntryModalProps) {
+  const { addMetric, updateMetric } = useData();
+  const isEditing = !!editEntry;
   const { user } = useAuth();
   const { toast } = useToast();
   const unitsPref = (user?.unitsPreference ?? "US") as UnitsPreference;
@@ -83,6 +113,20 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
   React.useEffect(() => {
     if (isOpen && lastUsedDate) setEntryDate(lastUsedDate);
   }, [isOpen, lastUsedDate]);
+
+  // When editing, pre-fill the form from the existing entry each time it opens.
+  React.useEffect(() => {
+    if (!isOpen || !editEntry) return;
+    setEntryDate(new Date(editEntry.timestamp));
+    const vj = (editEntry.valueJson ?? {}) as Record<string, any>;
+    if (editEntry.type === 'BP') {
+      setSystolic(vj.systolic != null ? String(vj.systolic) : '');
+      setDiastolic(vj.diastolic != null ? String(vj.diastolic) : '');
+    } else {
+      setValue(editDisplayValue(editEntry, editEntry.type as MetricType, unitsPref));
+    }
+    setContext((editEntry.glucoseContext as GlucoseContext) ?? null);
+  }, [isOpen, editEntry, unitsPref]);
 
   const maxDate = startOfDay(new Date());
   const isBackfill = !isToday(entryDate);
@@ -147,50 +191,53 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
     setFormError(null);
 
     try {
-      // Send backdated entries as YYYY-MM-DD (server converts to noon in user TZ).
-      // Today's entries send a full Date so the actual timestamp is preserved.
-      const timestampPayload: Date | string = isBackfill
-        ? format(entryDate, 'yyyy-MM-dd')
-        : new Date();
+      // Build the normalized value payload shared by create and edit.
+      const valuePayload = type === 'BP'
+        ? (() => {
+            const n = normalizeMetricForStorage({ type: 'BP', systolic: Number(systolic), diastolic: Number(diastolic), userPreference: unitsPref });
+            return { type, normalizedValue: n.normalizedValue, rawUnit: n.rawUnit, valueJson: n.valueJson };
+          })()
+        : (() => {
+            const n = normalizeMetricForStorage({ type: type as any, value: Number(value), userPreference: unitsPref });
+            return {
+              type,
+              normalizedValue: n.normalizedValue,
+              rawUnit: n.rawUnit,
+              valueJson: n.valueJson,
+              // Send context on every glucose edit so clearing it actually persists.
+              ...(type === 'GLUCOSE' ? { glucoseContext: context ?? null } : {}),
+            };
+          })();
 
-      if (type === 'BP') {
-        const normalized = normalizeMetricForStorage({
-          type: 'BP',
-          systolic: Number(systolic),
-          diastolic: Number(diastolic),
-          userPreference: unitsPref,
-        });
-        await addMetric({
-          type,
-          normalizedValue: normalized.normalizedValue,
-          rawUnit: normalized.rawUnit,
-          valueJson: normalized.valueJson,
-          timestamp: timestampPayload,
+      if (isEditing && editEntry) {
+        // Only send a timestamp when the entry's day actually moved, so an
+        // unchanged edit preserves the original time-of-day.
+        const dayChanged = format(entryDate, 'yyyy-MM-dd') !== format(new Date(editEntry.timestamp), 'yyyy-MM-dd');
+        await updateMetric(editEntry.id, {
+          ...valuePayload,
+          ...(dayChanged ? { timestamp: format(entryDate, 'yyyy-MM-dd') } : {}),
         });
       } else {
-        const normalized = normalizeMetricForStorage({
-          type: type as any,
-          value: Number(value),
-          userPreference: unitsPref,
-        });
-        await addMetric({
-          type,
-          normalizedValue: normalized.normalizedValue,
-          rawUnit: normalized.rawUnit,
-          valueJson: normalized.valueJson,
-          timestamp: timestampPayload,
-          ...(type === 'GLUCOSE' && context ? { glucoseContext: context } : {}),
-        });
+        // Send backdated entries as YYYY-MM-DD (server converts to noon in user TZ).
+        // Today's entries send a full Date so the actual timestamp is preserved.
+        const timestampPayload: Date | string = isBackfill
+          ? format(entryDate, 'yyyy-MM-dd')
+          : new Date();
+        await addMetric({ ...valuePayload, timestamp: timestampPayload });
       }
 
       // Show success toast
+      const readingLabel = baseTitles[type].toLowerCase();
       toast({
-        title: "Entry saved",
-        description: `Your ${titles[type].replace('Log ', '').toLowerCase()} reading has been logged.`,
+        title: isEditing ? "Entry updated" : "Entry saved",
+        description: isEditing
+          ? `Your ${readingLabel} reading has been updated.`
+          : `Your ${readingLabel} reading has been logged.`,
       });
 
-      // Persist last-used date to the parent so the next entry defaults to it.
-      onDateChange?.(entryDate);
+      // Persist last-used date to the parent so the next entry defaults to it
+      // (creation flow only — edits don't change the new-entry default).
+      if (!isEditing) onDateChange?.(entryDate);
 
       // Reset value fields but keep entryDate — parent owns the persisted date.
       setSystolic('');
@@ -215,13 +262,7 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
 
   if (!type) return null;
 
-  const titles: Record<MetricType, string> = {
-    BP: 'Log Blood Pressure',
-    WAIST: 'Log Waist Circumference',
-    GLUCOSE: 'Log Glucose',
-    KETONES: 'Log Ketones',
-    WEIGHT: 'Log Weight',
-  };
+  const dialogTitle = `${isEditing ? 'Edit' : 'Log'} ${baseTitles[type]}`;
 
   const units: Record<MetricType, string> = {
     BP: unitLabels.bp,
@@ -235,9 +276,9 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{titles[type]}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>
-            Enter your reading{isBackfill ? ` for ${format(entryDate, 'MMM d, yyyy')}` : ' for today'}.
+            {isEditing ? 'Update your reading' : 'Enter your reading'}{isBackfill ? ` for ${format(entryDate, 'MMM d, yyyy')}` : isEditing ? '' : ' for today'}.
           </DialogDescription>
         </DialogHeader>
         
@@ -394,7 +435,7 @@ export default function MetricEntryModal({ isOpen, onClose, type, lastUsedDate, 
                   Saving...
                 </>
               ) : (
-                "Save Log"
+                isEditing ? "Save Changes" : "Save Log"
               )}
             </Button>
           </div>

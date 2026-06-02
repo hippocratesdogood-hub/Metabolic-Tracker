@@ -12,6 +12,8 @@ type DataContextType = {
   foodEntries: FoodEntry[];
   getMetricsByType: (type: MetricType) => MetricEntry[];
   addMetric: (entry: any) => Promise<void>;
+  updateMetric: (id: string, data: any) => Promise<void>;
+  deleteMetric: (id: string) => Promise<void>;
   addFoodEntry: (entry: any) => Promise<void>;
   refreshMetrics: () => Promise<void>;
   refreshFood: () => Promise<void>;
@@ -64,6 +66,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
   };
 
+  const updateMetric = async (id: string, data: any) => {
+    await api.updateMetricEntry(id, data);
+    await refreshMetrics();
+    // Invalidate React Query caches so Dashboard stats and charts update
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+  };
+
+  const deleteMetric = async (id: string) => {
+    await api.deleteMetricEntry(id);
+    await refreshMetrics();
+    // Invalidate React Query caches so Dashboard stats and charts update
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
+  };
+
   const addFoodEntry = async (entry: any) => {
     await api.createFoodEntry(entry);
     await refreshFood();
@@ -80,6 +98,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         foodEntries,
         getMetricsByType,
         addMetric,
+        updateMetric,
+        deleteMetric,
         addFoodEntry,
         refreshMetrics,
         refreshFood,
