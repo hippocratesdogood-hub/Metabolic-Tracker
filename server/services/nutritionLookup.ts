@@ -499,6 +499,107 @@ class NutritionLookupService {
     // 3. No match — caller should fall back to LLM
     return null;
   }
+
+  /**
+   * Nutritionix-native full-text analysis (food-analysis v1.2, P1).
+   *
+   * Sends the *entire* meal description to /v2/natural/nutrients, which does
+   * its own NLP parsing AND returns sourced macros — no LLM required, so this
+   * path keeps automatic analysis working when ANTHROPIC_API_KEY is unset
+   * (e.g. BAA-gated off in prod).
+   *
+   * PHI note: only the food string is transmitted — never a patient
+   * identifier. Do NOT add user-identifying headers or body fields (e.g.
+   * x-remote-user-id) to this request; the de-identified posture is what keeps
+   * this BAA-independent. There is a regression test guarding exactly this.
+   *
+   * Returns one item per detected food (in the route's foods_detected shape),
+   * or null if not configured / the request failed / nothing parsed.
+   */
+  async analyzeNaturalText(rawText: string): Promise<Array<{
+    name: string;
+    quantity: number;
+    unit: string;
+    calories: number;
+    protein: number;
+    fat: number;
+    totalCarbs: number;
+    fiber: number;
+    netCarbs: number;
+    source: 'verified';
+    sourceName: 'Nutritionix';
+    brand: string | null;
+    confidence: number;
+  }> | null> {
+    const appId = process.env.NUTRITIONIX_APP_ID;
+    const appKey = process.env.NUTRITIONIX_APP_KEY;
+    if (!appId || !appKey) return null;
+
+    const query = (rawText || '').trim();
+    if (query.length < 2) return null;
+
+    type DetectedItem = NonNullable<Awaited<ReturnType<NutritionLookupService['analyzeNaturalText']>>>[number];
+    const cacheKey = cacheKeys.nutritionLookup(`nix-nl:${query.toLowerCase()}`);
+    const cached = cache.get<DetectedItem[]>(cacheKey);
+    if (cached !== undefined && cached !== null) return cached;
+    if (cache.get<string>(`${cacheKey}:miss`) === 'miss') return null;
+
+    try {
+      const response = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-app-id': appId,
+          'x-app-key': appKey,
+        },
+        // De-identified by design: only the food description is sent, never a
+        // patient identifier. See the PHI note above.
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        console.error(`[Nutritionix] natural ${response.status} for "${query}"`);
+        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        return null;
+      }
+
+      const data = await response.json();
+      const foods = data.foods || [];
+      if (foods.length === 0) {
+        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        return null;
+      }
+
+      const items: DetectedItem[] = foods.map((f: any) => {
+        const totalCarbs = Math.round((f.nf_total_carbohydrate || 0) * 10) / 10;
+        const fiber = Math.round((f.nf_dietary_fiber || 0) * 10) / 10;
+        return {
+          name: f.food_name || 'food',
+          quantity: f.serving_qty || 1,
+          unit: f.serving_unit || 'serving',
+          calories: Math.round(f.nf_calories || 0),
+          protein: Math.round((f.nf_protein || 0) * 10) / 10,
+          fat: Math.round((f.nf_total_fat || 0) * 10) / 10,
+          totalCarbs,
+          fiber,
+          netCarbs: Math.round((totalCarbs - fiber) * 10) / 10,
+          source: 'verified' as const,
+          sourceName: 'Nutritionix' as const,
+          brand: f.brand_name || null,
+          confidence: 0.95,
+        };
+      });
+
+      cache.set(cacheKey, items, 60 * 60 * 1000);
+      console.log(`[Nutritionix] natural "${query}" → ${items.length} item(s)`);
+      return items;
+    } catch (err) {
+      console.error('[Nutritionix] natural analysis failed:', err);
+      cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+      return null;
+    }
+  }
 }
 
 export const nutritionLookup = new NutritionLookupService();

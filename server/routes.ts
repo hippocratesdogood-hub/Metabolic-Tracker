@@ -1558,11 +1558,39 @@ export async function registerRoutes(
         return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
       }
 
-      if (!anthropic) {
-        return res.status(503).json(aiUnavailableBody());
-      }
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
+      const nutritionixConfigured = !!(process.env.NUTRITIONIX_APP_ID && process.env.NUTRITIONIX_APP_KEY);
+
+      // When the LLM is unavailable (e.g. ANTHROPIC_API_KEY is BAA-gated off in
+      // prod), fall back to a Nutritionix-native analysis. Its
+      // /v2/natural/nutrients endpoint parses the description AND returns
+      // sourced macros — no LLM, and only a de-identified food string leaves
+      // the server — so automatic analysis keeps working without the Anthropic
+      // BAA (food-analysis v1.2 P1). Only when neither is available do we 503.
+      if (!anthropic) {
+        if (!nutritionixConfigured) {
+          return res.status(503).json(aiUnavailableBody());
+        }
+        const items = (await nutritionLookup.analyzeNaturalText(rawText)) ?? [];
+        const macros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
+        for (const item of items) {
+          macros.calories += item.calories || 0;
+          macros.protein += item.protein || 0;
+          macros.fat += item.fat || 0;
+          macros.totalCarbs += item.totalCarbs || 0;
+          macros.fiber += item.fiber || 0;
+          macros.netCarbs += item.netCarbs || 0;
+        }
+        macros.carbs = macros.netCarbs;
+        return res.json({
+          foods_detected: items,
+          macros,
+          notes: null,
+          suggestedMealType: mealTypeSuggestion,
+          confidence: { low: 0.7, high: 0.95 },
+        });
+      }
 
       // ── STAGE 1: LLM parses food items and quantities only ──
       const parsePrompt = `You are a food parsing assistant. Parse the meal description into individual food items with quantities. Do NOT estimate nutrition — only identify what was eaten.
