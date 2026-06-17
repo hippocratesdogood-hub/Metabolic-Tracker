@@ -114,6 +114,11 @@ export default function FoodLog() {
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [editableItems, setEditableItems] = useState<any[]>([]);
+  // P2 item re-check: which item card is in "re-search" mode, its draft text,
+  // and whether a re-lookup is in flight.
+  const [reMatchId, setReMatchId] = useState<string | null>(null);
+  const [reMatchText, setReMatchText] = useState('');
+  const [reMatchLoading, setReMatchLoading] = useState(false);
   const [consentPending, setConsentPending] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [recipeBuilderOpen, setRecipeBuilderOpen] = useState(false);
@@ -496,6 +501,59 @@ export default function FoodLog() {
       }
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // P2: re-check a single matched item. Re-runs the food lookup with a
+  // (possibly refined) description and swaps in the result's macros + source,
+  // so a wrong database match (e.g. "chicken patty" matching a breaded product)
+  // can be corrected without hand-typing every macro. Reuses /api/food/analyze.
+  const handleReMatch = async (idx: number) => {
+    const text = reMatchText.trim();
+    if (!text) return;
+    setReMatchLoading(true);
+    try {
+      const result: any = await api.analyzeFoodEntry(text);
+      const f = result?.foods_detected?.[0];
+      if (!f) {
+        toast.error('No match found — try a more specific description');
+        return;
+      }
+      const qty = f.quantity || 1;
+      const cals = f.calories || 0;
+      const pro = f.protein || 0;
+      const fat = f.fat || 0;
+      const tc = f.totalCarbs ?? f.carbs ?? 0;
+      const fib = f.fiber || 0;
+      const nc = f.netCarbs ?? f.carbs ?? 0;
+      setEditableItems(prev => {
+        if (!prev[idx]) return prev;
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          name: f.name || text,
+          quantity: qty,
+          unit: f.unit || 'serving',
+          calories: cals, protein: pro, fat, totalCarbs: tc, fiber: fib, netCarbs: nc,
+          source: f.source || 'ai_estimate',
+          sourceName: f.sourceName || null,
+          brand: f.brand || null,
+          _baseCal: Math.round(cals / qty),
+          _basePro: Math.round((pro / qty) * 10) / 10,
+          _baseFat: Math.round((fat / qty) * 10) / 10,
+          _baseTotalCarbs: Math.round((tc / qty) * 10) / 10,
+          _baseFiber: Math.round((fib / qty) * 10) / 10,
+          _baseNetCarbs: Math.round((nc / qty) * 10) / 10,
+        };
+        return updated;
+      });
+      setReMatchId(null);
+      setReMatchText('');
+      toast.success('Item updated');
+    } catch {
+      toast.error('Could not re-check this item. Please try again.');
+    } finally {
+      setReMatchLoading(false);
     }
   };
 
@@ -1090,13 +1148,19 @@ export default function FoodLog() {
                           className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0 flex-1 min-w-0"
                         />
                         {item.source === 'verified' ? (
-                          <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                            title={`Matched from ${item.sourceName || 'a nutrition database'} — confirm it's the right product`}
+                          >
                             <CheckCircle2 className="w-2.5 h-2.5" />
-                            Verified
+                            {item.sourceName || 'Database'}
                           </span>
                         ) : (
-                          <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                            AI Est.
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            title="Estimated by AI — please verify the values"
+                          >
+                            AI estimate
                           </span>
                         )}
                       </div>
@@ -1188,6 +1252,36 @@ export default function FoodLog() {
                             {suffix && <span className="text-[9px] text-muted-foreground">{suffix}</span>}
                           </div>
                         ))}
+                      </div>
+                      {/* P2: re-check / fix a wrong database match without hand-typing macros */}
+                      <div className="mt-2">
+                        {reMatchId === item.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              value={reMatchText}
+                              onChange={(e) => setReMatchText(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleReMatch(idx); } }}
+                              placeholder="Describe it more specifically…"
+                              className="h-7 text-xs flex-1"
+                              autoFocus
+                              disabled={reMatchLoading}
+                            />
+                            <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => handleReMatch(idx)} disabled={reMatchLoading || !reMatchText.trim()}>
+                              {reMatchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
+                            </Button>
+                            <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setReMatchId(null); setReMatchText(''); }} disabled={reMatchLoading}>
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
+                            onClick={() => { setReMatchId(item.id); setReMatchText(item.name || ''); }}
+                          >
+                            Not the right item? Re-check
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

@@ -2,7 +2,7 @@
 
 **Filed by:** Dr. Chad Larson
 **Drafted:** 2026-06-16
-**Status:** 🟢 P1 implemented 2026-06-16 (§8.1 resolved — see below). P2–P4 still open.
+**Status:** 🟢 P1 + P2 implemented 2026-06-16 (§8.1 resolved — see below). P3–P4 still open.
 **Related:**
 - `CLAUDE.md` — AI vendor consolidation + BAA gating policy
 - `docs/specs/food-analysis-graceful-degradation-spec.md` (v1.1, shipped) — §9 deferred this path ("not justified now that manual entry is first-class"); this spec revisits that decision for **accuracy + prod availability**, not just degradation
@@ -100,7 +100,7 @@ POST /api/food/analyze (text)
 
 1. **✅ RESOLVED 2026-06-16 — Nutritionix + HIPAA (was gating).** Decision: **proceed under a de-identified posture.** Verified in code that the integration sends only the food string (`{ query }`) plus API credentials — no patient identifier, and notably no `x-remote-user-id` header ([nutritionLookup.ts](../../server/services/nutritionLookup.ts)). A bare, de-identified food query is not PHI requiring a BAA (unlike the Anthropic lab-PDF, which carries identifiers + values together), and Nutritionix does not publicly offer a BAA. **Guardrail:** `server/__tests__/nutritionLookupPrivacy.test.ts` locks this — it fails if any request to Nutritionix ever gains a user-identifying header/body field. Constraint going forward: never attach a real user id to Nutritionix requests.
 2. **Cost / rate limits.** Nutritionix natural-language calls at pilot scale — pricing tier, per-day caps, and a caching strategy (cache by normalized item string?).
-3. **Confidence + flagging UX.** How should AI-estimated (non-DB) items be visually marked vs. sourced items, so clinicians trust the right numbers? (Per-item `source` exists in data; needs UI.)
+3. **✅ ADDRESSED 2026-06-16 (P2) — Confidence + flagging UX.** The confirm screen now labels each item by **provenance** — a neutral pill showing the actual source (`Nutritionix` / `USDA FoodData Central` / `Open Food Facts`) for database matches, and an amber `AI estimate` pill otherwise. The old green "Verified" badge was removed: it implied the *number* was correct when it only meant "found in a database" (a database can still match the wrong product, e.g. a breaded "chicken patty" at ~29g carbs/half-lb when the patient ate plain chicken). Each item also gets a **"Not the right item? Re-check"** action that re-queries the lookup with a refined description and swaps in the corrected macros + source. Implemented in `client/src/pages/FoodLog.tsx` (`handleReMatch`, reusing `POST /api/food/analyze`).
 4. **Fallback ordering + ambiguity.** When Nutritionix returns multiple candidates for a branded query, pick-first vs. surface a chooser? Confirm order Nutritionix → USDA → OFF → ai_estimate (current code is Nutritionix → OFF → USDA; reconcile).
 5. **Photos.** Keep AI vision gated (no photo logging in prod until BAA), or defer photo logging entirely from the Nutritionix-primary milestone?
 
@@ -117,7 +117,7 @@ With `ANTHROPIC_API_KEY` **unset** but Nutritionix configured:
 ## 10. Phasing
 
 - **P1 — Nutritionix-primary text path** (this spec's core): flip the gate, parse full text via `/v2/natural/nutrients`, label sources. Restores prod analysis, BAA-independent.
-- **P2 — Source-confidence UI** (§8.3): show provenance to clinicians/patients.
+- **P2 — Source-confidence UI** (§8.3): ✅ shipped 2026-06-16. Per-item provenance pills + "Re-check" re-match flow on the confirm screen. A future extension could add a multi-result search picker (type a term, choose from candidates) rather than the refine-and-re-query approach used here.
 - **P3 — LLM pre-parse enhancement** (post-Anthropic-BAA): better handling of messy descriptions.
 - **P4 — Photo path** decision (§8.5).
 
