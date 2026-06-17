@@ -38,6 +38,28 @@ function suggestMealType(): MealType {
   return 'Breakfast';
 }
 
+/**
+ * Seed the entry timestamp for a Day View deep link (`/food?date=YYYY-MM-DD`).
+ * Logging for today uses the real current time; backfilling a past day uses a
+ * meal-type-appropriate hour so timestamps don't all cluster at midnight
+ * (which corrupts time-of-day clinical patterns). See BACKLOG item 6.
+ */
+function seedDeepLinkDate(dateStr: string, mealType: MealType): Date {
+  const todayStr = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
+  if (dateStr === todayStr) return new Date();
+  const seeded = new Date(`${dateStr}T00:00:00`); // local midnight of that day
+  switch (mealType) {
+    case 'Breakfast': seeded.setHours(8, 0, 0, 0); break;
+    case 'Lunch': seeded.setHours(12, 30, 0, 0); break;
+    case 'Dinner': seeded.setHours(18, 30, 0, 0); break;
+    case 'Snack': default: {
+      const now = new Date();
+      seeded.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    }
+  }
+  return seeded;
+}
+
 const SERVING_OPTIONS = [0.5, 1, 1.5, 2, 3];
 
 function scaleMacros(macros: any, multiplier: number) {
@@ -113,13 +135,18 @@ export default function FoodLog() {
     if (typeof window === 'undefined') return;
     const sp = new URLSearchParams(window.location.search);
     const mt = sp.get('mealType');
-    if (mt && (['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const).includes(mt as MealType)) {
-      setMealType(mt as MealType);
+    const validMealType = mt && (['Breakfast', 'Lunch', 'Dinner', 'Snack'] as const).includes(mt as MealType)
+      ? (mt as MealType)
+      : null;
+    if (validMealType) {
+      setMealType(validMealType);
     }
     const dt = sp.get('date');
     if (dt && /^\d{4}-\d{2}-\d{2}$/.test(dt)) {
-      const parsed = new Date(`${dt}T00:00:00`);
-      if (!isNaN(parsed.getTime())) setEntryDate(parsed);
+      // Anchor the time to now (today) or a meal-appropriate hour (past day)
+      // so backfilled meals don't default to midnight. See BACKLOG item 6.
+      const seeded = seedDeepLinkDate(dt, validMealType ?? suggestMealType());
+      if (!isNaN(seeded.getTime())) setEntryDate(seeded);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
