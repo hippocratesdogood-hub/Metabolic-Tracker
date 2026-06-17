@@ -91,24 +91,24 @@ Open work items that are real but non-blocking. Each item has enough context tha
 
 ---
 
-### 6. Meal entry timestamp defaults to 12:00 AM
+### 7. Remove remaining OpenAI cruft (post-consolidation)
 
 **Status:** open
-**Where:** Client-side time picker initialization, likely `client/src/pages/FoodLog.tsx`
-**Why deferred:** Surfaced 2026-05-18 during v1.1 verification; non-blocking but corrupts time-series data on the forward path.
+**Where:** `package.json` (`"openai"` dep), `server/services/healthCheck.ts` (~line 207), Railway env var `OPENAI_API_KEY`
+**Why deferred:** Cosmetic/tidiness — no functional or patient impact. Surfaced 2026-06-16 while confirming the AI fallback chain.
 
-**What's wrong:** The meal entry form's timestamp picker defaults to 12:00 AM (start of day) rather than the current time or a mealType-appropriate hour. Patients must manually adjust on every entry, or their timestamps cluster at midnight — this corrupts time-series analysis and breaks any time-of-day clinical patterns.
+**What's wrong:** The OpenAI→Anthropic consolidation removed all OpenAI *call sites*, but leftovers remain: the `openai` npm package is still a dependency (unused/unimported), `healthCheck.ts` still probes `OPENAI_API_KEY` and reports an `openai` service, and prod Railway still has a (now-dead) `OPENAI_API_KEY`. CLAUDE.md claims the SDK was fully removed; it wasn't.
 
 **Suggested approach:**
-- Default the timestamp to `now`, or apply a mealType-aware heuristic:
-  - Breakfast → 7–8 AM
-  - Lunch → 12–1 PM
-  - Dinner → 6–7 PM
-  - Snack → current time
-- Scope is client-side time picker initialization, likely in `FoodLog.tsx`.
+- Remove `"openai"` from `package.json` and regenerate the lockfile; confirm nothing imports it.
+- Drop the `OPENAI_API_KEY` branch in `healthCheck.ts` (or repoint it to Anthropic/Nutritionix).
+- Delete `OPENAI_API_KEY` from Railway.
+- Note: the patient-facing onboarding consent copy that named OpenAI was already fixed (2026-06-16).
 
 ---
 
 ## Completed
 
 _Move items here with the commit/PR hash when shipped. Format: `- <item title> — <hash> — <date>`_
+
+- Meal entry timestamp defaulting to midnight (item 6) — 5310c27 — 2026-06-16 — root cause was the Day View `?date=` deep link (not the main form); today → current time, past day → meal-appropriate hour. Verified.
