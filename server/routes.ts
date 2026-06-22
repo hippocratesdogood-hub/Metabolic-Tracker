@@ -50,7 +50,7 @@ import {
 } from "./middleware/auditMiddleware";
 import { nutritionLookup } from "./services/nutritionLookup";
 import { promptEngine } from "./services/promptEngine";
-import { toISODateInTZ, parseDateOnlyAsNoonInTZ } from "./utils/timezone";
+import { toISODateInTZ, parseDateOnlyAsNoonInTZ, isValidTimezone } from "./utils/timezone";
 import { aiUnavailableBody } from "./utils/aiUnavailable";
 // coachingRules.ts is available for daily/weekly rule evaluation (prompt engine)
 // Meal-level coaching is now driven by scoreBreakdown in generateMealCoachMessage
@@ -438,6 +438,25 @@ export async function registerRoutes(
   });
 
   // User routes
+  // Fetch a single user's full profile. Self-or-admin only. Used by the
+  // participant Profile page to pre-fill fields the trimmed session user
+  // (/api/auth/me) doesn't carry — phone, timezone, height, etc.
+  app.get("/api/users/:id", requireAuth, async (req, res) => {
+    try {
+      if (req.user!.id !== req.params.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { passwordHash, ...sanitized } = user;
+      res.json(sanitized);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/users/:id", requireAuth, async (req, res) => {
     try {
       if (req.user!.id !== req.params.id && req.user!.role !== "admin") {
@@ -453,11 +472,16 @@ export async function registerRoutes(
         Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
       }
 
+      if (updateData.timezone !== undefined && !isValidTimezone(updateData.timezone)) {
+        return res.status(400).json({ message: "Invalid timezone" });
+      }
+
       const user = await storage.updateUser(req.params.id, updateData);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      const { passwordHash, ...sanitized } = user;
+      res.json(sanitized);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -2101,10 +2125,14 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
   // Admin - Create participant
   app.post("/api/admin/participants", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { name, email, password, phone, dateOfBirth, coachId, forcePasswordReset } = req.body;
+      const { name, email, password, phone, dateOfBirth, coachId, forcePasswordReset, timezone } = req.body;
 
       if (!name || !email || !password) {
         return res.status(400).json({ message: "Name, email, and password are required" });
+      }
+
+      if (timezone !== undefined && !isValidTimezone(timezone)) {
+        return res.status(400).json({ message: "Invalid timezone" });
       }
 
       // Validate password strength
@@ -2132,6 +2160,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
         coachId: coachId || null,
         forcePasswordReset: forcePasswordReset !== false,
         role: "participant",
+        ...(timezone && { timezone }),
       });
 
       // Audit: User created by admin
@@ -2192,6 +2221,10 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
   app.patch("/api/admin/participants/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { name, email, phone, dateOfBirth, coachId, timezone, unitsPreference, status } = req.body;
+
+      if (timezone !== undefined && !isValidTimezone(timezone)) {
+        return res.status(400).json({ message: "Invalid timezone" });
+      }
 
       const user = await storage.updateUser(req.params.id, {
         ...(name && { name }),
