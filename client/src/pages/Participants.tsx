@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 // Tooltip imports removed — replaced by DropdownMenu for actions
 import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2, Activity, StickyNote, Loader2, MoreVertical } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { TimezoneSelect } from '@/components/TimezoneSelect';
 import { toast } from 'sonner';
 
 // Password strength utilities
@@ -414,6 +415,7 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
   const [phone, setPhone] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [coachId, setCoachId] = useState('');
+  const [timezone, setTimezone] = useState('America/Los_Angeles');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [forceReset, setForceReset] = useState(true);
@@ -439,6 +441,7 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
       phone: phone || undefined,
       dateOfBirth: dateOfBirth || undefined,
       coachId: coachId || undefined,
+      timezone,
       password,
       forcePasswordReset: forceReset,
     });
@@ -446,7 +449,7 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
 
   const handleClose = () => {
     setName(''); setEmail(''); setPhone(''); setDateOfBirth('');
-    setCoachId(''); setPassword(''); setConfirmPassword('');
+    setCoachId(''); setTimezone('America/Los_Angeles'); setPassword(''); setConfirmPassword('');
     setForceReset(true); setError('');
     onClose();
   };
@@ -494,6 +497,11 @@ function AddParticipantModal({ open, onClose, coaches, onSubmit, isLoading }: an
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">You can assign a coach now or later.</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Timezone</Label>
+            <TimezoneSelect value={timezone} onChange={setTimezone} data-testid="select-timezone" />
+            <p className="text-xs text-muted-foreground">Controls when scheduled reminders fire for this participant.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">
@@ -710,7 +718,7 @@ function EditParticipantModal({ open, onClose, participant, coaches, onSubmit, i
           </div>
           <div className="space-y-2">
             <Label>Timezone</Label>
-            <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} data-testid="input-edit-timezone" />
+            <TimezoneSelect value={timezone} onChange={setTimezone} data-testid="input-edit-timezone" />
           </div>
           <div className="space-y-2">
             <Label>Units preference</Label>

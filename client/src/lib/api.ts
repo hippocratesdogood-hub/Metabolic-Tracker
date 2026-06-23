@@ -72,6 +72,10 @@ class ApiClient {
   }
 
   // Users
+  async getUser(id: string) {
+    return this.request<User>(`/users/${id}`);
+  }
+
   async updateUser(id: string, data: Partial<User>) {
     return this.request<User>(`/users/${id}`, {
       method: "PATCH",

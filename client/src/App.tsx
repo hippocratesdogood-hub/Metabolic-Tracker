@@ -24,6 +24,7 @@ const Messages = lazy(() => import("@/pages/Messages"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const MetabolicAge = lazy(() => import("@/pages/MetabolicAge"));
+const Profile = lazy(() => import("@/pages/Profile"));
 
 // Lazy load admin routes (rarely used, heavy components)
 const PromptsAdmin = lazy(() => import("@/pages/PromptsAdmin"));
@@ -99,6 +100,7 @@ function Router() {
           <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
           <Route path="/reports">{() => <ProtectedRoute component={Reports} allowedRoles={['participant']} />}</Route>
           <Route path="/metabolic-age">{() => <ProtectedRoute component={MetabolicAge} allowedRoles={['participant']} />}</Route>
+          <Route path="/profile">{() => <ProtectedRoute component={Profile} allowedRoles={['participant']} />}</Route>
 
           {/* Lazy loaded admin routes */}
           <Route path="/admin/prompts">{() => <ProtectedRoute component={PromptsAdmin} allowedRoles={['admin']} />}</Route>

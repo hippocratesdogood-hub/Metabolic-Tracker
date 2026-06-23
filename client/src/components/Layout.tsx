@@ -6,6 +6,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { InboxBell } from '@/components/InboxBell';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -60,8 +61,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             {resolvedTheme === 'dark' ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
           </Button>
-          <Link href="/login">
-            <Button variant="ghost" size="icon" className="rounded-full">
+          <Link href={isParticipant ? '/profile' : '/login'}>
+            <Button variant="ghost" size="icon" className="rounded-full" data-testid="mobile-user-button">
               <User className="w-5 h-5 text-muted-foreground" />
             </Button>
           </Link>
@@ -114,18 +115,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {resolvedTheme === 'dark' ? 'Light' : 'Dark'}
             </Button>
           </div>
-          <div
-            onClick={logout}
-            className="flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-sidebar-accent rounded-lg transition-colors"
-          >
-            <div className="w-8 h-8 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold text-xs">
-              {user?.name?.charAt(0) || 'U'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-muted-foreground truncate">Log out</p>
-            </div>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div
+                className="flex items-center gap-3 px-2 py-2 cursor-pointer hover:bg-sidebar-accent rounded-lg transition-colors"
+                data-testid="user-menu-trigger"
+              >
+                <div className="w-8 h-8 rounded-full bg-secondary/20 text-secondary flex items-center justify-center font-bold text-xs">
+                  {user?.name?.charAt(0) || 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email || ''}</p>
+                </div>
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {isParticipant && (
+                <DropdownMenuItem asChild>
+                  <Link href="/profile" className="cursor-pointer">Profile</Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout} className="cursor-pointer" data-testid="menu-logout">
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 

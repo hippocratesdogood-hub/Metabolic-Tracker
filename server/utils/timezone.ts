@@ -1,3 +1,18 @@
+// Returns true if `tz` is a valid IANA timezone identifier. We accept any valid
+// IANA zone (not just the US shortlist offered in the UI dropdown) so that
+// editing a participant who already has a valid non-US zone doesn't break, while
+// still rejecting garbage strings that would later throw inside the scheduler's
+// Intl.DateTimeFormat timezone math.
+export function isValidTimezone(tz: unknown): tz is string {
+  if (typeof tz !== "string" || tz.length === 0) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Returns the calendar date (YYYY-MM-DD) as it appears in `timezone`.
 export function toISODateInTZ(date: Date, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
