@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
-import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode, ChefHat, ClipboardList } from 'lucide-react';
+import { Camera, Mic, MicOff, Loader2, CheckCircle2, Coffee, UtensilsCrossed, Moon, Cookie, CalendarIcon, Clock, X, Image, Heart, Pencil, Trash2, Flame, MessageSquare, Plus, ScanBarcode, ChefHat, ClipboardList, Info } from 'lucide-react';
 import BarcodeScannerModal, { type ScannedFoodItem } from '@/components/BarcodeScannerModal';
 import RecipeBuilderModal from '@/components/RecipeBuilderModal';
 import ManualMacroEntryModal from '@/components/ManualMacroEntryModal';
@@ -1123,6 +1123,19 @@ export default function FoodLog() {
                   </span>
                 </div>
               </div>
+
+              {/* Degraded-mode notice: when AI vision is unavailable, the server
+                  analyzes the typed description via Nutritionix and ignores the
+                  photo. Tell the user so they can add anything visible in the
+                  image that they didn't write down. */}
+              {analysisResult.photoUsed === false && (
+                <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Analyzed from your written description — your photo was not used. Review the items below and add anything visible in the photo that you didn't describe.
+                  </span>
+                </div>
+              )}
 
               {/* Editable item cards */}
               {editableItems.length > 0 ? (
