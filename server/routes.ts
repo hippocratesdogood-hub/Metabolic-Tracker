@@ -247,6 +247,54 @@ function suggestMealType(): string {
 }
 
 /**
+ * Build a Nutritionix-native meal analysis from a text description. This is the
+ * non-LLM fallback used by BOTH food-analysis endpoints when the Anthropic
+ * client is unavailable (e.g. ANTHROPIC_API_KEY is BAA-gated off in prod):
+ * Nutritionix's /v2/natural/nutrients parses the description AND returns sourced
+ * macros, so only a de-identified food string leaves the server — no LLM, no
+ * Anthropic BAA required (food-analysis v1.2 P1, extended to the image path).
+ *
+ * Returns `null` when Nutritionix is unconfigured, so callers can decide how to
+ * degrade (the text endpoint 503s; the image endpoint 503s and surfaces the
+ * favorites/barcode/manual paths). Note: an empty `foods_detected` is still a
+ * valid (zero-macro) body — the text endpoint preserves its prior behavior of
+ * returning it; the image endpoint treats empty as "nothing parsed" and 503s.
+ */
+async function buildNutritionixTextAnalysis(
+  rawText: string,
+  mealTypeSuggestion: string,
+): Promise<{
+  foods_detected: any[];
+  macros: { calories: number; protein: number; fat: number; totalCarbs: number; fiber: number; netCarbs: number; carbs: number };
+  notes: string | null;
+  suggestedMealType: string;
+  confidence: { low: number; high: number };
+} | null> {
+  const nutritionixConfigured = !!(process.env.NUTRITIONIX_APP_ID && process.env.NUTRITIONIX_APP_KEY);
+  if (!nutritionixConfigured) return null;
+
+  const items = (await nutritionLookup.analyzeNaturalText(rawText)) ?? [];
+  const macros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
+  for (const item of items) {
+    macros.calories += item.calories || 0;
+    macros.protein += item.protein || 0;
+    macros.fat += item.fat || 0;
+    macros.totalCarbs += item.totalCarbs || 0;
+    macros.fiber += item.fiber || 0;
+    macros.netCarbs += item.netCarbs || 0;
+  }
+  macros.carbs = macros.netCarbs;
+
+  return {
+    foods_detected: items,
+    macros,
+    notes: null,
+    suggestedMealType: mealTypeSuggestion,
+    confidence: { low: 0.7, high: 0.95 },
+  };
+}
+
+/**
  * Enrich AI-detected foods with database lookups (Open Food Facts / USDA).
  * Replaces AI macro estimates with verified data when a confident match is found.
  * Gracefully falls back to AI estimates on any failure.
@@ -1584,36 +1632,17 @@ export async function registerRoutes(
 
       const { rawText, timestamp } = req.body;
       const mealTypeSuggestion = suggestMealType();
-      const nutritionixConfigured = !!(process.env.NUTRITIONIX_APP_ID && process.env.NUTRITIONIX_APP_KEY);
 
       // When the LLM is unavailable (e.g. ANTHROPIC_API_KEY is BAA-gated off in
-      // prod), fall back to a Nutritionix-native analysis. Its
-      // /v2/natural/nutrients endpoint parses the description AND returns
-      // sourced macros — no LLM, and only a de-identified food string leaves
-      // the server — so automatic analysis keeps working without the Anthropic
-      // BAA (food-analysis v1.2 P1). Only when neither is available do we 503.
+      // prod), fall back to a Nutritionix-native analysis (see
+      // buildNutritionixTextAnalysis). Only when Nutritionix is also
+      // unconfigured do we 503.
       if (!anthropic) {
-        if (!nutritionixConfigured) {
+        const fallback = await buildNutritionixTextAnalysis(rawText, mealTypeSuggestion);
+        if (!fallback) {
           return res.status(503).json(aiUnavailableBody());
         }
-        const items = (await nutritionLookup.analyzeNaturalText(rawText)) ?? [];
-        const macros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
-        for (const item of items) {
-          macros.calories += item.calories || 0;
-          macros.protein += item.protein || 0;
-          macros.fat += item.fat || 0;
-          macros.totalCarbs += item.totalCarbs || 0;
-          macros.fiber += item.fiber || 0;
-          macros.netCarbs += item.netCarbs || 0;
-        }
-        macros.carbs = macros.netCarbs;
-        return res.json({
-          foods_detected: items,
-          macros,
-          notes: null,
-          suggestedMealType: mealTypeSuggestion,
-          confidence: { low: 0.7, high: 0.95 },
-        });
+        return res.json(fallback);
       }
 
       // ── STAGE 1: LLM parses food items and quantities only ──
@@ -1836,6 +1865,19 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
       }
 
       if (!anthropic) {
+        // Anthropic vision is unavailable (BAA-gated off in prod). Nutritionix
+        // has no vision, but if the user typed a description alongside the photo
+        // we can still parse THAT via the same text fallback /api/food/analyze
+        // uses. The photo bytes are ignored — we flag photoUsed:false so the UI
+        // tells the user the macros came from their description, not the image.
+        // Photo-only entries (no text) have nothing to fall back to → 503.
+        const typedText = ((req.body?.text as string) || '').trim();
+        if (typedText) {
+          const fallback = await buildNutritionixTextAnalysis(typedText, suggestMealType());
+          if (fallback && fallback.foods_detected.length > 0) {
+            return res.json({ ...fallback, photoUsed: false });
+          }
+        }
         return res.status(503).json(aiUnavailableBody());
       }
       if (!req.file) {
