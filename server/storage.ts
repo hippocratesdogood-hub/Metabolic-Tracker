@@ -174,19 +174,28 @@ export class PostgresStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const results = await db.select().from(schema.users).where(eq(schema.users.email, email));
+    // Case-insensitive match: emails are stored lowercased (see createUser/updateUser),
+    // but legacy rows may carry mixed case. Comparing on lower() resolves both without a
+    // data migration and prevents the "Invalid email or password" trap for mixed-case rows.
+    const normalized = email.trim().toLowerCase();
+    const results = await db
+      .select()
+      .from(schema.users)
+      .where(sql`lower(${schema.users.email}) = ${normalized}`);
     return results[0];
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const results = await db.insert(schema.users).values(user).returning();
+    const normalized = user.email ? { ...user, email: user.email.trim().toLowerCase() } : user;
+    const results = await db.insert(schema.users).values(normalized).returning();
     return results[0];
   }
 
   async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
+    const normalized = data.email ? { ...data, email: data.email.trim().toLowerCase() } : data;
     const results = await db
       .update(schema.users)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...normalized, updatedAt: new Date() })
       .where(eq(schema.users.id, id))
       .returning();
     return results[0];
