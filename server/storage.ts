@@ -213,7 +213,30 @@ export class PostgresStorage implements IStorage {
 
   async createMetricEntry(entry: InsertMetricEntry): Promise<MetricEntry> {
     const encrypted = entry.notes ? { ...entry, notes: encryptPHI(entry.notes) } : entry;
-    const results = await db.insert(schema.metricEntries).values(encrypted).returning();
+    // Re-logging the same (user, timestamp, type) collides with the unique index
+    // `metric_entries_user_timestamp_type_idx`. This happens deterministically when a
+    // participant re-saves a backdated date, since the timestamp is anchored to
+    // noon-in-TZ (see parseDateOnlyAsNoonInTZ). Upsert so a re-log overwrites the
+    // prior value instead of throwing a Postgres 23505 that surfaced as a raw 500.
+    const results = await db
+      .insert(schema.metricEntries)
+      .values(encrypted)
+      .onConflictDoUpdate({
+        target: [
+          schema.metricEntries.userId,
+          schema.metricEntries.timestamp,
+          schema.metricEntries.type,
+        ],
+        set: {
+          normalizedValue: encrypted.normalizedValue ?? null,
+          rawUnit: encrypted.rawUnit ?? null,
+          valueJson: encrypted.valueJson,
+          notes: encrypted.notes ?? null,
+          source: encrypted.source ?? "manual",
+          glucoseContext: encrypted.glucoseContext ?? null,
+        },
+      })
+      .returning();
     return this.decryptMetricNotes(results[0]);
   }
 

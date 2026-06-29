@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { z } from 'zod';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -74,6 +74,10 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
   const [notes, setNotes] = useState('');
   const [entryDate, setEntryDate] = useState<Date>(lastUsedDate ?? new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Synchronous re-entry guard: the `disabled={isSubmitting}` button only takes
+  // effect after a re-render, so two fast taps can both fire handleSubmit before
+  // the button disables. A ref blocks the second call immediately.
+  const submitInFlight = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -143,9 +147,11 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitInFlight.current) return;
     if (!hasAnyValue) return;
     if (!validate()) return;
 
+    submitInFlight.current = true;
     setIsSubmitting(true);
     setFormError(null);
     // Backdated entries are sent as YYYY-MM-DD (server anchors to noon in user TZ).
@@ -155,6 +161,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
       : new Date();
     const saved: string[] = [];
     const failed: string[] = [];
+    const failureErrors: Array<{ name: string; error: unknown }> = [];
 
     try {
       // Save each filled metric
@@ -168,7 +175,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
             valueJson: normalized.valueJson, timestamp, notes: notes || undefined,
           });
           saved.push('Blood Pressure');
-        } catch { failed.push('Blood Pressure'); }
+        } catch (err) { failed.push('Blood Pressure'); failureErrors.push({ name: 'Blood Pressure', error: err }); }
       }
 
       if (hasGlucose) {
@@ -182,7 +189,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
             ...(glucoseContext ? { glucoseContext } : {}),
           });
           saved.push('Glucose');
-        } catch { failed.push('Glucose'); }
+        } catch (err) { failed.push('Glucose'); failureErrors.push({ name: 'Glucose', error: err }); }
       }
 
       if (hasKetones) {
@@ -195,7 +202,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
             valueJson: normalized.valueJson, timestamp, notes: notes || undefined,
           });
           saved.push('Ketones');
-        } catch { failed.push('Ketones'); }
+        } catch (err) { failed.push('Ketones'); failureErrors.push({ name: 'Ketones', error: err }); }
       }
 
       if (hasWeight) {
@@ -208,7 +215,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
             valueJson: normalized.valueJson, timestamp, notes: notes || undefined,
           });
           saved.push('Weight');
-        } catch { failed.push('Weight'); }
+        } catch (err) { failed.push('Weight'); failureErrors.push({ name: 'Weight', error: err }); }
       }
 
       if (hasWaist) {
@@ -221,7 +228,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
             valueJson: normalized.valueJson, timestamp, notes: notes || undefined,
           });
           saved.push('Waist');
-        } catch { failed.push('Waist'); }
+        } catch (err) { failed.push('Waist'); failureErrors.push({ name: 'Waist', error: err }); }
       }
 
       // Persist last-used date to the parent so the next entry defaults to it.
@@ -233,10 +240,21 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
       queryClient.invalidateQueries({ queryKey: ['macro-progress'] });
 
       if (failed.length > 0) {
+        // Log the real causes so production failures are diagnosable — the previous
+        // bare `catch {}` blocks discarded these, leaving us blind to the actual error.
+        // Status/code only (no field values) to avoid putting metric data in logs.
+        console.error('[metrics] save failures', failureErrors.map(({ name, error }) => ({
+          name,
+          status: (error as { status?: number })?.status,
+          code: (error as { code?: string })?.code,
+          message: error instanceof Error ? error.message : String(error),
+        })));
+        const reason = failureErrors[0]?.error;
+        const reasonMsg = reason instanceof Error ? reason.message : '';
         toast({
           variant: "destructive",
           title: "Some metrics failed to save",
-          description: `Saved: ${saved.join(', ')}. Failed: ${failed.join(', ')}.`,
+          description: `${saved.length ? `Saved: ${saved.join(', ')}. ` : ''}Failed: ${failed.join(', ')}.${reasonMsg ? ` (${reasonMsg})` : ''}`,
         });
       } else {
         toast({
@@ -250,6 +268,7 @@ export default function UnifiedMetricModal({ isOpen, onClose, lastUsedDate, onDa
       console.error('Failed to save metrics:', error);
       setFormError('An unexpected error occurred. Please try again.');
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   };
