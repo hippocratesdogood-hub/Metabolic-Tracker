@@ -7,6 +7,7 @@ import passport from "passport";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
+import { buildSelfSignupUser } from "./utils/accountSecurity";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -339,6 +340,13 @@ export async function registerRoutes(
   // Auth routes
   app.post("/api/auth/signup", signupLimiter, async (req, res, next) => {
     try {
+      // Pilot: accounts are provisioned via the admin API (Stripe -> GoHighLevel
+      // webhook -> POST /api/admin/participants). Public self-serve registration
+      // is disabled unless ENABLE_PUBLIC_SIGNUP === "true". Deferred to post-pilot.
+      if (process.env.ENABLE_PUBLIC_SIGNUP !== "true") {
+        return res.status(404).json({ message: "Not found" });
+      }
+
       const result = insertUserSchema.safeParse(req.body);
       if (!result.success) {
         return res.status(400).json({ message: fromZodError(result.error).message });
@@ -365,12 +373,16 @@ export async function registerRoutes(
       // Hash password
       const hashedPassword = await crypto.hash(passwordHash);
 
-      // Create user
-      const user = await storage.createUser({
-        ...rest,
-        email,
-        passwordHash: hashedPassword,
-      });
+      // Create user — buildSelfSignupUser strips any client-supplied privilege
+      // fields (role/status/coachId/forcePasswordReset) and forces the lowest
+      // privilege. role can never be set from the request body. (B0)
+      const user = await storage.createUser(
+        buildSelfSignupUser({
+          ...rest,
+          email,
+          passwordHash: hashedPassword,
+        })
+      );
 
       // Auto login
       req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, unitsPreference: user.unitsPreference ?? "US" }, async (err) => {
