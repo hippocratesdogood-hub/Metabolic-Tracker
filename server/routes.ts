@@ -8,6 +8,11 @@ import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { buildSelfSignupUser } from "./utils/accountSecurity";
+import {
+  PARTICIPANT_SYSTEM_PROMPT,
+  participantAssistantTools,
+  executeParticipantToolCall,
+} from "./services/participantAssistant";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -3291,6 +3296,114 @@ GUIDELINES:
         return res.status(502).json({ message: `AI service error: ${error.message}` });
       }
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ============================================================================
+  // Participant AI Optimization Partner (B1 + B2)
+  // ----------------------------------------------------------------------------
+  // Participant-facing chat. Context is strictly scoped to req.user.id: the
+  // tools take no participantId, so a member can only ever see their own data
+  // (see server/services/participantAssistant.ts + its scoping tests).
+  //
+  // Persistence: session-scoped only. History lives in the client and is re-sent
+  // each turn (same model as the admin assistant). No server-side thread storage
+  // is added in this sprint — see SPRINT_NOTES.md.
+  // ============================================================================
+  app.post("/api/assistant/chat", requireAuth, aiLimiter, async (req, res) => {
+    try {
+      if (!anthropic) {
+        return res.status(503).json({
+          message:
+            "Your Optimization Partner is temporarily unavailable. Please try again in a moment.",
+        });
+      }
+
+      const parsed = aiAssistantSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+
+      const userId = req.user!.id;
+      const { messages: clientMessages } = parsed.data;
+
+      await logAuditEvent("PHI_VIEW", "SUCCESS", "REPORT", {
+        user: { id: userId, role: req.user!.role },
+        req,
+        metadata: {
+          feature: "participant-assistant",
+          queryPreview: clientMessages[clientMessages.length - 1]?.content.substring(0, 100),
+        },
+      });
+
+      const anthropicMessages: Anthropic.MessageParam[] = [...clientMessages];
+      const MAX_ITERATIONS = 5;
+      const todayIso = new Date().toISOString().split("T")[0];
+
+      for (let i = 0; i < MAX_ITERATIONS; i++) {
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1500,
+          system: [
+            { type: "text", text: PARTICIPANT_SYSTEM_PROMPT },
+            { type: "text", text: `Today is ${todayIso}.` },
+          ],
+          tools: participantAssistantTools,
+          messages: anthropicMessages,
+        });
+
+        if (response.stop_reason !== "tool_use") {
+          const textBlock = response.content.find((b) => b.type === "text");
+          const text = textBlock && textBlock.type === "text" ? textBlock.text : "";
+          return res.json({
+            response:
+              text ||
+              "I'm not sure how to answer that yet — try asking about your weight, protein, or trends.",
+          });
+        }
+
+        anthropicMessages.push({ role: "assistant", content: response.content });
+
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const block of response.content) {
+          if (block.type === "tool_use") {
+            let result: any;
+            try {
+              // userId is fixed to the authenticated caller — args identity is ignored.
+              result = await executeParticipantToolCall(block.name, block.input, {
+                userId,
+                storage,
+              });
+            } catch (err: any) {
+              result = { error: err.message };
+            }
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            });
+          }
+        }
+        anthropicMessages.push({ role: "user", content: toolResults });
+      }
+
+      res.json({
+        response:
+          "That one took more digging than I could do in one go — try asking something a bit more specific and I'll pull it up.",
+      });
+    } catch (error: any) {
+      console.error("Participant assistant error:", error);
+      if (error instanceof Anthropic.RateLimitError) {
+        return res
+          .status(429)
+          .json({ message: "I'm getting a lot of questions right now — give me a few seconds and try again." });
+      }
+      if (error instanceof Anthropic.APIError) {
+        return res
+          .status(502)
+          .json({ message: "I hit a snag reaching my brain just now. Please try that again." });
+      }
+      res.status(500).json({ message: "Something went wrong on my end. Please try again." });
     }
   });
 

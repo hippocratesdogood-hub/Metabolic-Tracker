@@ -12,7 +12,7 @@ import AdditionalInsights from '@/components/AdditionalInsights';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2, Plus } from 'lucide-react';
+import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2, Plus, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { getUnitLabels, formatMetricForDisplay, type UnitsPreference } from '@shared/units';
@@ -161,6 +161,31 @@ export default function Dashboard() {
           <p className="text-sm font-medium text-primary">{format(new Date(), 'EEEE, MMMM do')}</p>
         </div>
       </div>
+
+      {/* One-tap entry to the AI Optimization Partner (B1). Kept prominent so the
+          weekly GoHighLevel prompts ("open the app and ask your partner...") land. */}
+      <Link href="/partner">
+        <a className="block group" aria-label="Open your Optimization Partner">
+          <Card className="border-none shadow-md bg-gradient-to-r from-primary to-[#0060e6] text-primary-foreground overflow-hidden">
+            <CardContent className="flex items-center gap-4 p-4 md:p-5">
+              <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-heading font-semibold text-base md:text-lg leading-tight">
+                  Ask your Optimization Partner
+                </p>
+                <p className="text-sm text-primary-foreground/80 truncate">
+                  Questions about your protein, trends, or what to focus on? Ask now.
+                </p>
+              </div>
+              <div className="shrink-0 rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors px-3 py-2 text-sm font-medium">
+                Chat
+              </div>
+            </CardContent>
+          </Card>
+        </a>
+      </Link>
 
       <OverviewStatistics
         metrics={{

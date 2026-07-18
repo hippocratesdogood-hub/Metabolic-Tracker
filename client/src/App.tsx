@@ -25,6 +25,7 @@ const Reports = lazy(() => import("@/pages/Reports"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const MetabolicAge = lazy(() => import("@/pages/MetabolicAge"));
 const Profile = lazy(() => import("@/pages/Profile"));
+const Partner = lazy(() => import("@/pages/Partner"));
 
 // Lazy load admin routes (rarely used, heavy components)
 const PromptsAdmin = lazy(() => import("@/pages/PromptsAdmin"));
@@ -95,6 +96,7 @@ function Router() {
           <Route path="/reset-password">{() => <ProtectedRoute component={ResetPassword} allowForceReset />}</Route>
           <Route path="/trends">{() => <ProtectedRoute component={Trends} allowedRoles={['participant']} />}</Route>
           <Route path="/food">{() => <ProtectedRoute component={FoodLog} allowedRoles={['participant']} />}</Route>
+          <Route path="/partner">{() => <ProtectedRoute component={Partner} allowedRoles={['participant']} />}</Route>
           <Route path="/log/:date">{() => <ProtectedRoute component={DayViewPage} allowedRoles={['participant']} />}</Route>
           <Route path="/log">{() => <Redirect to={`/log/${new Date().toLocaleDateString('en-CA')}`} />}</Route>
           <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>

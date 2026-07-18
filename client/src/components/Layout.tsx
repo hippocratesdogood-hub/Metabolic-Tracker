@@ -24,6 +24,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     ...(isParticipant ? [
       { href: '/', label: 'Today', icon: LayoutDashboard },
+      { href: '/partner', label: 'Partner', icon: Sparkles },
       { href: '/trends', label: 'Trends', icon: TrendingUp },
       { href: '/food', label: 'Food', icon: Utensils },
       { href: '/log', label: 'Day', icon: CalendarDays },

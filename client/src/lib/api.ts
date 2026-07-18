@@ -717,9 +717,17 @@ class ApiClient {
     });
   }
 
-  // AI Report Assistant
+  // AI Report Assistant (admin/coach)
   async askAIAssistant(messages: { role: "user" | "assistant"; content: string }[]) {
     return this.request<{ response: string }>("/admin/ai-assistant", {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+    });
+  }
+
+  // Participant AI Optimization Partner (self-scoped)
+  async askOptimizationPartner(messages: { role: "user" | "assistant"; content: string }[]) {
+    return this.request<{ response: string }>("/assistant/chat", {
       method: "POST",
       body: JSON.stringify({ messages }),
     });
