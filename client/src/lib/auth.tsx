@@ -11,6 +11,7 @@ type AuthUser = {
   coachId?: string | null;
   forcePasswordReset?: boolean;
   aiConsentGiven?: boolean;
+  onboardingComplete?: boolean;
   unitsPreference?: "US" | "Metric";
 } | null;
 

@@ -65,6 +65,7 @@ declare global {
       coachId?: string | null;
       forcePasswordReset: boolean;
       aiConsentGiven: boolean;
+      onboardingComplete: boolean;
       unitsPreference: string;
     }
   }
@@ -199,6 +200,7 @@ export function setupAuth(app: Express) {
             name: user.name,
             forcePasswordReset: user.forcePasswordReset,
             aiConsentGiven: user.aiConsentGiven ?? false,
+            onboardingComplete: user.onboardingComplete ?? true,
             unitsPreference: user.unitsPreference ?? "US",
           });
         } catch (err) {
@@ -234,6 +236,7 @@ export function setupAuth(app: Express) {
         coachId: user.coachId,
         forcePasswordReset: user.forcePasswordReset,
         aiConsentGiven: user.aiConsentGiven ?? false,
+        onboardingComplete: user.onboardingComplete ?? true,
         unitsPreference: user.unitsPreference ?? "US",
       });
     } catch (err) {

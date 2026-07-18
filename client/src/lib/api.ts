@@ -341,6 +341,12 @@ class ApiClient {
   }
 
   // AI Consent
+  async completeOnboarding() {
+    return this.request<{ success: boolean }>("/onboarding/complete", {
+      method: "POST",
+    });
+  }
+
   async acceptAiConsent() {
     return this.request<{ success: boolean }>("/user/ai-consent", {
       method: "PATCH",

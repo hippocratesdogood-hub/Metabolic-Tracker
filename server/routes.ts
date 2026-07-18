@@ -6,6 +6,7 @@ import { analyticsService } from "./analytics";
 import passport from "passport";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
 import { buildSelfSignupUser } from "./utils/accountSecurity";
 import {
@@ -390,16 +391,118 @@ export async function registerRoutes(
       );
 
       // Auto login
-      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, unitsPreference: user.unitsPreference ?? "US" }, async (err) => {
+      req.login({ id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, onboardingComplete: user.onboardingComplete ?? true, unitsPreference: user.unitsPreference ?? "US" }, async (err) => {
         if (err) return next(err);
 
         // Audit: User self-registration
         await auditLoginSuccess({ id: user.id, role: user.role }, req);
 
-        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, unitsPreference: user.unitsPreference ?? "US" } });
+        res.json({ user: { id: user.id, email: user.email, role: user.role, name: user.name, forcePasswordReset: user.forcePasswordReset, aiConsentGiven: user.aiConsentGiven ?? false, onboardingComplete: user.onboardingComplete ?? true, unitsPreference: user.unitsPreference ?? "US" } });
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================================================
+  // Account provisioning webhook (B3)
+  // --------------------------------------------------------------------------
+  // Called by GoHighLevel after Stripe checkout succeeds. Creates a participant
+  // account and returns a login URL + one-time temp password for GHL to merge
+  // into its own welcome email. Auth: shared secret in the `x-ghl-secret` header
+  // (or `Authorization: Bearer <secret>`), compared timing-safely to
+  // GHL_WEBHOOK_SECRET. Idempotent: a retry for an existing email is a no-op.
+  // See SPRINT_REPORT.md for the full payload/response contract.
+  // ==========================================================================
+  const ghlProvisionSchema = z.object({
+    email: z.string().email(),
+    name: z.string().min(1),
+    planTag: z.string().optional(),
+    phone: z.string().optional(),
+    timezone: z.string().optional(),
+  });
+
+  app.post("/api/webhooks/ghl/provision", signupLimiter, async (req, res) => {
+    try {
+      const configured = process.env.GHL_WEBHOOK_SECRET;
+      if (!configured) {
+        return res.status(503).json({ message: "Provisioning is not configured (GHL_WEBHOOK_SECRET missing)." });
+      }
+
+      // Timing-safe shared-secret check.
+      const headerSecret =
+        (req.headers["x-ghl-secret"] as string | undefined) ||
+        (req.headers.authorization?.startsWith("Bearer ")
+          ? req.headers.authorization.slice(7)
+          : undefined) ||
+        "";
+      const a = Buffer.from(headerSecret);
+      const b = Buffer.from(configured);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        await logAuditEvent("LOGIN_FAILURE", "FAILURE", "USER", {
+          req,
+          metadata: { feature: "ghl-provision", reason: "bad or missing secret" },
+        });
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const parsed = ghlProvisionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      const { email, name, phone, timezone, planTag } = parsed.data;
+
+      if (timezone !== undefined && !isValidTimezone(timezone)) {
+        return res.status(400).json({ message: "Invalid timezone" });
+      }
+
+      const appBaseUrl = (process.env.APP_BASE_URL || "https://app.doctorchadlarson.com").replace(/\/$/, "");
+      const loginUrl = `${appBaseUrl}/login`;
+
+      // Idempotency: GHL may retry. If the account already exists, don't reset
+      // their password or clobber state — just acknowledge.
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(200).json({
+          status: "exists",
+          userId: existing.id,
+          loginUrl,
+          message: "Account already provisioned.",
+        });
+      }
+
+      // Secure one-time password; member is forced to reset on first login.
+      const tempPassword = `Mt-${randomBytes(9).toString("base64url")}9!`;
+      const passwordHash = await crypto.hash(tempPassword);
+
+      const user = await storage.createUser({
+        name,
+        email,
+        passwordHash,
+        phone: phone || null,
+        role: "participant",
+        forcePasswordReset: true,
+        onboardingComplete: false, // first login lands in the onboarding wizard
+        ...(timezone && { timezone }),
+      });
+
+      await logAuditEvent("USER_CREATED", "SUCCESS", "USER", {
+        req,
+        targetUserId: user.id,
+        metadata: { feature: "ghl-provision", planTag: planTag || null },
+      });
+
+      return res.status(201).json({
+        status: "created",
+        userId: user.id,
+        loginUrl,
+        tempPassword,
+        forcePasswordReset: true,
+        message: "Participant provisioned. Deliver loginUrl + tempPassword in the welcome email.",
+      });
+    } catch (error: any) {
+      console.error("GHL provision error:", error);
+      res.status(500).json({ message: "Provisioning failed." });
     }
   });
 
@@ -556,6 +659,18 @@ export async function registerRoutes(
   app.patch("/api/user/ai-consent", requireAuth, async (req, res) => {
     try {
       await storage.updateUser(req.user!.id, { aiConsentGiven: true });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Mark onboarding complete (B3). Called at the end of the first-login wizard.
+  app.post("/api/onboarding/complete", requireAuth, async (req, res) => {
+    try {
+      await storage.updateUser(req.user!.id, { onboardingComplete: true });
+      // Update the live session so the client stops being redirected to /onboarding.
+      if (req.user) req.user.onboardingComplete = true;
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

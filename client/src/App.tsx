@@ -75,6 +75,18 @@ function ProtectedRoute({
     return <Redirect to="/reset-password" />;
   }
 
+  // First-login onboarding gate (B3): a provisioned participant who hasn't
+  // completed onboarding lands in the wizard. Existing/admin-created users have
+  // onboardingComplete=true and are unaffected.
+  if (
+    user.role === 'participant' &&
+    user.onboardingComplete === false &&
+    location !== '/onboarding' &&
+    location !== '/reset-password'
+  ) {
+    return <Redirect to="/onboarding" />;
+  }
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Redirect to={user.role === 'participant' ? '/' : '/admin'} />;
   }

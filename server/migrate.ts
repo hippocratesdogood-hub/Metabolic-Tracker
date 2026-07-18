@@ -92,6 +92,14 @@ async function runIncrementalMigrations(pool: pg.Pool) {
     ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_consent_given" boolean DEFAULT false;
   `);
 
+  // Migration: Onboarding gate (B3). Default true so ADD COLUMN backfills all
+  // existing rows as "already onboarded" — real/admin-created users are never
+  // dropped into the wizard. The GHL provisioning webhook explicitly sets this
+  // false for newly provisioned pilot members.
+  await pool.query(`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_complete" boolean NOT NULL DEFAULT true;
+  `);
+
   // Migration: Clinical protocol fields on users
   await pool.query(`
     ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "glp1_status" boolean DEFAULT false;

@@ -109,6 +109,10 @@ export const users = pgTable("users", {
   status: userStatusEnum("status").default("active").notNull(),
   forcePasswordReset: boolean("force_password_reset").default(false).notNull(),
   aiConsentGiven: boolean("ai_consent_given").default(false),
+  // Onboarding gate. Defaults true so existing/admin-created users are never
+  // forced into the wizard; the GHL provisioning webhook sets this false so a
+  // newly provisioned pilot member lands in onboarding on first login. (B3)
+  onboardingComplete: boolean("onboarding_complete").default(true).notNull(),
   glp1Status: boolean("glp1_status").default(false),
   programPhaseOverride: text("program_phase_override"), // null = auto-derive from programStartDate, "active" or "maintenance" to override
   createdAt: timestamp("created_at").defaultNow().notNull(),

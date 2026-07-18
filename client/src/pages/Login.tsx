@@ -83,7 +83,7 @@ export default function Login() {
                 </Label>
                 <span
                   className="text-xs text-primary hover:underline cursor-pointer"
-                  onClick={() => toast.info('Please contact Dr. Larson to reset your password.', { duration: 5000 })}
+                  onClick={() => toast.info('Use the sign-in link from your welcome email. Still stuck? Reply to that email and we\'ll help you get back in.', { duration: 6000 })}
                 >
                   Forgot password?
                 </span>
@@ -124,14 +124,9 @@ export default function Login() {
           </form>
         </CardContent>
         <CardFooter className="justify-center border-t border-border/50 pt-6">
-          <p className="text-sm text-muted-foreground">
-            Don't have an account?{' '}
-            <span
-              className="text-primary hover:underline cursor-pointer font-medium"
-              onClick={() => toast.info('Please contact Dr. Larson to get set up.', { duration: 5000 })}
-            >
-              Get started
-            </span>
+          <p className="text-sm text-muted-foreground text-center">
+            New Founding Members get a sign-in link by email right after joining.
+            Check your inbox for your welcome email to get started.
           </p>
         </CardFooter>
       </Card>
