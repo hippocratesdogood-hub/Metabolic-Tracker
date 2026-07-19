@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | (date · by whom) |
+| **Last updated** | 2026-06-28 · Claude Code — Phase 1 verified 1.1–1.4 (1.5 still open) |
 
 **Phase gate:** 0 ⬜ · 1 ⬜ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -31,14 +31,18 @@
 
 ## PHASE 1 — Code ship & production safety (do first)
 
-- [ ] **1.1** Review merge summary → merge `fix/pilot-launch-blockers` → `main`, push, deploy
+- [x] **1.1** Review merge summary → merge `fix/pilot-launch-blockers` → `main`, push, deploy
       ✓ = prod runs sprint code
-- [ ] **1.2** Run B0 abuse query against PRODUCTION DB (per `PILOT_RUNBOOK.md`)
+      → Sprint commits on `origin/main` (B0 40458ea → ship e8b997e); prod auto-deploys from `main`. Confirmed live: the signup endpoint returns 404 in prod (pre-sprint it was 200), proving the sprint gate code is deployed. (`production` branch is a stale leftover — ignore.)
+- [x] **1.2** Run B0 abuse query against PRODUCTION DB (per `PILOT_RUNBOOK.md`)
       ✓ = confirmed no account ever self-elevated in prod. **If any did: STOP — investigate before anything else**
-- [ ] **1.3** Set `GHL_WEBHOOK_SECRET` + `APP_BASE_URL` in Railway
+      → CLEAN. Feb-15 `admin@example.com` anomaly = benign boot-seed account (w/ coach + 2 participant seeds, all inactive in prod, none self-registered). See `SPRINT_NOTES.md` #10.
+- [x] **1.3** Set `GHL_WEBHOOK_SECRET` + `APP_BASE_URL` in Railway
       ✓ = env vars live, app restart clean
-- [ ] **1.4** Confirm `ENABLE_PUBLIC_SIGNUP` OFF in prod
+      → `GHL_WEBHOOK_SECRET` confirmed live in prod: wrong-secret probe to `/api/webhooks/ghl/provision` returned 401 (would be 503 if unset). `APP_BASE_URL` not independently verified but has a safe fallback to the prod URL — **visually confirm it's set in Railway** to remove all ambiguity.
+- [x] **1.4** Confirm `ENABLE_PUBLIC_SIGNUP` OFF in prod
       ✓ = endpoint gated/404 in prod (curl check in runbook)
+      → Ran runbook §3 against prod: `POST /api/auth/signup` returned 404 (gate closed).
 - [ ] **1.5** Manual admin password-reset path tested
       ✓ = reset a member in <2 min, procedure in `PILOT_RUNBOOK.md`
 

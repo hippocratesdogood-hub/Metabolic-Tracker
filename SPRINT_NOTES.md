@@ -61,6 +61,18 @@ described in SPRINT_REPORT.md instead.
    email over TLS and not logged in GHL. Operational note for whoever wires the
    funnel — see the GHL spec in SPRINT_REPORT.md.
 
+## Launch verification findings (Phase 1)
+
+10. **B0 production abuse query: CLEAN (checklist 1.2).** Ran the runbook §2
+    query against the prod DB — no account ever self-elevated through the
+    pre-sprint signup endpoint. The one anomaly, a Feb 15 `admin@example.com`
+    account, was benign: it was created by the boot **seed script** at
+    2026-02-15 01:00:55, in the same batch as `coach@example.com` and two
+    participant seed accounts (identical seed timestamps). All four **predate**
+    the signup path and none self-registered. All four seed accounts were
+    confirmed **already `status='inactive'` in prod** — no action was needed
+    (no disable, no password rotation). Verdict: clean, launch not blocked by B0.
+
 ## Branch reconciliation (post-pilot)
 
 8. **`feat/judgment-capture` must be reconciled against `main` before it ships.**
