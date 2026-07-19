@@ -8,13 +8,13 @@
 
 | | |
 |---|---|
-| **Current phase** | 1 — Code ship & production safety |
+| **Current phase** | 2 — Money & plumbing (Phase 1 complete) |
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-06-28 · Claude Code — Phase 1 verified 1.1–1.4 (1.5 still open) |
+| **Last updated** | 2026-07-19 · Claude Code — Phase 1 complete (1.1–1.5 all verified) |
 
-**Phase gate:** 0 ⬜ · 1 ⬜ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ⬜ · 1 ✅ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
@@ -39,12 +39,13 @@
       → CLEAN. Feb-15 `admin@example.com` anomaly = benign boot-seed account (w/ coach + 2 participant seeds, all inactive in prod, none self-registered). See `SPRINT_NOTES.md` #10.
 - [x] **1.3** Set `GHL_WEBHOOK_SECRET` + `APP_BASE_URL` in Railway
       ✓ = env vars live, app restart clean
-      → `GHL_WEBHOOK_SECRET` confirmed live in prod: wrong-secret probe to `/api/webhooks/ghl/provision` returned 401 (would be 503 if unset). `APP_BASE_URL` not independently verified but has a safe fallback to the prod URL — **visually confirm it's set in Railway** to remove all ambiguity.
+      → `GHL_WEBHOOK_SECRET` confirmed live in prod: wrong-secret probe to `/api/webhooks/ghl/provision` returned 401 (would be 503 if unset). `APP_BASE_URL` visually confirmed set in Railway (Chad, 2026-07-19).
 - [x] **1.4** Confirm `ENABLE_PUBLIC_SIGNUP` OFF in prod
       ✓ = endpoint gated/404 in prod (curl check in runbook)
       → Ran runbook §3 against prod: `POST /api/auth/signup` returned 404 (gate closed).
-- [ ] **1.5** Manual admin password-reset path tested
+- [x] **1.5** Manual admin password-reset path tested
       ✓ = reset a member in <2 min, procedure in `PILOT_RUNBOOK.md`
+      → Executed procedure 3.1 end-to-end against a **disposable test participant on local dev** (identical code path — prod deploys from `main`). Timed cold start (admin login → find id → reset): **~1.5s API time**, trivially under the 2-min budget even with manual copy/paste + out-of-band temp-password delivery. Verified: temp password logs in with `forcePasswordReset:true`, old password → 401. Disposable account hard-deleted afterward (0 rows remain). Prod note: run the same 3.1 curls with the prod admin password when you want a prod-side confirmation — I can't (no admin password; and creating/deleting a prod member is a real-data write per your standing rule).
 
 ## PHASE 2 — Money & plumbing
 
