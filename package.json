@@ -25,7 +25,8 @@
     "perf:load": "tsx server/scripts/perf-test.ts load",
     "perf:db": "tsx server/scripts/perf-test.ts db-analysis",
     "perf:report": "tsx server/scripts/perf-test.ts report",
-    "smoke": "node script/smoke.mjs"
+    "smoke": "node script/smoke.mjs",
+    "export:activity": "tsx scripts/export-member-activity.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
