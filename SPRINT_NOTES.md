@@ -60,3 +60,33 @@ described in SPRINT_REPORT.md instead.
    password is returned in the webhook response and must be merged into the GHL
    email over TLS and not logged in GHL. Operational note for whoever wires the
    funnel — see the GHL spec in SPRINT_REPORT.md.
+
+## Branch reconciliation (post-pilot)
+
+8. **`feat/judgment-capture` must be reconciled against `main` before it ships.**
+   The pilot shipped via a clean branch (`ship-pilot-launch`) that cherry-picked
+   `7b1e11f` (metric-save hardening) + the five sprint/ops commits onto `main`,
+   **deliberately leaving `d677316` (Judgment capture) behind**. Consequences when
+   judgment-capture is eventually merged:
+   - `7b1e11f` and the sprint commits now exist on `main` under **new hashes**
+     (cherry-picks), while `feat/judgment-capture` still has them under their
+     **original hashes**. Merging that branch as-is would replay the sprint work
+     as duplicate commits and almost certainly conflict (routes.ts imports, the
+     crypto import, migrate.ts, schema.ts — the same spots reconciled during the
+     cherry-pick).
+   - **Do not** merge `feat/judgment-capture` → `main` directly. Instead: cut a
+     fresh branch off the new `main` and cherry-pick **only** `d677316` onto it
+     (resolving its conflicts against the already-present sprint code), or
+     interactively rebase `feat/judgment-capture` onto `main` dropping every commit
+     that is already on `main`. Judgment-capture then ships as its own reviewed
+     deploy with its own migration (creates `judgment_entries` + `corpus_pairs`).
+   - Reminder from the audit: its `noteDrafter` Anthropic call is still **stubbed**
+     and `/api/notes/capture` is gated behind `CORPUS_HMAC_SECRET` — confirm both
+     are intentional before that deploy.
+
+9. **`OPENAI_API_KEY` is a dead env var (documented, not fixed here).** Nothing in
+   the app calls OpenAI; the `openai` package is unused and only
+   `server/services/healthCheck.ts` still reads the var (for a status line, no API
+   call). Flagged as removable in `PILOT_RUNBOOK.md`'s env checklist; full cleanup
+   (drop the dep + healthCheck branch) is tracked in `BACKLOG.md`, out of pilot
+   scope.

@@ -33,6 +33,17 @@ Set in Railway → the app service → Variables:
 | `APP_BASE_URL` | login link in webhook response | falls back to `https://app.doctorchadlarson.com` |
 | `ANTHROPIC_API_KEY` | **the Optimization Partner** (BAA-gated) | Partner returns a friendly **503**; everything else works |
 | `ENABLE_PUBLIC_SIGNUP` | must stay **unset / not "true"** | if "true", public signup opens (do NOT set for pilot) |
+| `OPENAI_API_KEY` | **nothing live** — safe to remove | see note below |
+
+**`OPENAI_API_KEY` is removable from Railway.** Nothing in the app calls OpenAI:
+the `openai` npm package is a leftover dependency that is **not imported anywhere**,
+and the food pipeline uses Anthropic + Nutritionix/Open Food Facts/USDA. The only
+code that still reads the var is `server/services/healthCheck.ts` (~line 206),
+which merely checks whether the key is present and `sk-`-prefixed to emit a health
+"openai" status line — it makes **no API call**. Deleting the var from Railway is
+safe; the only effect is that health check reports `openai: not_configured`
+(harmless, arguably more accurate). Full leftover cleanup (drop the dep + the
+healthCheck branch) is already tracked in `BACKLOG.md` and is out of pilot scope.
 
 **What works without `ANTHROPIC_API_KEY`:** login, onboarding wizard, all
 manual logging (metrics, food, measurements), dashboard, trends, provisioning,
