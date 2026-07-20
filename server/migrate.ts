@@ -127,6 +127,32 @@ async function runIncrementalMigrations(pool: pg.Pool) {
     ALTER TABLE "food_entries" ADD COLUMN IF NOT EXISTS "eaten_at" timestamp;
   `);
 
+  // Migration: per-item provenance on food entries (food analysis v1.2 P2).
+  // These two columns are declared in shared/schema.ts and are queried at runtime,
+  // but were previously only ever created by `drizzle-kit push --force` on boot —
+  // they existed in production by side effect and were absent from this migration
+  // path entirely. A database rebuilt from runMigrations() alone (disaster recovery,
+  // a new environment) would have been missing them and broken food queries.
+  // parent_meal_id self-references food_entries so an expanded meal's items cascade
+  // with their parent.
+  await pool.query(`
+    ALTER TABLE "food_entries" ADD COLUMN IF NOT EXISTS "parent_meal_id" varchar;
+  `);
+  await pool.query(`
+    ALTER TABLE "food_entries" ADD COLUMN IF NOT EXISTS "item_name" text;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'food_entries_parent_meal_id_food_entries_id_fk'
+      ) THEN
+        ALTER TABLE "food_entries"
+          ADD CONSTRAINT "food_entries_parent_meal_id_food_entries_id_fk"
+          FOREIGN KEY ("parent_meal_id") REFERENCES "food_entries"("id") ON DELETE CASCADE;
+      END IF;
+    END $$;
+  `);
+
   // Migration: Recipe Builder tables
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "recipes" (
@@ -198,6 +224,23 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       "updated_at" timestamp DEFAULT now() NOT NULL
     );
   `);
+  // Migration: name the biomarkers.slug unique constraint to match Drizzle.
+  // The inline `UNIQUE` above lets Postgres auto-name it "biomarkers_slug_key",
+  // but schema.ts declares `.unique()`, which Drizzle names "biomarkers_slug_unique".
+  // drizzle-kit sees that name difference as drift and proposes re-adding the
+  // constraint — a data-loss-class change that prompts to TRUNCATE the table and
+  // blocks on stdin even under `push --force`. Renaming makes the two agree, so a
+  // schema diff against a DB built purely by runMigrations() comes back empty.
+  // Non-destructive: renames in place, touches no rows, no-op once already renamed.
+  await pool.query(`
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'biomarkers_slug_key')
+         AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'biomarkers_slug_unique') THEN
+        ALTER TABLE "biomarkers" RENAME CONSTRAINT "biomarkers_slug_key" TO "biomarkers_slug_unique";
+      END IF;
+    END $$;
+  `);
+
   const { seedBiomarkers } = await import("./biomarkerSeedData");
   await seedBiomarkers(pool);
 
