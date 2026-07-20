@@ -5,7 +5,7 @@ Railway deploy, the weekly ops command, and the manual procedures for the things
 the app can't do by itself yet.
 
 **Conventions used below**
-- `APP` = production base URL, e.g. `https://app.doctorchadlarson.com`.
+- `APP` = production base URL, e.g. `https://app.theadaptlab.com`.
 - `PROD_DATABASE_URL` = the production Postgres connection string (Railway →
   Postgres → Connect, or the Neon prod string). **Read-only intent** except where
   a step explicitly creates/deletes a disposable test member.
@@ -30,7 +30,7 @@ Set in Railway → the app service → Variables:
 | Var | Required for | If missing |
 |---|---|---|
 | `GHL_WEBHOOK_SECRET` | provisioning webhook | webhook returns **503**; no members can be created via GHL |
-| `APP_BASE_URL` | login link in webhook response | falls back to `https://app.doctorchadlarson.com` |
+| `APP_BASE_URL` | login link in webhook response | falls back to `https://app.theadaptlab.com` |
 | `ANTHROPIC_API_KEY` | **the Optimization Partner** (BAA-gated) | Partner returns a friendly **503**; everything else works |
 | `ENABLE_PUBLIC_SIGNUP` | must stay **unset / not "true"** | if "true", public signup opens (do NOT set for pilot) |
 | `OPENAI_API_KEY` | **nothing live** — safe to remove | see note below |
@@ -53,7 +53,7 @@ Partner simply stays dark until 0.3 is done.
 
 Quick sanity check that the app is up and auth-gated:
 ```bash
-APP=https://app.doctorchadlarson.com
+APP=https://app.theadaptlab.com
 curl -s -o /dev/null -w "config(expect 401): %{http_code}\n" "$APP/api/config"
 ```
 
@@ -96,7 +96,7 @@ SQL
 
 Confirm the escalation surface is closed in prod (should be **404**):
 ```bash
-APP=https://app.doctorchadlarson.com
+APP=https://app.theadaptlab.com
 curl -s -o /dev/null -w "signup(expect 404): %{http_code}\n" \
   -X POST "$APP/api/auth/signup" \
   -H 'Content-Type: application/json' \
@@ -110,7 +110,7 @@ curl -s -o /dev/null -w "signup(expect 404): %{http_code}\n" \
 Proves the GHL webhook path works end to end. Uses a throwaway email you control.
 
 ```bash
-APP=https://app.doctorchadlarson.com
+APP=https://app.theadaptlab.com
 SECRET='<value of GHL_WEBHOOK_SECRET>'
 TESTEMAIL="provision-smoke+$(date +%s)@<your-domain>.com"   # an inbox you can open
 
@@ -153,7 +153,7 @@ Save as `runbook-acceptance.sh`, edit the top vars, run `bash runbook-acceptance
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-APP="https://app.doctorchadlarson.com"
+APP="https://app.theadaptlab.com"
 ADMIN_EMAIL="drchad@theadaptlab.com"
 ADMIN_PASS='<admin password>'
 SECRET='<GHL_WEBHOOK_SECRET>'
@@ -273,7 +273,7 @@ Each is designed to take under 5 minutes.
 A member is locked out. Reset via the admin API.
 
 ```bash
-APP=https://app.doctorchadlarson.com
+APP=https://app.theadaptlab.com
 ADMIN_JAR=$(mktemp)
 # 1. Log in as admin
 curl -s -c "$ADMIN_JAR" -X POST "$APP/api/auth/login" -H 'Content-Type: application/json' \
@@ -304,14 +304,14 @@ email/name and **omit the cleanup**. Give them the returned `tempPassword` +
 **Option B — admin API** (if the webhook is fully down). This creates the account
 but note two differences to correct:
 ```bash
-APP=https://app.doctorchadlarson.com ; ADMIN_JAR=$(mktemp)
+APP=https://app.theadaptlab.com ; ADMIN_JAR=$(mktemp)
 curl -s -c "$ADMIN_JAR" -X POST "$APP/api/auth/login" -H 'Content-Type: application/json' \
   -d '{"email":"drchad@theadaptlab.com","password":"<admin password>"}' -o /dev/null
 curl -s -b "$ADMIN_JAR" -X POST "$APP/api/admin/participants" -H 'Content-Type: application/json' \
   -d '{"name":"<Member Name>","email":"<member@email>","password":"<Temp-Pass-2026!>","forcePasswordReset":true}'
 rm -f "$ADMIN_JAR"
 ```
-Then manually deliver the temp password + `https://app.doctorchadlarson.com/login`.
+Then manually deliver the temp password + `https://app.theadaptlab.com/login`.
 **Caveat:** the admin-create path sets `onboarding_complete = true` (default), so
 this member will **skip the onboarding wizard**. If you want them to see it, flip
 the flag once:
@@ -329,7 +329,7 @@ Two levels:
 **Soft (reversible, immediate — blocks login, keeps data):** set the account
 inactive. Use this first if you might reinstate them.
 ```bash
-APP=https://app.doctorchadlarson.com ; ADMIN_JAR=$(mktemp)
+APP=https://app.theadaptlab.com ; ADMIN_JAR=$(mktemp)
 curl -s -c "$ADMIN_JAR" -X POST "$APP/api/auth/login" -H 'Content-Type: application/json' \
   -d '{"email":"drchad@theadaptlab.com","password":"<admin password>"}' -o /dev/null
 # find id, then:

@@ -8,7 +8,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 - **Backend:** Node 20+, Express 5, Passport (scrypt sessions), Drizzle ORM
 - **DB:** PostgreSQL — production is Railway; local dev runs against a fresh, pseudonymized Neon branch (see "Local dev" below)
 - **External:** Anthropic Claude (sole LLM vendor — consolidated from OpenAI for HIPAA BAA purposes; see "AI vendor consolidation" below). Nutritionix (nutrition lookup), Open Food Facts + USDA (barcode fallbacks), Twilio (SMS), Sentry (errors)
-- **Hosting:** Railway, auto-deploys from GitHub `main` → app.doctorchadlarson.com
+- **Hosting:** Railway, auto-deploys from GitHub `main` → **app.theadaptlab.com** (primary since July 2026). `app.doctorchadlarson.com` remains attached and serving for existing patients — do not remove; a 301 redirect comes post-pilot. `doctorchadlarson.com` itself is still the marketing/quiz domain (only the app moved).
 
 ## Folder structure
 

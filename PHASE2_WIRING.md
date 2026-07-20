@@ -22,7 +22,9 @@ changes are required — the provisioning endpoint is already live in production
 
 ## Prerequisites (already true after Phase 1)
 
-- Production is live and running the sprint code (app.doctorchadlarson.com).
+- Production is live and running the sprint code at **app.theadaptlab.com** (the
+  primary domain). The old `app.doctorchadlarson.com` is still attached and serving
+  for existing patients — all new wiring (webhooks, login links) uses the new domain.
 - Railway env: `GHL_WEBHOOK_SECRET` **set** (confirmed), `APP_BASE_URL` set,
   `ENABLE_PUBLIC_SIGNUP` unset. You'll need the **value** of `GHL_WEBHOOK_SECRET`
   in §3 — copy it from Railway → the app service → Variables (reveal value).
@@ -153,7 +155,7 @@ member's account. Add these steps **to the same workflow**, after the tag step.
 
 | | |
 |---|---|
-| **URL** | `https://app.doctorchadlarson.com/api/webhooks/ghl/provision` |
+| **URL** | `https://app.theadaptlab.com/api/webhooks/ghl/provision` |
 | **Method** | `POST` |
 | **Content-Type** | `application/json` |
 | **Auth header** | `x-ghl-secret: <GHL_WEBHOOK_SECRET value>`  *(or `Authorization: Bearer <value>`)* |
@@ -193,7 +195,7 @@ this is a premium action — enable it if prompted).
    capture:
    - `tempPassword` → a contact **custom field** (create one: **Temp Password**)
    - `loginUrl` → custom field **Login URL** (or just hardcode the login URL in the
-     email — it's always `https://app.doctorchadlarson.com/login`)
+     email — it's always `https://app.theadaptlab.com/login`)
    - `userId` → optional custom field for support lookups
    *(GHL exposes captured response values as merge fields in later steps. Exact UI
    labels vary by GHL version — look for "Response Mapping" / "Custom Values from
@@ -228,7 +230,7 @@ login**; the member signs in with their **email + temp password**, then is force
 reset it and lands in the onboarding wizard.
 
 **Email must contain:**
-1. **Sign-in link:** `https://app.doctorchadlarson.com/login` (the `loginUrl` from
+1. **Sign-in link:** `https://app.theadaptlab.com/login` (the `loginUrl` from
    the response, or just hardcode it — it's stable).
 2. **Their temp password:** merge `{{contact.temp_password}}` (the custom field from
    §3.2). Tell them they'll set their own on first sign-in.
@@ -303,7 +305,7 @@ bad-secret probe (safe against prod — creates nothing):
 
 ```bash
 curl -s -o /dev/null -w "bad secret (expect 401): %{http_code}\n" \
-  -X POST https://app.doctorchadlarson.com/api/webhooks/ghl/provision \
+  -X POST https://app.theadaptlab.com/api/webhooks/ghl/provision \
   -H 'Content-Type: application/json' -H 'x-ghl-secret: wrong' \
   -d '{"email":"x@x.com","name":"x"}'
 ```
@@ -313,7 +315,7 @@ per §3.3):
 
 ```bash
 SECRET='<GHL_WEBHOOK_SECRET value>'
-curl -s -X POST https://app.doctorchadlarson.com/api/webhooks/ghl/provision \
+curl -s -X POST https://app.theadaptlab.com/api/webhooks/ghl/provision \
   -H 'Content-Type: application/json' -H "x-ghl-secret: $SECRET" \
   -d '{"email":"provision-smoke+TEST@your-domain.com","name":"Provision Smoke","planTag":"smoke-test"}'
 # expect 201 with status:"created", loginUrl, tempPassword

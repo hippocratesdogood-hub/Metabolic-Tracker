@@ -190,7 +190,7 @@ login link + temp credentials.
 
 ## GoHighLevel webhook integration spec
 
-**Endpoint:** `POST https://app.doctorchadlarson.com/api/webhooks/ghl/provision`
+**Endpoint:** `POST https://app.theadaptlab.com/api/webhooks/ghl/provision`
 (local dev: `http://localhost:5000/...`)
 
 **Auth:** shared secret, sent as either header — compared timing-safely to the
@@ -215,7 +215,7 @@ login link + temp credentials.
   {
     "status": "created",
     "userId": "…",
-    "loginUrl": "https://app.doctorchadlarson.com/login",
+    "loginUrl": "https://app.theadaptlab.com/login",
     "tempPassword": "Mt-… 9!",
     "forcePasswordReset": true,
     "message": "…"
@@ -230,7 +230,7 @@ login link + temp credentials.
 
 **Env vars to set (Railway) for the pilot:**
 - `GHL_WEBHOOK_SECRET` — the shared secret (required for the webhook to work).
-- `APP_BASE_URL` — e.g. `https://app.doctorchadlarson.com` (used to build
+- `APP_BASE_URL` — e.g. `https://app.theadaptlab.com` (used to build
   `loginUrl`; defaults to that value).
 - `ANTHROPIC_API_KEY` — required for the Partner (gated on the Anthropic BAA, per
   CLAUDE.md). Without it the Partner returns a friendly 503.

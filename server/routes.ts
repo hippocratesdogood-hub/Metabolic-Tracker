@@ -456,7 +456,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid timezone" });
       }
 
-      const appBaseUrl = (process.env.APP_BASE_URL || "https://app.doctorchadlarson.com").replace(/\/$/, "");
+      const appBaseUrl = (process.env.APP_BASE_URL || "https://app.theadaptlab.com").replace(/\/$/, "");
       const loginUrl = `${appBaseUrl}/login`;
 
       // Idempotency: GHL may retry. If the account already exists, don't reset
