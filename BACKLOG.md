@@ -107,6 +107,40 @@ Open work items that are real but non-blocking. Each item has enough context tha
 
 ---
 
+## Database / migrations
+
+### 8. Constraint and index naming drift between `runMigrations()` and Drizzle conventions
+
+**Status:** open
+**Where:** `server/migrate.ts` (`runIncrementalMigrations`) vs `shared/schema.ts`
+**Why deferred:** Harmless once `drizzle-kit push` left the boot path (`1e6065d`) — nothing diffs the two anymore, so this is cosmetic. Recorded because it will resurface the moment someone runs a drizzle-kit command.
+
+**What's wrong:** `migrate.ts` creates foreign keys and indexes inline, so Postgres auto-names them (`recipes_participant_id_fkey`), while `schema.ts` declares relations that Drizzle names by its own convention (`recipes_participant_id_users_id_fk`). A schema diff against a DB built purely by `runMigrations()` therefore reports ~7 statements that are **functionally no-ops**: 5 FK drop/re-add pairs plus 2 index drops. Affected: `recipes.participant_id`, `recipe_ingredients.recipe_id`, `lab_results.user_id`, `lab_results.biomarker_id`, `meal_feel_states.user_id`, and indexes `lab_results_user_biomarker_collected_idx` / `idx_meal_feel_states_user_date`.
+
+The two index drops are the notable half: those indexes exist only in `migrate.ts` and aren't declared in `schema.ts`, so a diff wants to remove them. While `push --force` was still in the boot path it did exactly that on every production start, and `runMigrations()` then recreated them — pointless churn that briefly left the tables unindexed.
+
+**Suggested approach:**
+- Rename the five FK constraints to Drizzle's convention with guarded `ALTER TABLE … RENAME CONSTRAINT` blocks, mirroring the `biomarkers_slug_key` → `biomarkers_slug_unique` fix in `2903959`.
+- Declare the two indexes in `shared/schema.ts` so they stop reading as unmanaged.
+- Verify the same way that change was verified: build an empty scratch DB, run `runMigrations()` alone, then `drizzle-kit push` against it and confirm the diff comes back empty.
+
+---
+
+### 9. `migrations/` journal is stale and was never baselined
+
+**Status:** open
+**Where:** `migrations/` (`meta/_journal.json`, `0000_perpetual_pestilence.sql`, `0001_curved_captain_midlands.sql`)
+**Why deferred:** `migrations/README.md` (`1e6065d`) now warns loudly that this is not the deploy path, which defuses the immediate footgun. Picking one source of truth is the real fix and is not launch-blocking.
+
+**What's wrong:** The journal has two entries (Feb and Mar 2026) while the schema has evolved well past that inside `runIncrementalMigrations()`. It does not describe any real database. Anyone running `drizzle-kit migrate` would replay a full `CREATE TABLE` script against populated production PHI — it would error rather than destroy, but it would fail a deploy. `drizzle.config.ts` still points `out: "./migrations"`, so `drizzle-kit generate` will keep writing here.
+
+**Suggested approach:** pick one and commit to it —
+- **Option A (simplest, matches reality):** delete `migrations/` and drop `out` from `drizzle.config.ts`. `runMigrations()` is already the sole deploy path; the SQL files are historical and recoverable from git.
+- **Option B:** baseline properly — squash the current live schema into a fresh `0000`, mark it applied, and move future changes to generated migrations. Materially more work, and only worth it if you intend to actually adopt `drizzle-kit migrate`.
+- Either way, update the CLAUDE.md note that currently says these files "exist but aren't used."
+
+---
+
 ## Completed
 
 _Move items here with the commit/PR hash when shipped. Format: `- <item title> — <hash> — <date>`_
