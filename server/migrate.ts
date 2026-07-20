@@ -87,6 +87,13 @@ export async function runMigrations() {
  * Incremental migrations that run every startup (all idempotent).
  */
 async function runIncrementalMigrations(pool: pg.Pool) {
+  // Destructive migrations (DROP COLUMN / DROP TABLE) never run automatically on
+  // boot. They are one-time historical fixes that have long since been applied;
+  // leaving them unconditional meant an unattended deploy could destroy patient
+  // data if a database ever presented the legacy shape. Set
+  // ALLOW_DESTRUCTIVE_MIGRATIONS=true for a single deliberate deploy to apply one.
+  const allowDestructive = process.env.ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+
   // Migration: Add ai_consent_given column
   await pool.query(`
     ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ai_consent_given" boolean DEFAULT false;
@@ -271,9 +278,17 @@ async function runIncrementalMigrations(pool: pg.Pool) {
 
   // Migration: Glucose context for backdated/today device-metric entries.
   // Nullable — existing rows stay NULL; new entries opt in.
+  //
+  // Creates the CURRENT 4-value shape directly. This originally created the older
+  // ('fasting','random','post_meal') shape and relied on the drop-and-recreate block
+  // below to upgrade it — which meant every fresh build churned through a destructive
+  // DROP TYPE as part of normal setup. Now that destructive steps are gated behind
+  // ALLOW_DESTRUCTIVE_MIGRATIONS, a fresh build must land on the right shape the
+  // first time; otherwise it would be left with the legacy 3-value enum.
+  // Databases that still hold the old shape are detected and reported below.
   await pool.query(`
     DO $$ BEGIN
-      CREATE TYPE "glucose_context" AS ENUM ('fasting', 'random', 'post_meal');
+      CREATE TYPE "glucose_context" AS ENUM ('fasting', 'post_meal_1h', 'post_meal_2h', 'random');
     EXCEPTION WHEN duplicate_object THEN null;
     END $$;
   `);
@@ -290,22 +305,32 @@ async function runIncrementalMigrations(pool: pg.Pool) {
   // detects the *old* enum (presence of 'post_meal') so the drop
   // only fires the first time this block runs against a DB seeded
   // with the prior shape. Subsequent boots are no-ops.
-  await pool.query(`
-    DO $$
-    DECLARE
-      has_old_enum boolean;
-    BEGIN
+  // GATED (see allowDestructive above): only a DB still carrying the pre-expansion
+  // 3-value enum needs this, and no such database should exist anymore. A fresh
+  // build never triggers it — the bootstrap SQL doesn't create glucose_context at
+  // all, so the CREATE TYPE below makes the new shape directly.
+  {
+    const legacy = await pool.query(`
       SELECT EXISTS (
         SELECT 1 FROM pg_enum e
         JOIN pg_type t ON e.enumtypid = t.oid
         WHERE t.typname = 'glucose_context' AND e.enumlabel = 'post_meal'
-      ) INTO has_old_enum;
-      IF has_old_enum THEN
-        ALTER TABLE "metric_entries" DROP COLUMN IF EXISTS "glucose_context";
-        DROP TYPE "glucose_context";
-      END IF;
-    END $$;
-  `);
+      ) AS needs_migration;
+    `);
+    if (legacy.rows[0].needs_migration) {
+      if (allowDestructive) {
+        console.warn("[migrate] ALLOW_DESTRUCTIVE_MIGRATIONS=true — dropping legacy glucose_context column + type");
+        await pool.query(`ALTER TABLE "metric_entries" DROP COLUMN IF EXISTS "glucose_context";`);
+        await pool.query(`DROP TYPE "glucose_context";`);
+      } else {
+        console.warn(
+          "[migrate] SKIPPED a destructive migration: this database still has the legacy " +
+            "3-value glucose_context enum. Dropping it would DELETE the metric_entries.glucose_context " +
+            "column. Re-deploy once with ALLOW_DESTRUCTIVE_MIGRATIONS=true to apply it deliberately."
+        );
+      }
+    }
+  }
   await pool.query(`
     DO $$ BEGIN
       CREATE TYPE "glucose_context" AS ENUM ('fasting', 'post_meal_1h', 'post_meal_2h', 'random');
@@ -329,22 +354,31 @@ async function runIncrementalMigrations(pool: pg.Pool) {
   // the enum type. Guarded so the drop only fires once — subsequent boots
   // see feel_state as USER-DEFINED and skip. Mirrors the conditional-drop
   // pattern used for the glucose_context enum expansion above.
-  await pool.query(`
-    DO $$
-    DECLARE
-      has_text_feel_state boolean;
-    BEGIN
+  // GATED (see allowDestructive above): DROP TABLE destroys every recorded feel
+  // state. Only fires for a DB whose meal_feel_states.feel_state is still `text`
+  // from an early boot; a fresh build creates it with the enum directly.
+  {
+    const legacy = await pool.query(`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'meal_feel_states'
           AND column_name = 'feel_state'
           AND data_type = 'text'
-      ) INTO has_text_feel_state;
-      IF has_text_feel_state THEN
-        DROP TABLE "meal_feel_states";
-      END IF;
-    END $$;
-  `);
+      ) AS needs_migration;
+    `);
+    if (legacy.rows[0].needs_migration) {
+      if (allowDestructive) {
+        console.warn("[migrate] ALLOW_DESTRUCTIVE_MIGRATIONS=true — dropping legacy text-typed meal_feel_states");
+        await pool.query(`DROP TABLE "meal_feel_states";`);
+      } else {
+        console.warn(
+          "[migrate] SKIPPED a destructive migration: meal_feel_states.feel_state is still text-typed. " +
+            "Applying it would DROP the meal_feel_states table and all recorded feel states. " +
+            "Re-deploy once with ALLOW_DESTRUCTIVE_MIGRATIONS=true to apply it deliberately."
+        );
+      }
+    }
+  }
   await pool.query(`
     DO $$ BEGIN
       CREATE TYPE "feel_state" AS ENUM (
@@ -395,17 +429,28 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       ["drchad@theadaptlab.com"]
     );
     if (adminCheck.rows.length === 0) {
-      const tempPassword = randomBytes(16).toString("hex");
+      // The generated password is NEVER logged. It previously went to stdout, which
+      // on Railway means the bootstrap admin credential was sitting in the platform
+      // log history in plaintext, readable by anyone with log access, forever.
+      // Supply INITIAL_ADMIN_PASSWORD to set a password you already know; otherwise
+      // a random one is set that nobody holds, and the account must be recovered by
+      // resetting the hash directly (PILOT_RUNBOOK.md §3.1). force_password_reset is
+      // true either way, so the first login must change it.
+      const initialPassword = process.env.INITIAL_ADMIN_PASSWORD;
+      const tempPassword = initialPassword || randomBytes(16).toString("hex");
       const hashedPassword = await hashPassword(tempPassword);
       await pool.query(`
         INSERT INTO "users" ("id", "role", "name", "email", "password_hash", "status", "force_password_reset")
         VALUES (gen_random_uuid(), 'admin', 'Dr. Chad Larson', $1, $2, 'active', true)
       `, ["drchad@theadaptlab.com", hashedPassword]);
       console.log("[migrate] ========================================");
-      console.log("[migrate] ADMIN ACCOUNT CREATED");
-      console.log("[migrate] Email: drchad@theadaptlab.com");
-      console.log(`[migrate] Temporary password: ${tempPassword}`);
-      console.log("[migrate] Please change this password after first login.");
+      console.log("[migrate] ADMIN ACCOUNT CREATED — drchad@theadaptlab.com");
+      console.log(
+        initialPassword
+          ? "[migrate] Password: set from INITIAL_ADMIN_PASSWORD (not logged). Must be changed on first login."
+          : "[migrate] Password: randomly generated and NOT logged. Set INITIAL_ADMIN_PASSWORD and " +
+            "redeploy, or reset the hash directly, to obtain access."
+      );
       console.log("[migrate] ========================================");
     }
   }
