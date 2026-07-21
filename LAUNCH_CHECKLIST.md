@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-19 · Claude Code — Phase 1 complete (1.1–1.5 all verified) |
+| **Last updated** | 2026-07-20 · Claude Code — 2.1 + 2.2 done (Stripe products live + GHL tagging verified); 2.3–2.5 remain |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -49,10 +49,12 @@
 
 ## PHASE 2 — Money & plumbing
 
-- [ ] **2.1** Stripe products: $49/mo "Founding Member" + $129 3-month upfront; clear statement descriptor
+- [x] **2.1** Stripe products: $49/mo "Founding Member" + $129 3-month upfront; clear statement descriptor
       ✓ = both live, test-mode checkout verified
-- [ ] **2.2** Stripe → GHL: purchase applies `pilot-member`; $129 also applies `founding-3mo`
+      → Test purchases of both products succeeded through join.theadaptlab.com in Stripe test mode; statement descriptor "DR. CHAD LARSON" verified.
+- [x] **2.2** Stripe → GHL: purchase applies `pilot-member`; $129 also applies `founding-3mo`
       ✓ = test purchase produces correctly-tagged GHL contact
+      → Implemented as two linear product-filtered GHL workflows on the Order Submitted trigger. Verified via enrollment routing (3-Month workflow: 1 enrollment, Monthly: 0) and correct tags on the test contact.
 - [ ] **2.3** GHL → App provisioning webhook wired per `SPRINT_REPORT.md` spec
       ✓ = test purchase → account exists → welcome email w/ login link arrives
 - [ ] **2.4** Welcome email copy: login link + "reply here if any trouble" + device-kit link
