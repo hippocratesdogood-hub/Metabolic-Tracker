@@ -141,6 +141,27 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 
 ---
 
+## Backup / ops
+
+### 10. Backup service reports ✅ success on an empty (failed) dump
+
+**Status:** open — **fix soon after launch; this is a dangerous failure mode for a PHI backup tool**
+**Where:** `server/services/backup.ts` (`createBackup`, ~line 202 and ~line 242) + `server/scripts/backup-cli.ts` (`create` command)
+**Why deferred:** Dev scope frozen for launch (standing rule 1). Discovered 2026-07-20 during pre-deploy backup; worked around by installing `libpq` so `pg_dump` actually exists.
+
+**What's wrong (three compounding bugs):**
+1. **Swallowed pipeline failure.** The dump runs via `execAsync('pg_dump "..." | gzip > file')`. `child_process.exec` uses `/bin/sh` with no `pipefail`, so the pipeline's exit code is **gzip's**, not pg_dump's. When `pg_dump` is missing (or fails mid-dump), gzip compresses empty stdin, exits 0, and produces a 20-byte valid-but-empty `.sql.gz`. Reproduced: `/bin/sh -c 'nonexistent | gzip > /dev/null'` exits 0.
+2. **Verification result ignored.** `verifyBackup()` correctly fails (20 bytes < 100-byte floor) and `verified: false` is written to the `.meta.json` — but `createBackup` never folds `verified` into `result.success`. It returns `success: true` purely because nothing threw.
+3. **CLI trusts `success` blindly**, printing "✅ Backup created successfully" plus row counts that come from the *Drizzle* connection (`getRowCounts()`), not the dump — making the output look end-to-end healthy while the artifact is empty.
+
+**Suggested approach:**
+- Replace the shell pipeline with `spawn`-ing `pg_dump` directly and streaming stdout through `zlib.createGzip()` to the file — no shell, no pipefail problem, pg_dump's exit code and stderr surface naturally. (Minimum viable alternative: keep the shell but run `bash -o pipefail -c ...` and capture stderr.)
+- Make `createBackup` fail (`success: false`, delete the partial file) when `verified === false` or size is below a sane floor (an 11-table dump of this DB can't be < ~10 KB compressed).
+- CLI `create` should exit non-zero on `verified: false` even if a file exists.
+- Add a test: mock a missing/failing `pg_dump` and assert `success: false` (this exact scenario shipped a false ✅ against prod).
+
+---
+
 ## Completed
 
 _Move items here with the commit/PR hash when shipped. Format: `- <item title> — <hash> — <date>`_
