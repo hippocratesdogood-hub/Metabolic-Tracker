@@ -141,6 +141,18 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 
 ---
 
+### 12. Delete two leftover Neon projects
+
+**Status:** open
+**Where:** Neon console (external — no code change)
+**Why deferred:** Housekeeping surfaced 2026-07-22 during the Phase 2 close-out (§6/T10) session; nothing depends on them.
+
+**What's wrong:** Two leftover Neon projects still exist. Production runs on Railway Postgres and local dev uses the current (pseudonymized) Neon dev project — the leftovers serve no purpose and are one more surface to account for.
+
+**Suggested approach:** Confirm neither project is referenced by any `.env`/`DATABASE_URL` anywhere, then delete both in the Neon console. Keep only the current dev project.
+
+---
+
 ## Backup / ops
 
 ### 10. Backup service reports ✅ success on an empty (failed) dump
@@ -159,6 +171,80 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 - Make `createBackup` fail (`success: false`, delete the partial file) when `verified === false` or size is below a sane floor (an 11-table dump of this DB can't be < ~10 KB compressed).
 - CLI `create` should exit non-zero on `verified: false` even if a file exists.
 - Add a test: mock a missing/failing `pg_dump` and assert `success: false` (this exact scenario shipped a false ✅ against prod).
+
+---
+
+### 13. psql/pg_dump not on PATH — runbook procedures invoking bare `psql` fail
+
+**Status:** open
+**Where:** Local machine PATH + any `PILOT_RUNBOOK.md` procedure that invokes bare `psql`/`pg_dump`
+**Why deferred:** Surfaced 2026-07-22 during the Phase 2 close-out (§6/T10) session; worked around ad hoc.
+
+**What's wrong:** Homebrew's `libpq` is keg-only, so `psql` and `pg_dump` are installed but not on PATH. Any runbook procedure that invokes bare `psql` fails until this is fixed — and this same missing-binary condition is what triggered the backup false-success bug (item 10).
+
+**Suggested approach:** Either `brew link --force libpq` or add `/opt/homebrew/opt/libpq/bin` to PATH in the shell profile. Then update `PILOT_RUNBOOK.md` to note the prerequisite (or use full paths) so procedures fail loudly rather than mysteriously.
+
+---
+
+### 14. `scripts/export-member-activity.ts` EXCLUDE_EMAILS misses two internal addresses
+
+**Status:** open
+**Where:** `scripts/export-member-activity.ts` (`EXCLUDE_EMAILS`)
+**Why deferred:** Dev scope frozen for launch (standing rule 1). Surfaced 2026-07-22 during the Phase 2 close-out (§6/T10) session.
+
+**What's wrong:** `EXCLUDE_EMAILS` misses `nlarson817@gmail.com` and `hippocratesdogood@gmail.com`. Since this export feeds the GHL re-engagement sequence (4.4), both addresses would receive member re-engagement sequences meant for real pilot members.
+
+**Suggested approach:** Add both addresses to `EXCLUDE_EMAILS`. Consider sourcing the exclusion list from an env var or a shared constant so future test/internal accounts don't need a code change.
+
+---
+
+## GHL / Stripe funnel ops
+
+### 15. GHL mail to alias/forwarding addresses on theadaptlab.com shows "Sent" but never delivers
+
+**Status:** open
+**Where:** GHL (external) — any automation emailing `doctorchadlarson@theadaptlab.com` or `info@theadaptlab.com`
+**Why deferred:** Ops/config issue outside the app. Discovered 2026-07-22 while debugging the 2.5 cancellation alert (this was the root cause of its earlier failures).
+
+**What's wrong:** GHL email sent to alias/forwarding addresses on theadaptlab.com (`doctorchadlarson@`, `info@`) shows "Sent" in GHL but never delivers. Any automation pointed at those addresses silently fails while looking healthy.
+
+**Suggested approach:** Audit every GHL workflow/automation for recipients at those alias addresses and repoint them to the real mailbox (`drchad@theadaptlab.com`, which is the verified-working config from 2.5). Optionally investigate the forwarding chain, but repointing is the reliable fix.
+
+---
+
+### 16. Duplicate-purchase stacking — one email can buy repeatedly
+
+**Status:** open
+**Where:** GHL checkout + provisioning webhook flow (Stripe bills; app returns "exists")
+**Why deferred:** Dev scope frozen for launch (standing rule 1). Discovered 2026-07-22 during the Phase 2 close-out (§6/T10) session.
+
+**What's wrong:** One email address can purchase repeatedly. Stripe bills each purchase, while provisioning returns "exists" for the second — net result: double charge, single account, and a second welcome email with a blank temp password. A confused member who buys twice gets charged twice with nothing to show for it.
+
+**Suggested approach:** Mitigate in the weekly ops rhythm (checklist 6.4): watch for duplicate subscriptions on the same email during the weekly Stripe review and refund/cancel the extra. A real fix (idempotent checkout or a pre-purchase "you already have an account" check) is post-pilot scope.
+
+---
+
+### 17. Temp password persists in plaintext in GHL execution logs
+
+**Status:** open
+**Where:** GHL workflow execution logs (Monthly + 3-Month provisioning workflows)
+**Why deferred:** External-platform limitation; no app code change available. Discovered 2026-07-22 during the Phase 2 close-out (§6/T10) session.
+
+**What's wrong:** The provisioning webhook's `tempPassword` response is visible in plaintext in GHL execution logs, and it persists there even after the contact-custom-field clear step runs. Anyone with GHL account access can read members' temp passwords for as long as GHL retains execution logs.
+
+**Suggested approach:** Check GHL's execution-log retention settings and minimize if configurable. Mitigations to evaluate: restrict GHL user access; rely on the forced password reset at first login (already in place — the temp password is dead after first use, which bounds the exposure to the pre-first-login window); or have the app expire unused temp passwords after N days.
+
+---
+
+### 18. Document which Stripe products the GHL checkout charges
+
+**Status:** open
+**Where:** Stripe dashboard + funnel docs (e.g., a note in `PILOT_RUNBOOK.md` or the funnel copy docs)
+**Why deferred:** Docs-only; surfaced 2026-07-22 during the Phase 2 close-out (§6/T10) session.
+
+**What's wrong:** Stripe contains duplicate/similarly-named products, and it was non-obvious which pair the GHL checkout actually charges (it's the plain-named pair). Without this written down, the test→live-mode flip risks recreating the duplicate-product confusion — wiring live checkout to the wrong products.
+
+**Suggested approach:** Document the exact product/price IDs (test and live mode) that the GHL checkout charges, and archive the unused duplicates in Stripe so they can't be selected by mistake.
 
 ---
 

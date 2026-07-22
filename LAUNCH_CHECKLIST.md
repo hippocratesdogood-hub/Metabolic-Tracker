@@ -8,13 +8,13 @@
 
 | | |
 |---|---|
-| **Current phase** | 2 — Money & plumbing (Phase 1 complete) |
+| **Current phase** | 3 — Funnel build (Phase 2 complete 2026-07-22) |
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-21 · Claude Code — 2.3 done (provisioning webhook live in both workflows; verified via automated $49 purchase + full T5 member journey); 2.4–2.5 remain |
+| **Last updated** | 2026-07-22 · Claude Code — 2.4, 2.5 done; Phase 2 closed; current phase → 3 (Funnel build) |
 
-**Phase gate:** 0 ⬜ · 1 ✅ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
@@ -58,15 +58,17 @@
 - [x] **2.3** GHL → App provisioning webhook wired per `SPRINT_REPORT.md` spec
       ✓ = test purchase → account exists → welcome email w/ login link arrives
       → Provisioning webhook live in both GHL workflows (Monthly + 3-Month) with response capture: `tempPassword` + `userId` mapped to contact custom fields. Verified end-to-end twice: (1) automated $49 test purchase ("Test Three") — webhook returned 201, account created, custom fields populated, correct workflow routing; (2) full member journey as T5 — temp-password login → forced password reset → onboarding wizard → dashboard.
-- [ ] **2.4** Welcome email copy: login link + "reply here if any trouble" + device-kit link
+- [x] **2.4** Welcome email copy: login link + "reply here if any trouble" + device-kit link
       ✓ = reviewed and live in automation
-- [ ] **2.5** Cancellation notification → Chad's inbox
+      → Welcome email live in both workflows (Monthly + 3-Month): login link, temp password, "reply here if any trouble." **Exception:** device-kit link not yet included — depends on 3.1 (unbuilt); must be added to both welcome emails when 3.1 lands.
+- [x] **2.5** Cancellation notification → Chad's inbox
       ✓ = test cancellation pings within minutes
+      → Cancellation alert delivers to drchad@theadaptlab.com; verified via real Stripe cancellation 2026-07-22. Working config: From Name/From Email blank (default sender), To User Type "Custom email" = drchad@theadaptlab.com. Root cause of earlier failures was routing to an alias address (see BACKLOG — alias mail shows "Sent" but never delivers).
 
 ## PHASE 3 — Funnel build
 
 - [ ] **3.1** Device kit page/link (glucose+ketone monitor, scale, BP monitor, tape measure; affiliate links)
-      ✓ = single URL usable in every asset
+      ✓ = single URL usable in every asset — including retrofitting the device-kit link into both Founding Member welcome emails (2.4 exception)
 - [ ] **3.2** ScoreApp quiz per `glp1-quiz-spec.md`: 8 Qs, weights, 3 results pages, email-before-results, risk tags → GHL
       ✓ = took quiz 3× hitting each band; tags land in GHL
 - [ ] **3.3** Sales page per `glp1-sales-page.md`: mobile hero above fold, $49 primary / $129 secondary → Stripe, equipment FAQ intact, disclaimer footer
