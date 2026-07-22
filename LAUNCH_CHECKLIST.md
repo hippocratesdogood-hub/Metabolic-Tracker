@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-20 · Claude Code — 2.1 + 2.2 done (Stripe products live + GHL tagging verified); 2.3–2.5 remain |
+| **Last updated** | 2026-07-21 · Claude Code — 2.3 done (provisioning webhook live in both workflows; verified via automated $49 purchase + full T5 member journey); 2.4–2.5 remain |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ⬜ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -55,8 +55,9 @@
 - [x] **2.2** Stripe → GHL: purchase applies `pilot-member`; $129 also applies `founding-3mo`
       ✓ = test purchase produces correctly-tagged GHL contact
       → Implemented as two linear product-filtered GHL workflows on the Order Submitted trigger. Verified via enrollment routing (3-Month workflow: 1 enrollment, Monthly: 0) and correct tags on the test contact.
-- [ ] **2.3** GHL → App provisioning webhook wired per `SPRINT_REPORT.md` spec
+- [x] **2.3** GHL → App provisioning webhook wired per `SPRINT_REPORT.md` spec
       ✓ = test purchase → account exists → welcome email w/ login link arrives
+      → Provisioning webhook live in both GHL workflows (Monthly + 3-Month) with response capture: `tempPassword` + `userId` mapped to contact custom fields. Verified end-to-end twice: (1) automated $49 test purchase ("Test Three") — webhook returned 201, account created, custom fields populated, correct workflow routing; (2) full member journey as T5 — temp-password login → forced password reset → onboarding wizard → dashboard.
 - [ ] **2.4** Welcome email copy: login link + "reply here if any trouble" + device-kit link
       ✓ = reviewed and live in automation
 - [ ] **2.5** Cancellation notification → Chad's inbox

@@ -162,6 +162,24 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 
 ---
 
+## Onboarding / data quality
+
+### 11. Baseline/metric input validation — wizard accepts physiologically impossible values
+
+**Status:** open
+**Where:** Onboarding wizard baseline steps (client) + the metric/baseline save endpoints in `server/routes.ts` (Zod validators in `shared/schema.ts`)
+**Why deferred:** Dev scope frozen for launch (standing rule 1). Discovered 2026-07-21 during the 2.3 end-to-end provisioning test (T5 member journey).
+
+**What's wrong:** The onboarding wizard accepted a 463 lbs weight and a 14-inch waist without any sanity checks. Nothing on the client or server bounds baseline/metric inputs to physiologically plausible ranges. A polluted baseline corrupts trend lines for the entire program — every subsequent delta, chart, and coaching rule keys off it, and a typo at signup (e.g., 463 for 163) silently skews everything downstream.
+
+**Suggested approach:**
+- Add plausible-range validation to the Zod schemas for baseline/metric inputs (e.g., weight 50–700 lbs, waist 15–100 in, and equivalent bounds for the other tracked metrics) so the server rejects impossible values regardless of client.
+- Mirror the bounds in the wizard UI with inline "does this look right?" messaging — hard-reject the impossible, soft-confirm the improbable (e.g., >400 lbs is possible but worth a "please confirm" step).
+- Apply the same bounds to the regular metric-logging path, not just the wizard, since post-baseline typos corrupt trends the same way.
+- Consider a one-time audit query for existing out-of-range baselines before the pilot's first report cycle.
+
+---
+
 ## Completed
 
 _Move items here with the commit/PR hash when shipped. Format: `- <item title> — <hash> — <date>`_
