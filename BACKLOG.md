@@ -248,6 +248,18 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 
 ---
 
+### 19. Welcome emails use em dashes — design-system copy anti-pattern
+
+**Status:** open — low priority
+**Where:** GHL (external) — welcome emails in both provisioning workflows (Monthly + 3-Month)
+**Why deferred:** The emails work and are already live/verified (2.3, 2.4); copy style is cosmetic. Recorded 2026-07-25 while closing the 2.4 device-kit-link exception.
+
+**What's wrong:** The welcome emails in both provisioning workflows use em dashes, which the design system lists as a copy anti-pattern.
+
+**Suggested approach:** Rewrite the em-dash constructions in both welcome emails when convenient. More importantly, avoid the same pattern when writing the Phase 4 sequences (4.2–4.5) so the anti-pattern doesn't propagate into the much larger body of sequence copy.
+
+---
+
 ## Onboarding / data quality
 
 ### 11. Baseline/metric input validation — wizard accepts physiologically impossible values

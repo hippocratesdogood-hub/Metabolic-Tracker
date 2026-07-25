@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-22 · Claude Code — 2.4, 2.5 done; Phase 2 closed; current phase → 3 (Funnel build) |
+| **Last updated** | 2026-07-25 · Claude Code — 3.1 done: device kit page live at join.theadaptlab.com/kit; 2.4 device-kit-link exception closed |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -60,15 +60,16 @@
       → Provisioning webhook live in both GHL workflows (Monthly + 3-Month) with response capture: `tempPassword` + `userId` mapped to contact custom fields. Verified end-to-end twice: (1) automated $49 test purchase ("Test Three") — webhook returned 201, account created, custom fields populated, correct workflow routing; (2) full member journey as T5 — temp-password login → forced password reset → onboarding wizard → dashboard.
 - [x] **2.4** Welcome email copy: login link + "reply here if any trouble" + device-kit link
       ✓ = reviewed and live in automation
-      → Welcome email live in both workflows (Monthly + 3-Month): login link, temp password, "reply here if any trouble." **Exception:** device-kit link not yet included — depends on 3.1 (unbuilt); must be added to both welcome emails when 3.1 lands.
+      → Welcome email live in both workflows (Monthly + 3-Month): login link, temp password, "reply here if any trouble." **Exception closed 2026-07-25:** device-kit link (https://join.theadaptlab.com/kit, from 3.1) retrofitted into the welcome emails of both provisioning workflows (Monthly + 3-Month) and verified by test send.
 - [x] **2.5** Cancellation notification → Chad's inbox
       ✓ = test cancellation pings within minutes
       → Cancellation alert delivers to drchad@theadaptlab.com; verified via real Stripe cancellation 2026-07-22. Working config: From Name/From Email blank (default sender), To User Type "Custom email" = drchad@theadaptlab.com. Root cause of earlier failures was routing to an alias address (see BACKLOG — alias mail shows "Sent" but never delivers).
 
 ## PHASE 3 — Funnel build
 
-- [ ] **3.1** Device kit page/link (glucose+ketone monitor, scale, BP monitor, tape measure; affiliate links)
+- [x] **3.1** Device kit page/link (glucose+ketone monitor, scale, BP monitor, tape measure; affiliate links)
       ✓ = single URL usable in every asset — including retrofitting the device-kit link into both Founding Member welcome emails (2.4 exception)
+      → Device kit page live at https://join.theadaptlab.com/kit, covering the Keto-Mojo GK+ meter, strip combo pack, OMRON Iron BP monitor, RENPHO Elis 1 scale, and a soft tape measure. Built as a single custom HTML block in a GHL funnel page rather than native builder elements. Affiliate links deferred until Amazon Associates is set up — plain product links for now; the page is structured so links can be swapped without rebuilding.
 - [ ] **3.2** ScoreApp quiz per `glp1-quiz-spec.md`: 8 Qs, weights, 3 results pages, email-before-results, risk tags → GHL
       ✓ = took quiz 3× hitting each band; tags land in GHL
 - [ ] **3.3** Sales page per `glp1-sales-page.md`: mobile hero above fold, $49 primary / $129 secondary → Stripe, equipment FAQ intact, disclaimer footer
