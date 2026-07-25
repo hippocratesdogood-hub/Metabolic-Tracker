@@ -2,7 +2,7 @@
 
 Specification for the GLP-1 muscle risk scorecard. Checklist item 3.2.
 
-**Status:** draft for review
+**Status:** approved, ready to build
 **Owner:** Chad Larson, NMD
 **Platform:** ScoreApp (new scorecard, separate from the existing consult quiz)
 **Written:** 2026-07-25
@@ -71,8 +71,8 @@ Copy is written to design system v1.1. Sentence case, no bold, no em dashes.
 | More than 6 months | 2 |
 
 Longer exposure means more cumulative lean mass at stake. The first option
-keeps pre-starters in the funnel rather than dead-ending them; see §9 for the
-open question about branching them separately.
+keeps pre-starters in the funnel rather than dead-ending them; see §10 for the
+decision about branching them separately.
 
 ---
 
@@ -85,6 +85,8 @@ open question about branching them separately.
 | 2 to 3 pounds a week | 3 |
 | More than 3 pounds a week | 4 |
 | I'm not sure | 3 |
+
+Category: **Loss rate**.
 
 Rate of loss is the strongest single predictor of how much of that loss is
 lean tissue rather than fat. "Not sure" scores high on purpose, because not
@@ -101,6 +103,8 @@ knowing is itself the problem this program addresses.
 | I have a vague sense but don't track it | 3 |
 | No idea | 4 |
 
+Category: **Nutrition**.
+
 Weighted heaviest alongside Q4. Protein is the primary lever, and appetite
 suppression makes it the hardest macro to hit on a GLP-1. Most respondents
 will land at 3 or 4.
@@ -115,6 +119,8 @@ will land at 3 or 4.
 | One or two times a week | 2 |
 | Occasionally, not on a schedule | 3 |
 | Rarely or never | 4 |
+
+Category: **Training**.
 
 The other heaviest weight. Without a load stimulus the body has no reason to
 retain muscle it isn't using, and that is true regardless of protein intake.
@@ -177,7 +183,30 @@ same reason as Q7, but it is likely the strongest converter in the set.
 
 ---
 
-## 5. Scoring and bands
+## 5. Categories
+
+Three categories, covering only the risk that a person can act on. Each is
+worth exactly 4 points, so their percentages are directly comparable and
+"highest category" is a meaningful comparison rather than an artifact of
+uneven maximums.
+
+| Category | Question | Max points |
+|---|---|---|
+| Loss rate | Q2 | 4 |
+| Nutrition | Q3 | 4 |
+| Training | Q4 | 4 |
+
+Q1, Q5, Q6, Q7, and Q8 contribute to the overall score but belong to no
+category. That is deliberate. Age and time on the drug are not modifiable, and
+naming them as someone's "highest-risk area" would be true and useless. The
+categories exist to point at the thing worth changing this week.
+
+Ties are possible and fine. If ScoreApp resolves a tie by question order, the
+result still names a real driver.
+
+---
+
+## 6. Scoring and bands
 
 Maximum score: 24.
 
@@ -206,12 +235,12 @@ scorecards as much as to seat counts.
 
 ---
 
-## 6. Results pages
+## 7. Results pages
 
 All three share the same call to action, per item 3.4. They differ in framing
 and in what they name as the driver, never in the offer.
 
-Each page carries the disclaimer footer described in §8.
+Each page carries the disclaimer footer described in §9.
 
 ---
 
@@ -244,8 +273,9 @@ Based on your answers, some of your weight loss is likely coming from muscle
 rather than fat. That's not a failure. It's what the medication does when
 protein and training don't keep up with the rate of loss.
 
-The specific things driving your score are [dynamic: the two highest-scoring
-answers, named plainly].
+The area pulling hardest on your score right now is
+{{HIGHEST_CATEGORY_NAME}}. That is also the one most within your control this
+week.
 
 The uncomfortable part is that the scale can't tell you which kind of tissue
 you're losing. It reports a single number that looks like progress either way.
@@ -268,7 +298,9 @@ that sets your metabolic rate, and losing it during weight loss is the single
 most common reason weight comes back afterward. The mechanism isn't willpower.
 It's that you end up with a smaller engine than you started with.
 
-What's driving your score is [dynamic: the two highest-scoring answers].
+The area pulling hardest on your score is {{HIGHEST_CATEGORY_NAME}}. It is
+not the only thing worth changing, but it is the one that would move your
+number most.
 
 None of this means the medication is the wrong choice. It means it works
 faster than most people's protein intake and training can keep up with, and
@@ -291,7 +323,7 @@ Links to the sales page (item 3.3).
 
 ---
 
-## 7. GHL integration
+## 8. GHL integration
 
 ### Tags written on completion
 
@@ -323,7 +355,7 @@ match, or this spec needs changing. Do not leave them inconsistent.
 
 ---
 
-## 8. Disclaimer footer
+## 9. Disclaimer footer
 
 Appears on every results page:
 
@@ -336,32 +368,41 @@ Written plainly rather than in legal register, consistent with the voice.
 
 ---
 
-## 9. Open questions
+## 10. Decisions taken
+
+Recorded so a later reader knows these were considered rather than overlooked.
 
 1. **Pre-starters.** Q1 lets someone who has not started answer the remaining
-   questions, several of which assume they are already losing weight. Options
-   are to branch them to their own short path, or accept the noise for v1 and
-   fix it once there is data. Recommendation: accept for v1, tag them
-   `glp1-prestart`, revisit after fifty completions.
+   questions, several of which assume they are already losing weight. Accepted
+   for v1 rather than branched: they get tagged `glp1-prestart` and the noise
+   is tolerated. Revisit after fifty completions.
 
-2. **Weighting review.** The relative weights in §4 are a proposal built from
-   the clinical model, not from your explicit ranking. Q3 and Q4 carry the most
-   at 4 points each. Confirm or adjust before build.
+2. **Weighting.** The relative weights in §4 were a proposal built from the
+   clinical model and are confirmed as written. Q3 and Q4 carry the most at
+   4 points each.
 
-3. **Scorecard title.** Working title is "The GLP-1 muscle risk scorecard."
-   Alternatives worth considering: "Muscle risk on a GLP-1," "What's actually
-   coming off." Avoid anything phrased as a rhetorical question, per the
-   anti-patterns list.
+3. **Title.** "The GLP-1 muscle risk scorecard."
 
-4. **Where this file lives.** Written assuming it sits alongside
-   LAUNCH_CHECKLIST.md in the Metabolic-Tracker repo, since that is what the
-   checklist references. The design system lives in AIS-OS instead, so there is
-   an argument for putting funnel copy there. Pick one and keep the other four
-   funnel docs with it.
+4. **File location.** These five funnel docs live in the Metabolic-Tracker
+   repo alongside LAUNCH_CHECKLIST.md. The design system stays in AIS-OS as
+   the single canonical copy, with a pointer stub at `docs/design-system.md`.
+
+5. **Personalization mechanism.** Categories rather than Audiences. Audiences
+   would allow per-answer conditional blocks but requires assembling one block
+   per driver. Categories deliver the same outcome with a single config pass,
+   and the three-category structure in §5 keeps the comparison fair.
+
+6. **Merge tag verification.** `{{HIGHEST_CATEGORY_NAME}}` in §7 is a
+   placeholder for whatever ScoreApp names the highest-scoring category tag in
+   the results page editor. Confirm the exact tag before publishing. If no such
+   tag is available on the results page, fall back to this static sentence in
+   both bands, which reads correctly for anyone: "For most people at this
+   level, protein intake and resistance training are the two areas worth
+   changing first."
 
 ---
 
-## 10. Acceptance criteria
+## 11. Acceptance criteria
 
 Item 3.2 is done when all of the following pass. Checklist wording is "took
 quiz 3× hitting each band; tags land in GHL."
@@ -373,7 +414,7 @@ Q4 three or more times, Q5 under 40, Q6 as strong as before, Q7 weight waist
 and marker, Q8 specific plan.
 
 Expected score: **2**. Expected band: low. Expected tags:
-`glp1-quiz-complete`, `glp1-risk-low`.
+`glp1-quiz-complete`, `glp1-risk-low`. All three categories at 0%.
 
 ### Test B — elevated band
 
@@ -382,7 +423,10 @@ Q4 one or two times, Q5 40 to 49, Q6 hard to say, Q7 weight and waist,
 Q8 general idea.
 
 Expected score: **10**. Expected band: elevated. Expected tags:
-`glp1-quiz-complete`, `glp1-risk-elevated`.
+`glp1-quiz-complete`, `glp1-risk-elevated`. Categories: loss rate 25%,
+nutrition 50%, training 50%. Highest category resolves to a tie between
+nutrition and training; note which one ScoreApp displays, since that is the
+tie-break behavior referenced in §5.
 
 This one sits exactly on the lower boundary, which is deliberate. It verifies
 the band edge rather than the middle.
@@ -394,7 +438,7 @@ or never, Q5 60 or older, Q6 noticeably weaker, Q7 nothing regularly, Q8 try
 not to think about it.
 
 Expected score: **24**. Expected band: high. Expected tags:
-`glp1-quiz-complete`, `glp1-risk-high`.
+`glp1-quiz-complete`, `glp1-risk-high`. All three categories at 100%.
 
 ### Test D — pre-starter
 
@@ -404,6 +448,8 @@ Expected tags include `glp1-prestart`.
 
 ### Also verify
 
+- The highest-category merge tag resolves to a real category name on the
+  elevated and high pages, not to a blank or a literal `{{...}}`
 - Email capture fires before results render, not after
 - Contact appears in GHL with email, first name, numeric score, and band
 - All three results pages carry the identical CTA and it resolves to the
