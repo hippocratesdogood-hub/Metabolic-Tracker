@@ -113,5 +113,6 @@ Pre-existing code paths that **will graceful-degrade** if `ANTHROPIC_API_KEY` is
 ## Things worth knowing about the business
 
 - Brand colors: `#004aad` (blue), `#fa7921` (orange), `#dcf0fa` (light blue). **Never teal** — that was a prior AI hallucination Dr. Larson corrected.
+- All brand copy and any user-facing page in this repo follows the Metabolic OS Design System at `~/Documents/EA/AIS-OS/references/design-system.md` (pointer stub: [docs/design-system.md](docs/design-system.md)). Read it before writing marketing copy or building a page.
 - HIPAA: PHI encryption in storage, audit logging on PHI access, session security all implemented. Never log raw PHI — [server/index.ts](server/index.ts) has `sanitizeForLogging()`.
 - Users include 15 real migrated patients (from JawsDB) + seeded test accounts on **production only**. On the local dev DB those 15 were pseudonymized to `Patient 1-13` (with two rows kept as test accounts) before the Neon rotation — never reference real patient names when developing locally.

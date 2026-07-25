@@ -83,7 +83,8 @@
 
 ## PHASE 4 — GHL sequences & tracking
 
-- [ ] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `risk-high/elevated/low`
+- [ ] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `glp1-risk-high/elevated/low`, `glp1-quiz-complete`, `glp1-prestart`
+      (`glp1-` prefix on quiz tags avoids collision with the existing consult-funnel quiz, which writes into the same GHL account)
 - [ ] **4.2** Sequence 1 (Onboarding, Days 0–7) with conditional branches
 - [ ] **4.3** Sequence 2 (Weekly rhythm): Monday SMS + Thursday rotating emails
 - [ ] **4.4** Sequence 3 (Re-engagement): 5-day-inactivity trigger; fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
