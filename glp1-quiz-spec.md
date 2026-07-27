@@ -201,8 +201,18 @@ category. That is deliberate. Age and time on the drug are not modifiable, and
 naming them as someone's "highest-risk area" would be true and useless. The
 categories exist to point at the thing worth changing this week.
 
-Ties are possible and fine. If ScoreApp resolves a tie by question order, the
-result still names a real driver.
+### As built: how categories work in ScoreApp
+
+An answer in ScoreApp carries exactly one scoring target. "Overall only" and
+a category are mutually exclusive options in the same dropdown, not stackable
+rows. Attaching a category does not remove the points from the overall score;
+this was verified by test run (16/24 = 67%). Every answer in Q2, Q3, and Q4
+targets its category; every answer in Q1, Q5, Q6, Q7, and Q8 stays on
+"Overall only".
+
+Ties are possible and fine. When categories tie, ScoreApp's highest-category
+merge tag returns whichever category comes first, so the result still names a
+real driver (see §10, decision 6).
 
 ---
 
@@ -215,6 +225,14 @@ Maximum score: 24.
 | Low | 0 to 9 | `glp1-risk-low` |
 | Elevated | 10 to 17 | `glp1-risk-elevated` |
 | High | 18 to 24 | `glp1-risk-high` |
+
+### As built: tiers are configured in percentages
+
+ScoreApp Score Tiers are set as percentages of the maximum, not raw scores.
+The configured tiers are Low 0-39%, Elevated 40-74%, High 75-100%. These map
+cleanly onto the raw bands above: 9/24 is 37.5% (Low), 10/24 is 41.7%
+(Elevated), 17/24 is 70.8% (Elevated), 18/24 is 75% (High). No achievable
+score falls in a gap between tiers.
 
 ### Sanity check on the distribution
 
@@ -325,15 +343,19 @@ Links to the sales page (item 3.3).
 
 ## 8. GHL integration
 
-### Tags written on completion
+### Tags written
 
 | Condition | Tag |
 |---|---|
+| Lead capture (before questions) | `glp1-quiz-started` |
 | Every completion | `glp1-quiz-complete` |
 | Score 0 to 9 | `glp1-risk-low` |
 | Score 10 to 17 | `glp1-risk-elevated` |
 | Score 18 to 24 | `glp1-risk-high` |
 | Q1 = "not currently, but considering" | `glp1-prestart` |
+
+`glp1-quiz-started` is applied on lead capture. The lead form sits before the
+questions, so this gives abandoners provenance in GHL.
 
 ### Fields to pass through
 
@@ -392,13 +414,12 @@ Recorded so a later reader knows these were considered rather than overlooked.
    per driver. Categories deliver the same outcome with a single config pass,
    and the three-category structure in §5 keeps the comparison fair.
 
-6. **Merge tag verification.** `{{HIGHEST_CATEGORY_NAME}}` in §7 is a
-   placeholder for whatever ScoreApp names the highest-scoring category tag in
-   the results page editor. Confirm the exact tag before publishing. If no such
-   tag is available on the results page, fall back to this static sentence in
-   both bands, which reads correctly for anyone: "For most people at this
-   level, protein intake and resistance training are the two areas worth
-   changing first."
+6. **Merge tag verification.** Confirmed as built: the merge tag is called
+   "Highest category name" and is inserted from ScoreApp's `{{` picker in the
+   results page editor. `{{HIGHEST_CATEGORY_NAME}}` in §7 refers to it. When
+   categories tie, it returns whichever comes first, so a maxed-out respondent
+   sees "Loss rate". Known and accepted. The static fallback sentence
+   originally specified here was not needed.
 
 ---
 
@@ -413,7 +434,7 @@ Answers: Q1 less than 2 months, Q2 under 1 pound, Q3 consistently hit,
 Q4 three or more times, Q5 under 40, Q6 as strong as before, Q7 weight waist
 and marker, Q8 specific plan.
 
-Expected score: **2**. Expected band: low. Expected tags:
+Expected score: **1**. Expected band: low. Expected tags:
 `glp1-quiz-complete`, `glp1-risk-low`. All three categories at 0%.
 
 ### Test B — elevated band
@@ -422,14 +443,14 @@ Answers: Q1 2 to 6 months, Q2 1 to 2 pounds, Q3 roughly but inconsistent,
 Q4 one or two times, Q5 40 to 49, Q6 hard to say, Q7 weight and waist,
 Q8 general idea.
 
-Expected score: **10**. Expected band: elevated. Expected tags:
+Expected score: **11**. Expected band: elevated. Expected tags:
 `glp1-quiz-complete`, `glp1-risk-elevated`. Categories: loss rate 25%,
 nutrition 50%, training 50%. Highest category resolves to a tie between
 nutrition and training; note which one ScoreApp displays, since that is the
 tie-break behavior referenced in §5.
 
-This one sits exactly on the lower boundary, which is deliberate. It verifies
-the band edge rather than the middle.
+This one sits one point above the lower boundary, which is deliberate. It
+verifies the band edge rather than the middle.
 
 ### Test C — high band
 

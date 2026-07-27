@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-25 · Claude Code — 3.1 done: device kit page live at join.theadaptlab.com/kit; 2.4 device-kit-link exception closed |
+| **Last updated** | 2026-07-27 · Claude Code — 3.2 done: GLP-1 muscle risk scorecard live in ScoreApp, all four acceptance tests passed, five tags landing in GHL |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -70,8 +70,9 @@
 - [x] **3.1** Device kit page/link (glucose+ketone monitor, scale, BP monitor, tape measure; affiliate links)
       ✓ = single URL usable in every asset — including retrofitting the device-kit link into both Founding Member welcome emails (2.4 exception)
       → Device kit page live at https://join.theadaptlab.com/kit, covering the Keto-Mojo GK+ meter, strip combo pack, OMRON Iron BP monitor, RENPHO Elis 1 scale, and a soft tape measure. Built as a single custom HTML block in a GHL funnel page rather than native builder elements. Affiliate links deferred until Amazon Associates is set up — plain product links for now; the page is structured so links can be swapped without rebuilding.
-- [ ] **3.2** ScoreApp quiz per `glp1-quiz-spec.md`: 8 Qs, weights, 3 results pages, email-before-results, risk tags → GHL
+- [x] **3.2** ScoreApp quiz per `glp1-quiz-spec.md`: 8 Qs, weights, 3 results pages, email-before-results, risk tags → GHL
       ✓ = took quiz 3× hitting each band; tags land in GHL
+      → The GLP-1 muscle risk scorecard is live at https://chad-5tf3c8bv.scoreapp.com, built in ScoreApp as a separate scorecard from the consult quiz. Eight questions, email captured before results, score 0-24 across three tiers, three custom result pages, GoHighLevel integration writing five tags. All four acceptance test cases passed 2026-07-27. CTA points at join.theadaptlab.com pending the sales page (item 3.3); repointing it is item 3.4.
 - [ ] **3.3** Sales page per `glp1-sales-page.md`: mobile hero above fold, $49 primary / $129 secondary → Stripe, equipment FAQ intact, disclaimer footer
       ✓ = live at real URL; both buttons complete test checkout
 - [ ] **3.4** Quiz → sales page handoff, identical CTA from all 3 results pages
