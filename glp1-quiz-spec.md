@@ -238,12 +238,12 @@ score falls in a gap between tiers.
 
 A person doing everything right (losing under a pound a week, hitting a
 protein target, lifting three times a week, under 40, no strength change,
-tracking properly, has an off-ramp plan) scores **2**. Low band. The result is
-achievable, which is what keeps the instrument honest.
+tracking properly, has an off-ramp plan) scores **1**, which is 4%. Low tier.
+The result is achievable, which is what keeps the instrument honest.
 
 A realistic median respondent (three months in, losing two to three pounds a
 week, vague on protein, lifts occasionally, age 50 to 59, some things feel
-harder, weight only, no plan) scores **18**. High band, by one point.
+harder, weight only, no plan) scores **19**, which is 79%. High tier.
 
 That median is uncomfortable and probably accurate. Most people taking a
 GLP-1 without supervision are under-eating protein and not training. If the
