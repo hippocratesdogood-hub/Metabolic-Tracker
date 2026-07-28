@@ -83,11 +83,46 @@ export default function Onboarding() {
     setSaving(true);
     try {
       if (!skip && meal.trim()) {
-        await api.createFoodEntry({
-          inputType: 'text',
-          mealType: 'Breakfast',
-          rawText: meal.trim(),
-        });
+        const text = meal.trim();
+        try {
+          // Same pipeline as the Food tab: analyze (server falls back to
+          // Nutritionix when the LLM is unavailable), then save parent +
+          // item rows so the meal carries macros and an honest quality
+          // score. A bare createFoodEntry here left the first meal with no
+          // nutrition data at all — visible in Day View but contributing
+          // nothing to Today's Nutrition.
+          const analysis = await api.analyzeFoodEntry(text);
+          const detected = Array.isArray(analysis?.foods_detected) ? analysis.foods_detected : [];
+          if (detected.length === 0) throw new Error('No items detected');
+          await api.createFoodMeal({
+            items: detected.map((item: any) => ({
+              name: item.name || 'Unknown item',
+              quantity: item.quantity || 1,
+              unit: item.unit || 'serving',
+              calories: item.calories || 0,
+              protein: item.protein || 0,
+              fat: item.fat || 0,
+              totalCarbs: item.totalCarbs || item.carbs || 0,
+              fiber: item.fiber || 0,
+              netCarbs: item.netCarbs || item.carbs || 0,
+            })),
+            mealType: analysis.suggestedMealType || 'Breakfast',
+            rawText: text,
+            qualityScore: analysis.qualityScore,
+            notes: analysis.notes,
+            inputType: 'text',
+          });
+        } catch {
+          // Analysis unavailable (503 with Nutritionix also unconfigured,
+          // consent missing, or empty parse) — save unanalyzed so onboarding
+          // never blocks. Degrades to the prior behavior; the member can
+          // edit the entry from the Food tab later.
+          await api.createFoodEntry({
+            inputType: 'text',
+            mealType: 'Breakfast',
+            rawText: text,
+          });
+        }
       }
       setStep('complete');
     } catch (err: any) {
