@@ -9,9 +9,10 @@ import { ArrowRight, ArrowLeft, Sparkles, Loader2, Scale, Ruler, Utensils } from
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import MacroCalculatorStep from '@/components/MacroCalculatorStep';
 
-type Step = 'consent' | 'baseline' | 'firstMeal' | 'complete';
-const STEPS: Step[] = ['consent', 'baseline', 'firstMeal', 'complete'];
+type Step = 'consent' | 'baseline' | 'calculator' | 'firstMeal' | 'complete';
+const STEPS: Step[] = ['consent', 'baseline', 'calculator', 'firstMeal', 'complete'];
 
 const FIRST_QUESTION = 'Based on my baseline, what should I focus on this week?';
 
@@ -67,7 +68,7 @@ export default function Onboarding() {
           rawUnit: waistUnit,
         });
       }
-      setStep('firstMeal');
+      setStep('calculator');
     } catch (err: any) {
       setError(err.message || 'Could not save your baseline. Please try again.');
     } finally {
@@ -135,7 +136,7 @@ export default function Onboarding() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-3 h-56 overflow-y-auto border border-border">
-                <p><strong>1. A wellness &amp; tracking tool — not medical advice:</strong> Metabolic-Tracker and your Optimization Partner help you track and optimize your habits. They do not provide medical advice, diagnosis, or treatment, and do not replace your prescribing provider. Always consult your provider about your medication and any medical questions.</p>
+                <p><strong>1. A wellness &amp; tracking tool — not medical advice:</strong> Metabolic-Tracker and your Optimization Partner help you track and optimize your habits. During setup, the app can calculate personalized daily nutrition targets from measurements you provide; every calculated target is reviewed by Dr. Larson. The app does not provide medical advice, diagnosis, or treatment, and does not replace your prescribing provider. Always consult your provider about your medication and any medical questions.</p>
                 <p><strong>2. Data Privacy &amp; AI Processing:</strong> Your data is encrypted. Food descriptions and photos you log may be sent to third-party nutrition analysis services (including automated and AI-assisted tools) to estimate nutritional content. No personal identifiers are included in these requests.</p>
                 <p><strong>3. Your Optimization Partner:</strong> An AI wellness guide that answers questions grounded in your own logged data. It will never advise on medication dosing or timing — those belong with your prescribing provider.</p>
                 <p><strong>4. Emergency:</strong> If you are experiencing a medical emergency, call 911 immediately. This app is not designed for emergency situations.</p>
@@ -186,7 +187,16 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 3: First meal */}
+        {/* Step 3: Macro calculator — skippable; a member without a target is
+            in exactly the position every member was in before this existed */}
+        {step === 'calculator' && (
+          <MacroCalculatorStep
+            onComplete={() => setStep('firstMeal')}
+            onSkip={() => setStep('firstMeal')}
+          />
+        )}
+
+        {/* Step 4: First meal */}
         {step === 'firstMeal' && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             <CardHeader>
@@ -214,7 +224,7 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 4: Complete -> open Partner */}
+        {/* Step 5: Complete -> open Partner */}
         {step === 'complete' && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300 text-center py-8">
             <CardContent className="flex flex-col items-center gap-4">

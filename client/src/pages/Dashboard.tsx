@@ -11,6 +11,8 @@ import ProgressCharts from '@/components/ProgressCharts';
 import AdditionalInsights from '@/components/AdditionalInsights';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import MacroCalculatorStep from '@/components/MacroCalculatorStep';
 import { Progress } from '@/components/ui/progress';
 import { Scale, Activity, Droplet, Heart, Ruler, Utensils, Loader2, Plus, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
@@ -27,6 +29,7 @@ export default function Dashboard() {
   // participants backfilling many days don't re-pick every time. Resets to
   // today on Dashboard unmount (route change).
   const [lastUsedDate, setLastUsedDate] = useState<Date>(new Date());
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const unitsPref = (authUser?.unitsPreference ?? "US") as UnitsPreference;
   const unitLabels = getUnitLabels(unitsPref);
 
@@ -352,20 +355,30 @@ export default function Dashboard() {
       ) : (
         <Card className="border-none shadow-md border-dashed" data-testid="card-macro-prompt">
           <CardContent className="p-6">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
                 <Utensils className="w-5 h-5 text-muted-foreground" />
               </div>
-              <div>
-                <h3 className="font-heading font-semibold">Nutrition Tracking</h3>
+              <div className="flex-1">
+                <h3 className="font-heading font-semibold">Set your daily nutrition targets</h3>
                 <p className="text-sm text-muted-foreground">
-                  Your coach will set your daily macro targets. Once set, you'll see your nutrition progress here.
+                  A few tape measurements are all it takes. Your targets go live immediately and Dr. Larson
+                  reviews every one.
                 </p>
               </div>
+              <Button onClick={() => setCalculatorOpen(true)} className="shrink-0" data-testid="button-open-calculator">
+                Calculate my targets
+              </Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={calculatorOpen} onOpenChange={setCalculatorOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-0">
+          <MacroCalculatorStep onComplete={() => setCalculatorOpen(false)} />
+        </DialogContent>
+      </Dialog>
 
       {/* Suggested Focus Section */}
       <div className="bg-gradient-to-br from-primary/5 to-secondary/5 border border-primary/10 rounded-2xl p-6">

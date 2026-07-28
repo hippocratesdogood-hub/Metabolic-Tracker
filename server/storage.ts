@@ -28,6 +28,8 @@ import type {
   InsertMessage,
   MacroTarget,
   InsertMacroTarget,
+  MacroCalculation,
+  InsertMacroCalculation,
   MealFeelState,
   Prompt,
   PromptRule,
@@ -89,6 +91,13 @@ export interface IStorage {
   // Macro Targets
   getMacroTarget(userId: string): Promise<MacroTarget | undefined>;
   upsertMacroTarget(userId: string, data: Partial<InsertMacroTarget>): Promise<MacroTarget>;
+
+  // Macro Calculations (calculator derivation records + review workflow)
+  getLatestMetricEntry(userId: string, type: string): Promise<MetricEntry | undefined>;
+  createMacroCalculation(data: InsertMacroCalculation): Promise<MacroCalculation>;
+  getMacroCalculationById(id: string): Promise<MacroCalculation | undefined>;
+  getUnreviewedMacroCalculations(coachId?: string): Promise<Array<MacroCalculation & { userName: string; userEmail: string }>>;
+  reviewMacroCalculation(id: string, status: "approved" | "adjusted", reviewedBy: string): Promise<MacroCalculation | undefined>;
 
   // Day View — per-meal feel-state tags
   getMealFeelStatesForDay(userId: string, dateStr: string): Promise<MealFeelState[]>;
@@ -494,6 +503,75 @@ export class PostgresStorage implements IStorage {
         .returning();
       return results[0];
     }
+  }
+
+  // Macro Calculations
+  async getLatestMetricEntry(userId: string, type: string): Promise<MetricEntry | undefined> {
+    const results = await db
+      .select()
+      .from(schema.metricEntries)
+      .where(
+        and(
+          eq(schema.metricEntries.userId, userId),
+          eq(schema.metricEntries.type, type as MetricEntry["type"]),
+        ),
+      )
+      .orderBy(desc(schema.metricEntries.timestamp))
+      .limit(1);
+    return results[0] ? this.decryptMetricNotes(results[0]) : undefined;
+  }
+
+  async createMacroCalculation(data: InsertMacroCalculation): Promise<MacroCalculation> {
+    const results = await db
+      .insert(schema.macroCalculations)
+      .values(data)
+      .returning();
+    return results[0];
+  }
+
+  async getMacroCalculationById(id: string): Promise<MacroCalculation | undefined> {
+    const results = await db
+      .select()
+      .from(schema.macroCalculations)
+      .where(eq(schema.macroCalculations.id, id));
+    return results[0];
+  }
+
+  async getUnreviewedMacroCalculations(
+    coachId?: string,
+  ): Promise<Array<MacroCalculation & { userName: string; userEmail: string }>> {
+    const conditions = [eq(schema.macroCalculations.reviewStatus, "unreviewed" as const)];
+    if (coachId) {
+      conditions.push(eq(schema.users.coachId, coachId));
+    }
+    // Flagged rows first (spec §8), then oldest-first within each group
+    const rows = await db
+      .select({
+        calculation: schema.macroCalculations,
+        userName: schema.users.name,
+        userEmail: schema.users.email,
+      })
+      .from(schema.macroCalculations)
+      .innerJoin(schema.users, eq(schema.macroCalculations.userId, schema.users.id))
+      .where(and(...conditions))
+      .orderBy(
+        sql`(jsonb_array_length(${schema.macroCalculations.flags}) > 0) DESC`,
+        schema.macroCalculations.createdAt,
+      );
+    return rows.map((r) => ({ ...r.calculation, userName: r.userName, userEmail: r.userEmail }));
+  }
+
+  async reviewMacroCalculation(
+    id: string,
+    status: "approved" | "adjusted",
+    reviewedBy: string,
+  ): Promise<MacroCalculation | undefined> {
+    const results = await db
+      .update(schema.macroCalculations)
+      .set({ reviewStatus: status, reviewedAt: new Date(), reviewedBy })
+      .where(eq(schema.macroCalculations.id, id))
+      .returning();
+    return results[0];
   }
 
   // Day View — per-meal feel-state tags

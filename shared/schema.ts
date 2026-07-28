@@ -16,6 +16,9 @@ export const promptCategoryEnum = pgEnum("prompt_category", ["reminder", "interv
 export const promptChannelEnum = pgEnum("prompt_channel", ["in_app", "email", "sms"]);
 export const triggerTypeEnum = pgEnum("trigger_type", ["schedule", "event", "missed"]);
 export const deliveryStatusEnum = pgEnum("delivery_status", ["sent", "failed", "opened"]);
+export const sexEnum = pgEnum("sex", ["male", "female"]);
+export const activityLevelEnum = pgEnum("activity_level", ["sedentary", "light", "moderate", "very"]);
+export const macroReviewStatusEnum = pgEnum("macro_review_status", ["unreviewed", "approved", "adjusted"]);
 
 // Biomarker reference (lab interpretation engine)
 export const biomarkerCategoryEnum = pgEnum("biomarker_category", [
@@ -104,6 +107,7 @@ export const users = pgTable("users", {
   unitsPreference: unitsPreferenceEnum("units_preference").default("US").notNull(),
   programStartDate: timestamp("program_start_date"),
   height: integer("height"), // in cm
+  sex: sexEnum("sex"), // biological sex — required by the Navy body-fat equation
   coachId: varchar("coach_id").references((): any => users.id),
   notificationPreferencesJson: jsonb("notification_preferences_json"),
   status: userStatusEnum("status").default("active").notNull(),
@@ -189,6 +193,39 @@ export const macroTargets = pgTable("macro_targets", {
   eatingWindowEnd: text("eating_window_end").default("20:00"), // HH:MM format, default 8 PM
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Macro calculator derivation record — one row per calculation run.
+// The LIVE target stays in macro_targets; this table records how a target was
+// derived (input snapshot + pre-review values) and whether Dr. Larson has
+// reviewed it. Inputs are snapshotted imperial as the formula consumed them,
+// so a calculation stays reproducible after the member logs new metrics.
+// Waist/weight are still sourced from metric_entries at calculation time.
+export const macroCalculations = pgTable("macro_calculations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  // Input snapshot (imperial, as used by the formula)
+  sex: sexEnum("sex").notNull(),
+  heightIn: real("height_in").notNull(),
+  weightLb: real("weight_lb").notNull(),
+  waistIn: real("waist_in").notNull(),
+  neckIn: real("neck_in").notNull(),
+  hipIn: real("hip_in"), // women only
+  activityLevel: activityLevelEnum("activity_level").notNull(),
+  // Derived values
+  bodyFatPct: real("body_fat_pct").notNull(),
+  lbmLb: real("lbm_lb").notNull(),
+  // Pre-review targets, retained verbatim even after an adjust
+  calculatedProteinG: integer("calculated_protein_g").notNull(),
+  calculatedCarbsG: integer("calculated_carbs_g").notNull(),
+  calculatedFatG: integer("calculated_fat_g").notNull(),
+  calculatedCalories: integer("calculated_calories").notNull(),
+  flags: jsonb("flags").notNull().default(sql`'[]'::jsonb`), // array of flag codes, empty if none
+  reviewStatus: macroReviewStatusEnum("review_status").default("unreviewed").notNull(),
+  reviewedAt: timestamp("reviewed_at"),
+  // No cascade: the review trail should survive a reviewer account deletion
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Per-meal feel-state tags for the Day View (v1).
@@ -396,6 +433,12 @@ export const insertFoodEntrySchema = createInsertSchema(foodEntries, {
 
 export const insertMacroTargetSchema = createInsertSchema(macroTargets).omit({ id: true, createdAt: true, updatedAt: true });
 
+export const insertMacroCalculationSchema = createInsertSchema(macroCalculations, {
+  sex: z.enum(["male", "female"]),
+  activityLevel: z.enum(["sedentary", "light", "moderate", "very"]),
+  flags: z.array(z.string()),
+}).omit({ id: true, createdAt: true });
+
 export const insertMealFeelStateSchema = createInsertSchema(mealFeelStates, {
   mealType: z.enum(["Breakfast", "Lunch", "Dinner", "Snack"]),
   feelState: z.enum(["energized", "neutral", "sluggish", "gut_symptoms", "brain_fog"]).nullable(),
@@ -464,6 +507,8 @@ export type PromptRule = typeof promptRules.$inferSelect;
 export type Report = typeof reports.$inferSelect;
 export type MacroTarget = typeof macroTargets.$inferSelect;
 export type InsertMacroTarget = z.infer<typeof insertMacroTargetSchema>;
+export type MacroCalculation = typeof macroCalculations.$inferSelect;
+export type InsertMacroCalculation = z.infer<typeof insertMacroCalculationSchema>;
 
 export type MealFeelState = typeof mealFeelStates.$inferSelect;
 export type InsertMealFeelState = z.infer<typeof insertMealFeelStateSchema>;

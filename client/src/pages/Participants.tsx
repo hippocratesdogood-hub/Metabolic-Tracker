@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Users, Plus, Search, Eye, Pencil, KeyRound, Copy, Check, UserX, Calendar, Target, AlertCircle, CheckCircle2, Activity, StickyNote, Loader2, MoreVertical } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+import MacroReviewQueue from '@/components/MacroReviewQueue';
 import { toast } from 'sonner';
 
 // Password strength utilities
@@ -230,6 +231,9 @@ export default function Participants() {
           </Button>
         )}
       </div>
+
+      {/* Member-run macro calculations awaiting review — hidden when empty */}
+      <MacroReviewQueue />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

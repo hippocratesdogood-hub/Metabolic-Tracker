@@ -407,6 +407,59 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       ON "meal_feel_states" ("user_id", "date");
   `);
 
+  // Migration: Macro target calculator (onboarding self-serve + admin review).
+  // users.sex is nullable — only members who run the calculator have it set.
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "sex" AS ENUM ('male', 'female');
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "activity_level" AS ENUM ('sedentary', 'light', 'moderate', 'very');
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$ BEGIN
+      CREATE TYPE "macro_review_status" AS ENUM ('unreviewed', 'approved', 'adjusted');
+    EXCEPTION WHEN duplicate_object THEN null;
+    END $$;
+  `);
+  await pool.query(`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "sex" "sex";
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "macro_calculations" (
+      "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "user_id" varchar NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "sex" "sex" NOT NULL,
+      "height_in" real NOT NULL,
+      "weight_lb" real NOT NULL,
+      "waist_in" real NOT NULL,
+      "neck_in" real NOT NULL,
+      "hip_in" real,
+      "activity_level" "activity_level" NOT NULL,
+      "body_fat_pct" real NOT NULL,
+      "lbm_lb" real NOT NULL,
+      "calculated_protein_g" integer NOT NULL,
+      "calculated_carbs_g" integer NOT NULL,
+      "calculated_fat_g" integer NOT NULL,
+      "calculated_calories" integer NOT NULL,
+      "flags" jsonb NOT NULL DEFAULT '[]'::jsonb,
+      "review_status" "macro_review_status" NOT NULL DEFAULT 'unreviewed',
+      "reviewed_at" timestamp,
+      "reviewed_by" varchar REFERENCES "users"("id"),
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+  // Review-queue hot path: unreviewed rows, oldest first
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS "macro_calculations_review_status_created_idx"
+      ON "macro_calculations" ("review_status", "created_at");
+  `);
+
   // Migration: Deactivate test accounts in production
   if (process.env.NODE_ENV === "production") {
     const testEmails = [

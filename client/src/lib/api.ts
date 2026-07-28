@@ -10,11 +10,14 @@ import type { User, MetricEntry, FoodEntry, Conversation, Message } from "@share
 export class ApiError extends Error {
   code?: string;
   status: number;
-  constructor(message: string, status: number, code?: string) {
+  // Per-field validation messages (e.g. the macro calculator's guard rails)
+  fieldErrors?: Record<string, string>;
+  constructor(message: string, status: number, code?: string, fieldErrors?: Record<string, string>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -31,7 +34,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: "Request failed" }));
-      throw new ApiError(error.message || "Request failed", response.status, error.code);
+      throw new ApiError(error.message || "Request failed", response.status, error.code, error.fieldErrors);
     }
 
     return response.json();
@@ -362,6 +365,42 @@ class ApiClient {
     return this.request<any>("/macro-targets", {
       method: "PUT",
       body: JSON.stringify({ ...data, userId }),
+    });
+  }
+
+  // Macro calculator (onboarding self-serve + admin review queue)
+  async calculateMacroTarget(data: {
+    sex: "male" | "female";
+    activityLevel: "sedentary" | "light" | "moderate" | "very";
+    height: number;
+    neck: number;
+    hip?: number;
+  }) {
+    return this.request<{
+      proteinG: number;
+      netCarbsG: number;
+      fatG: number;
+      calories: number;
+      bodyFatPct: number;
+    }>("/macro-calculator", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getMacroReviewQueue() {
+    return this.request<any[]>("/admin/macro-calculations");
+  }
+
+  async reviewMacroCalculation(
+    id: string,
+    data:
+      | { action: "approve" }
+      | { action: "adjust"; calories: number; proteinG: number; carbsG: number; fatG: number },
+  ) {
+    return this.request<any>(`/admin/macro-calculations/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   }
 

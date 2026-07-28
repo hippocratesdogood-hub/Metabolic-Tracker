@@ -8,6 +8,8 @@ import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { insertUserSchema, insertMetricEntrySchema, insertFoodEntrySchema, insertMessageSchema, insertMacroTargetSchema, insertPromptSchema, insertPromptRuleSchema } from "@shared/schema";
+import { calculateMacroTargets } from "./services/macroCalculator";
+import { convertWeight, convertLength, toCm, type WeightUnit, type LengthUnit } from "@shared/units";
 import { buildSelfSignupUser } from "./utils/accountSecurity";
 import {
   PARTICIPANT_SYSTEM_PROMPT,
@@ -2988,6 +2990,199 @@ Respond with ONLY valid JSON (no markdown fences, no preamble) matching this sch
 
       const target = await storage.upsertMacroTarget(targetUserId, targetData);
       res.json(target);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Macro calculator — member-run during onboarding (or from the dashboard
+  // prompt), reviewed by admin afterward. Waist and weight are sourced from
+  // the member's latest metric entries; the rest arrives in the request body
+  // in the member's preferred units and is converted to imperial here.
+  const macroCalculatorBodySchema = z.object({
+    sex: z.enum(["male", "female"]),
+    activityLevel: z.enum(["sedentary", "light", "moderate", "very"]),
+    units: z.enum(["US", "Metric"]).optional(),
+    height: z.number(),
+    neck: z.number(),
+    hip: z.number().optional(),
+  });
+
+  // Latest metric entry → imperial value. Prefers normalizedValue (kg/cm) but
+  // falls back to valueJson.value + rawUnit, since POST /api/metrics stores
+  // manual entries without computing normalizedValue.
+  const metricToImperial = (
+    entry: { normalizedValue: number | null; valueJson: unknown; rawUnit: string | null } | undefined,
+    kind: "weight" | "length",
+  ): number | null => {
+    if (!entry) return null;
+    if (kind === "weight") {
+      if (entry.normalizedValue != null) return convertWeight(entry.normalizedValue, "kg", "lbs");
+      const v = (entry.valueJson as any)?.value;
+      if (typeof v !== "number") return null;
+      return convertWeight(v, (entry.rawUnit as WeightUnit) || "lbs", "lbs");
+    }
+    if (entry.normalizedValue != null) return convertLength(entry.normalizedValue, "cm", "inches");
+    const v = (entry.valueJson as any)?.value;
+    if (typeof v !== "number") return null;
+    return convertLength(v, (entry.rawUnit as LengthUnit) || "inches", "inches");
+  };
+
+  app.post("/api/macro-calculator", requireAuth, async (req, res) => {
+    try {
+      const parsed = macroCalculatorBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      const body = parsed.data;
+      const user = await storage.getUser(req.user!.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const units = body.units ?? user.unitsPreference;
+      const lengthUnit: LengthUnit = units === "Metric" ? "cm" : "inches";
+      const heightIn = convertLength(body.height, lengthUnit, "inches");
+      const neckIn = convertLength(body.neck, lengthUnit, "inches");
+      const hipIn = body.hip != null ? convertLength(body.hip, lengthUnit, "inches") : undefined;
+
+      const [weightEntry, waistEntry] = await Promise.all([
+        storage.getLatestMetricEntry(req.user!.id, "WEIGHT"),
+        storage.getLatestMetricEntry(req.user!.id, "WAIST"),
+      ]);
+      const weightLb = metricToImperial(weightEntry, "weight");
+      const waistIn = metricToImperial(waistEntry, "length");
+      if (weightLb == null || waistIn == null) {
+        return res.status(400).json({
+          message: "Missing measurements",
+          fieldErrors: {
+            ...(weightLb == null ? { weight: "No weight on record — log your weight first." } : {}),
+            ...(waistIn == null ? { waist: "No waist measurement on record — log your waist first." } : {}),
+          },
+        });
+      }
+
+      const result = calculateMacroTargets({
+        sex: body.sex,
+        heightIn,
+        weightLb,
+        waistIn,
+        neckIn,
+        hipIn,
+        activityLevel: body.activityLevel,
+      });
+
+      if (!result.ok) {
+        // Service keys are imperial-suffixed; the client fields aren't
+        const keyMap: Record<string, string> = {
+          heightIn: "height", weightLb: "weight", waistIn: "waist", neckIn: "neck", hipIn: "hip",
+        };
+        const fieldErrors = Object.fromEntries(
+          Object.entries(result.fieldErrors).map(([k, v]) => [keyMap[k] ?? k, v]),
+        );
+        return res.status(400).json({ message: "Those measurements don't compute", fieldErrors });
+      }
+
+      const calculation = await storage.createMacroCalculation({
+        userId: req.user!.id,
+        sex: body.sex,
+        heightIn,
+        weightLb,
+        waistIn,
+        neckIn,
+        hipIn: hipIn ?? null,
+        activityLevel: body.activityLevel,
+        bodyFatPct: result.bodyFatPct,
+        lbmLb: result.lbmLb,
+        calculatedProteinG: result.targets.proteinG,
+        calculatedCarbsG: result.targets.netCarbsG,
+        calculatedFatG: result.targets.fatG,
+        calculatedCalories: result.targets.calories,
+        flags: result.flags,
+        reviewStatus: "unreviewed",
+      });
+
+      // Target goes live immediately — review happens afterward (spec §2)
+      await storage.upsertMacroTarget(req.user!.id, {
+        calories: result.targets.calories,
+        proteinG: result.targets.proteinG,
+        carbsG: result.targets.netCarbsG,
+        fatG: result.targets.fatG,
+      });
+
+      // Persist the durable profile attributes the calculator collected
+      await storage.updateUser(req.user!.id, {
+        sex: body.sex,
+        height: Math.round(toCm(heightIn, "inches")),
+      });
+
+      await auditRecordCreate(req.user!, req, "USER", calculation.id);
+
+      // Flags are intentionally omitted: the member sees their target, the
+      // review queue sees why it needs a look (spec §5)
+      res.json({
+        proteinG: result.targets.proteinG,
+        netCarbsG: result.targets.netCarbsG,
+        fatG: result.targets.fatG,
+        calories: result.targets.calories,
+        bodyFatPct: result.bodyFatPct,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Admin review queue (spec §8) — unreviewed calculations, flagged first
+  app.get("/api/admin/macro-calculations", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const coachScope = req.user!.role === "coach" ? req.user!.id : undefined;
+      const rows = await storage.getUnreviewedMacroCalculations(coachScope);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  const macroReviewBodySchema = z.discriminatedUnion("action", [
+    z.object({ action: z.literal("approve") }),
+    z.object({
+      action: z.literal("adjust"),
+      calories: z.number().int().positive(),
+      proteinG: z.number().int().positive(),
+      carbsG: z.number().int().nonnegative(),
+      fatG: z.number().int().positive(),
+    }),
+  ]);
+
+  app.post("/api/admin/macro-calculations/:id/review", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const parsed = macroReviewBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      const calculation = await storage.getMacroCalculationById(req.params.id);
+      if (!calculation) return res.status(404).json({ message: "Calculation not found" });
+      if (calculation.reviewStatus !== "unreviewed") {
+        return res.status(409).json({ message: "This calculation has already been reviewed" });
+      }
+      if (req.user!.role === "coach") {
+        const participant = await storage.getUser(calculation.userId);
+        if (!participant || participant.coachId !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+
+      if (parsed.data.action === "adjust") {
+        // Live target changes; calculated_* stays untouched — that delta is
+        // the record of where the formula runs hot or cold (spec §8)
+        const { calories, proteinG, carbsG, fatG } = parsed.data;
+        await storage.upsertMacroTarget(calculation.userId, { calories, proteinG, carbsG, fatG });
+      }
+      const status = parsed.data.action === "adjust" ? "adjusted" : "approved";
+      const updated = await storage.reviewMacroCalculation(req.params.id, status, req.user!.id);
+
+      await auditRecordUpdate(req.user!, req, "USER", calculation.id, ["reviewStatus"]);
+
+      // No member notification on approval — the target was already live
+      res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
