@@ -153,6 +153,23 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 
 ---
 
+### 20. Migrate `timestamp` columns to `timestamptz`
+
+**Status:** open
+**Where:** `shared/schema.ts` + `server/migrate.ts` — every `timestamp()` column except `audit_logs.timestamp` (already `withTimezone: true`)
+**Why deferred:** Production is NOT currently broken — do not read this item as a data-corruption fix. Surfaced 2026-07-28 while investigating an apparent "seven hours in the future" food-entry timestamp that turned out to be a read-side artifact: the row was stored correctly in UTC.
+
+**What's wrong:** All timestamp columns except the audit log are `timestamp WITHOUT time zone`. Drizzle writes `Date.toISOString()`, so stored values are UTC wall-clock — but the column doesn't say so, and node-postgres parses the naive value back **in the reading process's local timezone**. Correctness is therefore an accident of configuration: the Railway process runs UTC, so prod round-trips correctly (now pinned via `TZ=UTC` on the service, plus `TZ=UTC` in the dev script). Any non-UTC reader is misled: a DB GUI or ad-hoc script on a PDT laptop renders every value 7 hours ahead (which is exactly what happened — including the eating-window penalty appearing to contradict the timestamp, when in fact the scorer had seen the correct time).
+
+**Suggested approach:**
+- `ALTER TABLE … ALTER COLUMN … TYPE timestamptz USING <col> AT TIME ZONE 'UTC'` per column, as idempotent guarded blocks in `runIncrementalMigrations()` (check `information_schema.columns.data_type` before altering so re-runs no-op).
+- Flip the matching `schema.ts` declarations to `{ withTimezone: true }` in the same commit — the two must land together.
+- Stored values are known-UTC (verified against `audit_logs` timestamptz values during the 2026-07-28 investigation), so `AT TIME ZONE 'UTC'` is the correct interpretation and no data rewrite is needed.
+- Watch the session table (`user_sessions` is created by connect-pg-simple, not our schema — leave it alone) and the five calendar-drift tests, which may be sensitive to Date round-trip changes.
+- Verify by comparing a handful of rows' epoch values before/after on the dev Neon DB, then a full test run.
+
+---
+
 ## Backup / ops
 
 ### 10. Backup service reports ✅ success on an empty (failed) dump
