@@ -100,26 +100,34 @@ export function validateInputs(input: MacroCalcInput): Record<string, string> {
     errors.hipIn = "Hip measurement is required and must be a positive number.";
   }
 
-  // Range rails — almost always unit errors
+  // Range rails — almost always unit errors or mismeasurement
   if (!errors.heightIn && (input.heightIn < 48 || input.heightIn > 84)) {
     errors.heightIn = "Height should be between 48 and 84 inches — double-check the units.";
   }
   if (!errors.weightLb && (input.weightLb < 70 || input.weightLb > 700)) {
     errors.weightLb = "Weight should be between 70 and 700 pounds — double-check the units.";
   }
+  if (!errors.neckIn && (input.neckIn < 10 || input.neckIn > 25)) {
+    errors.neckIn = "Neck should be between 10 and 25 inches — double-check the measurement.";
+  }
+  if (!errors.waistIn && (input.waistIn < 20 || input.waistIn > 80)) {
+    errors.waistIn = "Waist should be between 20 and 80 inches — double-check the measurement.";
+  }
+  if (
+    input.sex === "female" &&
+    !errors.hipIn &&
+    (input.hipIn! < 28 || input.hipIn! > 85)
+  ) {
+    errors.hipIn = "Hip should be between 28 and 85 inches — double-check the measurement.";
+  }
 
-  // Circumference sanity — the Navy equation's log10 argument must be positive
-  if (!errors.waistIn && !errors.neckIn) {
-    if (input.sex === "male" && input.waistIn - input.neckIn <= 0) {
-      errors.waistIn = MEASUREMENT_MISMATCH_MSG;
-    }
-    if (
-      input.sex === "female" &&
-      isPositiveFinite(input.hipIn) &&
-      input.waistIn + input.hipIn - input.neckIn <= 0
-    ) {
-      errors.waistIn = MEASUREMENT_MISMATCH_MSG;
-    }
+  // Waist must exceed neck — holds for both sexes and every realistic body
+  // composition. Universal on purpose: the women's Navy log10 argument
+  // (waist + hip − neck) stays positive even with a badly swapped waist and
+  // neck because hip is in the sum, so without this rail a transposed
+  // measurement sails through and computes a wildly wrong body fat.
+  if (!errors.waistIn && !errors.neckIn && input.waistIn <= input.neckIn) {
+    errors.waistIn = MEASUREMENT_MISMATCH_MSG;
   }
 
   return errors;
@@ -136,7 +144,10 @@ export function evaluateFlags(
   targets: MacroCalcTargets,
 ): string[] {
   const flags: string[] = [];
-  const bfFloor = sex === "male" ? 3 : 8;
+  // Floors tightened from 3/8 — those were too permissive to catch real
+  // mismeasurement (a swapped-looking waist/neck still computed ~8.8% for a
+  // 210 lb woman and passed)
+  const bfFloor = sex === "male" ? 5 : 12;
   const bfCeiling = sex === "male" ? 60 : 65;
   const calorieFloor = sex === "male" ? 1400 : 1200;
 

@@ -113,27 +113,81 @@ describe("macroCalculator — blocking guard rails", () => {
   };
 
   it("blocks men whose waist is not larger than neck, with the spec message", () => {
-    for (const neckIn of [40, 42]) {
-      const result = calculateMacroTargets({ ...validMale, neckIn });
+    // Values kept inside the range rails so the waist>neck rail is what fires
+    for (const [waistIn, neckIn] of [[20, 20], [21, 24]]) {
+      const result = calculateMacroTargets({ ...validMale, waistIn, neckIn });
       expect(result.ok).toBe(false);
       if (result.ok) continue;
       expect(result.fieldErrors.waistIn).toMatch(/waist should be larger than neck/i);
     }
   });
 
-  it("blocks women when waist + hip − neck is not positive", () => {
+  it("blocks women whose waist is not larger than neck — the rail is universal", () => {
     const result = calculateMacroTargets({
       sex: "female",
       heightIn: 66,
       weightLb: 150,
-      waistIn: 2,
-      neckIn: 6,
-      hipIn: 3,
+      waistIn: 22,
+      neckIn: 24,
+      hipIn: 40,
       activityLevel: "light",
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.fieldErrors.waistIn).toMatch(/waist should be larger than neck/i);
+  });
+
+  it("blocks the verified women's bypass case: waist 30, neck 34, hip 46", () => {
+    // Before these rails, this computed ~8.8% body fat on a 5'6" 210 lb woman
+    // and passed — the women's log10 argument (waist + hip − neck) stays
+    // positive because hip is in the sum. The neck range rail catches it.
+    const result = calculateMacroTargets({
+      sex: "female",
+      heightIn: 66,
+      weightLb: 210,
+      waistIn: 30,
+      neckIn: 34,
+      hipIn: 46,
+      activityLevel: "light",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors.neckIn).toMatch(/between 10 and 25 inches/i);
+  });
+
+  it("blocks necks outside 10–25 inches", () => {
+    for (const neckIn of [9, 26]) {
+      const result = calculateMacroTargets({ ...validMale, neckIn });
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.fieldErrors.neckIn).toBeTruthy();
+    }
+  });
+
+  it("blocks waists outside 20–80 inches", () => {
+    for (const waistIn of [19, 81]) {
+      const result = calculateMacroTargets({ ...validMale, waistIn });
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.fieldErrors.waistIn).toBeTruthy();
+    }
+  });
+
+  it("blocks hips outside 28–85 inches for women", () => {
+    for (const hipIn of [27, 86]) {
+      const result = calculateMacroTargets({
+        sex: "female",
+        heightIn: 66,
+        weightLb: 180,
+        waistIn: 36,
+        neckIn: 14,
+        hipIn,
+        activityLevel: "light",
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.fieldErrors.hipIn).toBeTruthy();
+    }
   });
 
   it("blocks zero, negative, and non-numeric measurements with field-level messages", () => {
@@ -185,11 +239,11 @@ describe("macroCalculator — blocking guard rails", () => {
 describe("macroCalculator — review flags", () => {
   const targets = { proteinG: 150, netCarbsG: 60, fatG: 100, calories: 1740 };
 
-  it("flags implausibly low body fat (below 3 men / 8 women, exclusive)", () => {
-    expect(evaluateFlags("male", 2.9, targets)).toContain(FLAG_CODES.BF_LOW);
-    expect(evaluateFlags("male", 3.0, targets)).toEqual([]);
-    expect(evaluateFlags("female", 7.9, targets)).toContain(FLAG_CODES.BF_LOW);
-    expect(evaluateFlags("female", 8.0, targets)).toEqual([]);
+  it("flags implausibly low body fat (below 5 men / 12 women, exclusive)", () => {
+    expect(evaluateFlags("male", 4.9, targets)).toContain(FLAG_CODES.BF_LOW);
+    expect(evaluateFlags("male", 5.0, targets)).toEqual([]);
+    expect(evaluateFlags("female", 11.9, targets)).toContain(FLAG_CODES.BF_LOW);
+    expect(evaluateFlags("female", 12.0, targets)).toEqual([]);
   });
 
   it("flags implausibly high body fat (above 60 men / 65 women, exclusive)", () => {

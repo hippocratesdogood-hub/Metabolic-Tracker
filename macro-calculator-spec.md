@@ -194,17 +194,29 @@ below either blocks the calculation or flags the result for review.
 
 | Condition | Behavior |
 |---|---|
-| Men: waist − neck ≤ 0 | Block. "Those measurements don't look right — waist should be larger than neck. Check both and try again." |
-| Women: waist + hip − neck ≤ 0 | Same. |
+| Waist ≤ neck (both sexes) | Block. "Those measurements don't look right — waist should be larger than neck. Check both and try again." |
 | Any measurement ≤ 0 or non-numeric | Block with a field-level message. |
 | Height outside 48–84 inches | Block. Almost always a unit error. |
 | Weight outside 70–700 lb | Block. |
+| Neck outside 10–25 inches | Block. Mismeasurement or unit error. |
+| Waist outside 20–80 inches | Block. Same. |
+| Hip outside 28–85 inches | Women. Block. Same. |
+
+The waist > neck rail is universal on purpose. An earlier revision used
+sex-specific conditions matching the Navy log10 arguments (men: waist − neck
+≤ 0; women: waist + hip − neck ≤ 0), but the women's form essentially never
+triggers — hip is in the sum, so a transposed waist and neck stays positive
+and computes a wildly wrong body fat instead of blocking. Verified: waist 30,
+neck 34, hip 46 on a 5'6" 210 lb woman computed ~8.8% body fat and passed
+every original rail. Waist greater than neck holds for both sexes and every
+realistic body composition, so the universal block is safe; the range rails
+catch the remainder.
 
 ### Flagging — computes, but marks the target for priority review
 
 | Condition | Reason |
 |---|---|
-| BF% below 3 (men) or 8 (women) | Implausible; likely a mismeasurement |
+| BF% below 5 (men) or 12 (women) | Implausible; likely a mismeasurement. Tightened from 3/8, which were too permissive to catch real mismeasurement. |
 | BF% above 60 (men) or 65 (women) | Same |
 | Calorie target below 1400 (men) or 1200 (women) | Below common clinical floors |
 | Fat below 40 g | Approaching essential fatty acid concerns |
