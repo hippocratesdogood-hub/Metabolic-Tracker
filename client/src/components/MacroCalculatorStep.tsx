@@ -47,10 +47,13 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
   const isMetric = units === 'Metric';
   const lengthUnit = isMetric ? 'cm' : 'in';
 
+  const weightUnit = isMetric ? 'kg' : 'lbs';
+
   const [sex, setSex] = useState<Sex | null>(null);
   const [heightFt, setHeightFt] = useState('');
   const [heightInches, setHeightInches] = useState('');
   const [heightCm, setHeightCm] = useState('');
+  const [weight, setWeight] = useState('');
   const [waist, setWaist] = useState('');
   const [neck, setNeck] = useState('');
   const [hip, setHip] = useState('');
@@ -76,8 +79,14 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
   const latestWeight = useMemo(() => {
     const entry = weightEntries?.[0];
     const vj = entry?.valueJson as { value?: number } | undefined;
-    return typeof vj?.value === 'number' ? { value: vj.value, unit: entry?.rawUnit || (isMetric ? 'kg' : 'lbs') } : null;
-  }, [weightEntries, isMetric]);
+    return typeof vj?.value === 'number' ? { value: vj.value, unit: entry?.rawUnit || weightUnit } : null;
+  }, [weightEntries, weightUnit]);
+
+  // No WEIGHT entry on record (e.g. an admin-created account that never ran
+  // onboarding) → ask for weight here and save it as a metric entry, same
+  // pattern as waist. Gated on the query having resolved so the field doesn't
+  // flash while loading.
+  const needsWeight = weightEntries !== undefined && latestWeight === null;
 
   // Prefill waist from the latest entry once it loads (don't clobber typing)
   useEffect(() => {
@@ -103,7 +112,8 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
     heightValue() !== null &&
     waist !== '' &&
     neck !== '' &&
-    (sex !== 'female' || hip !== '');
+    (sex !== 'female' || hip !== '') &&
+    (!needsWeight || weight !== '');
 
   const calculate = async () => {
     if (!sex || !activity) return;
@@ -111,8 +121,16 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
     setFieldErrors({});
     setSaving(true);
     try {
-      // Metrics stay the source of truth for waist: a new or edited value is
-      // saved as a WAIST entry before the server reads "the most recent"
+      // Metrics stay the source of truth for waist and weight: new or edited
+      // values are saved as entries before the server reads "the most recent"
+      if (needsWeight && weight) {
+        await api.createMetricEntry({
+          type: 'WEIGHT',
+          valueJson: { value: Number(weight) },
+          rawUnit: weightUnit,
+        });
+        queryClient.invalidateQueries({ queryKey: ['metrics', 'WEIGHT'] });
+      }
       if (waist && Number(waist) !== latestWaistValue) {
         await api.createMetricEntry({
           type: 'WAIST',
@@ -265,6 +283,21 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
           {fieldErrors.height && <p className="text-sm text-red-500">{fieldErrors.height}</p>}
         </div>
 
+        {needsWeight && (
+          <div className="space-y-2">
+            <Label htmlFor="calc-weight">Current weight ({weightUnit})</Label>
+            <Input
+              id="calc-weight"
+              type="number"
+              inputMode="decimal"
+              placeholder={isMetric ? 'e.g. 96' : 'e.g. 212'}
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+            />
+            {fieldErrors.weight && <p className="text-sm text-red-500">{fieldErrors.weight}</p>}
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="calc-waist">Waist ({lengthUnit})</Label>
           <Input
@@ -339,7 +372,7 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
             Using your latest logged weight: {latestWeight.value} {latestWeight.unit}.
           </p>
         )}
-        {fieldErrors.weight && <p className="text-sm text-red-500">{fieldErrors.weight}</p>}
+        {!needsWeight && fieldErrors.weight && <p className="text-sm text-red-500">{fieldErrors.weight}</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
       </CardContent>
       <CardFooter className={cn('flex', onSkip ? 'justify-between' : 'justify-end')}>

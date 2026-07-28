@@ -40,7 +40,7 @@ Collected from the member:
 |---|---|---|
 | Biological sex | male / female | Required by the Navy equation. Asked as biological sex, not gender identity, with a line explaining why. Stored on the user profile (`users.sex`). |
 | Height | inches | Collected here; stored on the existing `users.height` column (integer cm), which predated this feature but was never populated. |
-| Weight | pounds | Sourced from the member's most recent WEIGHT metric entry (logged at onboarding baseline). Not re-asked. |
+| Weight | pounds | Sourced from the member's most recent WEIGHT metric entry (logged at onboarding baseline). Not re-asked when one exists; if none does (e.g. an admin-created account that never ran onboarding), the calculator shows a weight field and saves it as a WEIGHT metric entry before calculating — same pattern as waist. |
 | Waist | inches | Sourced from the most recent WAIST metric entry; the calculator screen prefills it and lets the member enter or correct it (edits save as a new metric entry first). Measure at navel, end of normal exhale. |
 | Neck | inches | New. Measure below the larynx, tape sloping slightly down at the front. |
 | Hip | inches | New. Women only. Measure at the widest point. |
