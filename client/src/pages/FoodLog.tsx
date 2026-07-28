@@ -19,6 +19,7 @@ import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fn
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
+import { useAiAvailable } from '@/hooks/use-ai-available';
 import { DialogFooter } from '@/components/ui/dialog';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
@@ -99,6 +100,7 @@ function ServingPills({ value, onChange }: { value: number; onChange: (v: number
 export default function FoodLog() {
   const queryClient = useQueryClient();
   const { user, refreshUser } = useAuth();
+  const aiAvailable = useAiAvailable();
   const [input, setInput] = useState('');
   const [mealType, setMealType] = useState<MealType>(suggestMealType());
   const [entryDate, setEntryDate] = useState<Date>(new Date());
@@ -411,7 +413,7 @@ export default function FoodLog() {
 
   const handleAnalyze = async () => {
     if (!input.trim() && !selectedImage) {
-      toast.error('Please add a photo or describe your meal');
+      toast.error(aiAvailable ? 'Please add a photo or describe your meal' : 'Please describe your meal');
       return;
     }
 
@@ -701,7 +703,7 @@ export default function FoodLog() {
     <div className="space-y-6 pb-20">
       <div>
         <h1 className="text-2xl font-heading font-bold" data-testid="text-page-title">Food Log</h1>
-        <p className="text-muted-foreground">Snap a photo or describe your meal.</p>
+        <p className="text-muted-foreground">{aiAvailable ? 'Snap a photo or describe your meal.' : 'Describe your meal.'}</p>
       </div>
 
       {macroProgress && (
@@ -974,29 +976,36 @@ export default function FoodLog() {
 
             <div className="flex items-center justify-between pt-2 border-t border-border">
               <div className="flex gap-2">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleImageSelect}
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-                  capture="environment"
-                  className="hidden"
-                  aria-label="Upload photo of your meal"
-                  data-testid="input-camera-file"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "rounded-full text-muted-foreground hover:text-primary h-11 w-11",
-                    selectedImage && "text-primary"
-                  )}
-                  onClick={handleCameraClick}
-                  aria-label={selectedImage ? "Change photo" : "Add photo of your meal"}
-                  data-testid="button-camera"
-                >
-                  {selectedImage ? <Image className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
-                </Button>
+                {/* Photo analysis needs the vision endpoint — hidden while AI is
+                    unavailable so a photo-only submit can't hit the 503. Barcode
+                    scanning below uses the camera too but never touches AI. */}
+                {aiAvailable && (
+                  <>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImageSelect}
+                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                      capture="environment"
+                      className="hidden"
+                      aria-label="Upload photo of your meal"
+                      data-testid="input-camera-file"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "rounded-full text-muted-foreground hover:text-primary h-11 w-11",
+                        selectedImage && "text-primary"
+                      )}
+                      onClick={handleCameraClick}
+                      aria-label={selectedImage ? "Change photo" : "Add photo of your meal"}
+                      data-testid="button-camera"
+                    >
+                      {selectedImage ? <Image className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
+                    </Button>
+                  </>
+                )}
                 {hasSpeechRecognition && (
                   <Button
                     variant="ghost"

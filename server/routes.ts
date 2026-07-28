@@ -567,6 +567,11 @@ export async function registerRoutes(
   app.get("/api/config", requireAuth, (_req, res) => {
     res.json({
       pdfExtractionEnabled: process.env.ENABLE_PDF_EXTRACTION === "true",
+      // Gates the AI surfaces client-side (Partner entry points, photo meal
+      // analysis, onboarding copy). Derived from key presence only — the key
+      // itself never reaches the client. Flips true on the restart after
+      // ANTHROPIC_API_KEY is set (post-BAA), with no code change.
+      aiAvailable: Boolean(process.env.ANTHROPIC_API_KEY),
     });
   });
 

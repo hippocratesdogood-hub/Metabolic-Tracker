@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useData, MetricType } from '@/lib/dataAdapter';
 import { useAuth } from '@/lib/auth';
+import { useAiAvailable } from '@/hooks/use-ai-available';
 import { api } from '@/lib/api';
 import MetricCard from '@/components/MetricCard';
 import MetricEntryModal from '@/components/MetricEntryModal';
@@ -30,6 +31,7 @@ export default function Dashboard() {
   // today on Dashboard unmount (route change).
   const [lastUsedDate, setLastUsedDate] = useState<Date>(new Date());
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const aiAvailable = useAiAvailable();
   const unitsPref = (authUser?.unitsPreference ?? "US") as UnitsPreference;
   const unitLabels = getUnitLabels(unitsPref);
 
@@ -166,7 +168,10 @@ export default function Dashboard() {
       </div>
 
       {/* One-tap entry to the AI Optimization Partner (B1). Kept prominent so the
-          weekly GoHighLevel prompts ("open the app and ask your partner...") land. */}
+          weekly GoHighLevel prompts ("open the app and ask your partner...") land.
+          Hidden entirely while AI is unavailable (no ANTHROPIC_API_KEY in prod
+          pending BAA) — returns automatically once the key is set. */}
+      {aiAvailable && (
       <Link href="/partner">
         <a className="block group" aria-label="Open your Optimization Partner">
           <Card className="border-none shadow-md bg-gradient-to-r from-primary to-[#0060e6] text-primary-foreground overflow-hidden">
@@ -189,6 +194,7 @@ export default function Dashboard() {
           </Card>
         </a>
       </Link>
+      )}
 
       <OverviewStatistics
         metrics={{

@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowRight, ArrowLeft, Sparkles, Loader2, Scale, Ruler, Utensils } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { useAiAvailable } from '@/hooks/use-ai-available';
 import { api } from '@/lib/api';
 import MacroCalculatorStep from '@/components/MacroCalculatorStep';
 
@@ -19,6 +20,7 @@ const FIRST_QUESTION = 'Based on my baseline, what should I focus on this week?'
 export default function Onboarding() {
   const [, setLocation] = useLocation();
   const { user, refreshUser } = useAuth();
+  const aiAvailable = useAiAvailable();
   const [step, setStep] = useState<Step>('consent');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -102,10 +104,12 @@ export default function Onboarding() {
       await api.completeOnboarding();
       await refreshUser();
     } catch {
-      // Best-effort — even if this fails the partner still opens.
+      // Best-effort — even if this fails the destination still opens.
     } finally {
       setSaving(false);
-      setLocation(`/partner?q=${encodeURIComponent(FIRST_QUESTION)}`);
+      // AI unavailable (no key pending BAA) → land on the dashboard, which is
+      // also the add-metrics surface, instead of a Partner unavailability screen
+      setLocation(aiAvailable ? `/partner?q=${encodeURIComponent(FIRST_QUESTION)}` : '/');
     }
   };
 
@@ -159,7 +163,11 @@ export default function Onboarding() {
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             <CardHeader>
               <CardTitle>Set your baseline</CardTitle>
-              <CardDescription>These first numbers are what your Partner measures your progress against.</CardDescription>
+              <CardDescription>
+                {aiAvailable
+                  ? 'These first numbers are what your Partner measures your progress against.'
+                  : 'These first numbers are the starting point your progress is measured against.'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -172,7 +180,9 @@ export default function Onboarding() {
               </div>
               <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
                 <p className="font-medium text-foreground mb-1">Glucose, ketones &amp; blood pressure</p>
-                Add these from your dashboard when your home devices arrive — your Partner will fold them in automatically.
+                {aiAvailable
+                  ? 'Add these from your dashboard when your home devices arrive — your Partner will fold them in automatically.'
+                  : 'Add these from your dashboard when your home devices arrive — they fold into your trends automatically.'}
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
             </CardContent>
@@ -201,7 +211,11 @@ export default function Onboarding() {
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Utensils className="w-5 h-5" /> Log your first meal</CardTitle>
-              <CardDescription>Just describe something you ate recently — this teaches your Partner about your protein.</CardDescription>
+              <CardDescription>
+                {aiAvailable
+                  ? 'Just describe something you ate recently — this teaches your Partner about your protein.'
+                  : 'Just describe something you ate recently — this gives Dr. Larson your starting point.'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Input
@@ -233,12 +247,18 @@ export default function Onboarding() {
               </div>
               <h2 className="text-2xl font-heading font-bold">Your baseline is set!</h2>
               <p className="text-muted-foreground max-w-xs mx-auto">
-                Meet your Optimization Partner. It'll look at what you just logged and tell you what to focus on this week.
+                {aiAvailable
+                  ? "Meet your Optimization Partner. It'll look at what you just logged and tell you what to focus on this week."
+                  : 'Your dashboard is ready — your targets are already working, and everything you log builds your trends from here.'}
               </p>
             </CardContent>
             <CardFooter className="justify-center">
               <Button onClick={finish} disabled={saving} className="w-full max-w-xs bg-primary hover:bg-primary/90 text-lg py-6">
-                {saving ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Opening...</> : <>Meet your Partner <ArrowRight className="w-5 h-5 ml-2" /></>}
+                {saving
+                  ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Opening...</>
+                  : aiAvailable
+                    ? <>Meet your Partner <ArrowRight className="w-5 h-5 ml-2" /></>
+                    : <>Open my dashboard <ArrowRight className="w-5 h-5 ml-2" /></>}
               </Button>
             </CardFooter>
           </div>

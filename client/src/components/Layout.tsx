@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { useAiAvailable } from '@/hooks/use-ai-available';
 import { useTheme } from '@/components/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
+  const aiAvailable = useAiAvailable();
 
   // Fullscreen pages (no layout)
   if (location === '/login' || location === '/onboarding') {
@@ -24,7 +26,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     ...(isParticipant ? [
       { href: '/', label: 'Today', icon: LayoutDashboard },
-      { href: '/partner', label: 'Partner', icon: Sparkles },
+      // Partner tab hidden while AI is unavailable (no key pending BAA);
+      // reappears automatically once ANTHROPIC_API_KEY is set
+      ...(aiAvailable ? [{ href: '/partner', label: 'Partner', icon: Sparkles }] : []),
       { href: '/trends', label: 'Trends', icon: TrendingUp },
       { href: '/food', label: 'Food', icon: Utensils },
       { href: '/log', label: 'Day', icon: CalendarDays },

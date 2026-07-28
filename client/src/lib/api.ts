@@ -64,7 +64,7 @@ class ApiClient {
   }
 
   async getConfig() {
-    return this.request<{ pdfExtractionEnabled: boolean }>("/config");
+    return this.request<{ pdfExtractionEnabled: boolean; aiAvailable: boolean }>("/config");
   }
 
   async changePassword(newPassword: string) {
