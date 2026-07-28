@@ -20,7 +20,6 @@ import Onboarding from "@/pages/Onboarding";
 const Trends = lazy(() => import("@/pages/Trends"));
 const FoodLog = lazy(() => import("@/pages/FoodLog"));
 const DayViewPage = lazy(() => import("@/pages/DayViewPage"));
-const Messages = lazy(() => import("@/pages/Messages"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const MetabolicAge = lazy(() => import("@/pages/MetabolicAge"));
@@ -111,7 +110,6 @@ function Router() {
           <Route path="/partner">{() => <ProtectedRoute component={Partner} allowedRoles={['participant']} />}</Route>
           <Route path="/log/:date">{() => <ProtectedRoute component={DayViewPage} allowedRoles={['participant']} />}</Route>
           <Route path="/log">{() => <Redirect to={`/log/${new Date().toLocaleDateString('en-CA')}`} />}</Route>
-          <Route path="/messages">{() => <ProtectedRoute component={Messages} />}</Route>
           <Route path="/reports">{() => <ProtectedRoute component={Reports} allowedRoles={['participant']} />}</Route>
           <Route path="/metabolic-age">{() => <ProtectedRoute component={MetabolicAge} allowedRoles={['participant']} />}</Route>
           <Route path="/profile">{() => <ProtectedRoute component={Profile} allowedRoles={['participant']} />}</Route>

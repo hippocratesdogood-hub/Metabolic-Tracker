@@ -396,6 +396,11 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {/* How to reach Dr. Larson — replaces the retired in-app coach messenger */}
+      <p className="text-center text-sm text-muted-foreground" data-testid="text-contact-line">
+        Questions? Reply to any email from Dr. Larson — it comes to him directly.
+      </p>
+
       <MetricEntryModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

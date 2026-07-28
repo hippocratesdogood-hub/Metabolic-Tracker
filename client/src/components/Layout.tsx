@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, TrendingUp, Utensils, MessageSquare, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Utensils, FileText, User, Shield, Calculator, Sparkles, BarChart3, Sun, Moon, FlaskConical, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useAiAvailable } from '@/hooks/use-ai-available';
 import { useTheme } from '@/components/ThemeProvider';
@@ -33,7 +33,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/food', label: 'Food', icon: Utensils },
       { href: '/log', label: 'Day', icon: CalendarDays },
       { href: '/metabolic-age', label: 'Met Age', icon: Calculator },
-      { href: '/messages', label: 'Coach', icon: MessageSquare },
       { href: '/reports', label: 'Reports', icon: FileText },
     ] : []),
     ...(isAdminOrCoach ? [
@@ -43,7 +42,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
       { href: '/admin/prompts', label: 'Prompts', icon: Shield },
       { href: '/admin/ai-reports', label: 'AI Reports', icon: Sparkles },
-      { href: '/messages', label: 'Messages', icon: MessageSquare },
     ] : []),
   ];
 
