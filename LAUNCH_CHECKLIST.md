@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-27 · Claude Code — 3.2 done: GLP-1 muscle risk scorecard live in ScoreApp, all four acceptance tests passed, five tags landing in GHL |
+| **Last updated** | 2026-07-29 · Claude Code — 3.4 done: all three quiz CTAs repointed to join.theadaptlab.com/founding and verified. 3.3 built and live but open pending test-mode checkout (scheduled 2026-07-29 PM). Kit page v2, scorecard score-readout line added. Fix A + Fix B deployed and verified in prod (see July 28–29 log below). BAA request submitted to Anthropic 2026-07-27 |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -24,6 +24,7 @@
 
 - [ ] **0.1** BAA executed (Claude Extension preps; Chad signs as Primary Owner)
       ✓ = countersigned BAA in hand
+      → In flight: request submitted to Anthropic 2026-07-27 via the contact-sales form under the Business Associate Agreement category. Generic autoresponder only so far. **Follow up Friday 2026-07-31 if no human reply.**
 - [ ] **0.2** HIPAA-ready enablement confirmed by Anthropic for the API org — *note: 30-day retention config is correct; do NOT enable ZDR*
       ✓ = written confirmation org is HIPAA-enabled
 - [ ] **0.3** Production `ANTHROPIC_API_KEY` set in Railway from the enabled org
@@ -70,13 +71,19 @@
 - [x] **3.1** Device kit page/link (glucose+ketone monitor, scale, BP monitor, tape measure; affiliate links)
       ✓ = single URL usable in every asset — including retrofitting the device-kit link into both Founding Member welcome emails (2.4 exception)
       → Device kit page live at https://join.theadaptlab.com/kit, covering the Keto-Mojo GK+ meter, strip combo pack, OMRON Iron BP monitor, RENPHO Elis 1 scale, and a soft tape measure. Built as a single custom HTML block in a GHL funnel page rather than native builder elements. Affiliate links deferred until Amazon Associates is set up — plain product links for now; the page is structured so links can be swapped without rebuilding.
+      → **v2 live 2026-07-29:** added waist, neck, and hip measurement instructions (hip marked women-only per the Navy body-fat formula). Corrected two device-sync claims that implied the Keto-Mojo meter and RENPHO scale feed data into Metabolic-Tracker — they sync to MyMojoHealth and the RENPHO app respectively; all five metrics are entered into the app by hand.
 - [x] **3.2** ScoreApp quiz per `glp1-quiz-spec.md`: 8 Qs, weights, 3 results pages, email-before-results, risk tags → GHL
       ✓ = took quiz 3× hitting each band; tags land in GHL
       → The GLP-1 muscle risk scorecard is live at https://chad-5tf3c8bv.scoreapp.com, built in ScoreApp as a separate scorecard from the consult quiz. Eight questions, email captured before results, score 0-24 across three tiers, three custom result pages, GoHighLevel integration writing five tags. All four acceptance test cases passed 2026-07-27. CTA points at join.theadaptlab.com pending the sales page (item 3.3); repointing it is item 3.4.
+      → **Update 2026-07-29:** score readout line added under the headline on all three result pages — "You scored {Overall Percent}." followed by the band range: "Low is under 40%." / "Elevated is 40% to 74%." / "High is 75% and above." Confirmed by live completion. CTA repointing complete — see 3.4.
 - [ ] **3.3** Sales page per `glp1-sales-page.md`: mobile hero above fold, $49 primary / $129 secondary → Stripe, equipment FAQ intact, disclaimer footer
       ✓ = live at real URL; both buttons complete test checkout
-- [ ] **3.4** Quiz → sales page handoff, identical CTA from all 3 results pages
+      → Built and live at https://join.theadaptlab.com/founding as a single custom HTML block in a new GHL funnel (same pattern as the kit page). Four corrections made to the approved draft before build: (1) three-month savings figure corrected from $12 to $18 ($49 × 3 = $147 against $129); (2) "before it stands" cut from the protein-target claim — the calculated target is live for the member immediately and review is after the fact by design; (3) weight-regain claim softened from "the most common reason" to "a reason"; (4) `.badge` font-size raised from 12px to 14px (component spec still says 12px — see design-system follow-up in the July 28–29 log).
+      → **Acceptance criterion NOT yet met:** no test-mode checkout has been completed from this page. The CTAs were click-verified to reach join.theadaptlab.com, but 2.1's checkout verification predates this page. A Stripe test-mode purchase from /founding is scheduled for 2026-07-29 PM.
+      → **Intentional divergence from the criterion:** the line "$49 primary / $129 secondary → Stripe" and "both buttons complete test checkout" assumes two buttons pointing at two destinations. The page deliberately ships one CTA repeated three times, because both plans live on a single GHL order form where the member picks — two buttons landing on one form and then asking again is worse UX. The unchecked criterion is not an oversight; read "both buttons" as "a test checkout of each plan through the single CTA's order form."
+- [x] **3.4** Quiz → sales page handoff, identical CTA from all 3 results pages
       ✓ = click-through verified from each band
+      → All three result-page CTAs now point to https://join.theadaptlab.com/founding. All three bands run end to end and verified, including on mobile. (2026-07-29)
 - [ ] **3.5** Short links + per-channel UTMs (yt/ig/li/x/email) so list-vs-cold conversion is separable
       ✓ = each link resolves and registers source
 - [ ] **3.6** Seat counter: live "spots remaining" or manual updates at 40/45/48. Scarcity must be REAL
@@ -111,6 +118,23 @@
 - [ ] **6.4** Weekly ops rhythm (30 min, same day weekly): metrics sheet update · activity CSV export→GHL import · 1-line personal emails to day-7+ silent members · cancellation intercepts <24h · log qualitative feedback
 - [ ] **6.5** Ad-spend decision (end of wk 2): if seats lag, $500–1,500 behind best-performing reel. Not before
 - [ ] **6.6** **WEEK 8 — THE VERDICT:** M1→M2 retention vs thresholds (≥70% green / 50–70% yellow / <50% kill) → bring numbers to Claude → scale B2C / fix offer / pivot to licensing
+
+---
+
+## JULY 28–29 — APP FIXES & VERIFICATION LOG
+
+App-side work from the July 28 onboarding verification session (allowed under Standing Rule 1 — first-meal onboarding is a paying member's core journey).
+
+- [x] **Fix A** (`7b015ff`) — onboarding first meal runs the real analysis pipeline. Pushed and deployed. Verified in production: the onboarding first-meal entry lands with real macros in Today's Nutrition, and the Recent Meals card shows a numeric quality score, macro chips, and item pills.
+- [x] **Fix B** (`7f57820`) — UTC timestamp handling made explicit, not accidental. Pushed and deployed; `TZ=UTC` confirmed active in the running container.
+- [x] **Recent Meals discrepancy (July 28)** — closed, but **not by reproducing it**. With Fix A in place the entry rendered both before and after a hard refresh. This neither confirms nor refutes the five-minute staleTime theory, because Fix A produces a structurally different row than the macro-less parent that failed on July 28.
+
+**Open follow-ups:**
+
+- [ ] **Verify Fix A's fallback path:** confirm it logs when it fires, and confirm a macro-less parent entry actually renders in Recent Meals. This is now the only route by which the July 28 failure mode can occur.
+- [ ] **Behavioral timezone check:** log a meal after 5 PM Pacific and confirm it attaches to the correct local day. Configuration (`TZ=UTC`) is confirmed; behavior is not. Do not mark done until the after-5-PM test passes.
+- [ ] **Delete plus-addressed test records** created during verification — from the app database, GHL, and ScoreApp.
+- [ ] **Design system — Recommended badge size:** the component spec puts the badge at 12px, below both the 14px accessibility floor and the 13px eyebrow-label exception. Needs resolving in the canonical doc (`~/Documents/EA/AIS-OS/references/design-system.md`). The sales page (3.3) shipped at 14px.
 
 ---
 
