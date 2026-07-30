@@ -86,8 +86,10 @@
       → All three result-page CTAs now point to https://join.theadaptlab.com/founding. All three bands run end to end and verified, including on mobile. (2026-07-29)
 - [ ] **3.5** Short links + per-channel UTMs (yt/ig/li/x/email) so list-vs-cold conversion is separable
       ✓ = each link resolves and registers source
-- [ ] **3.6** Seat counter: live "spots remaining" or manual updates at 40/45/48. Scarcity must be REAL
+- [x] **3.6** Seat counter: live "spots remaining" or manual updates at 40/45/48. Scarcity must be REAL
       ✓ = mechanism chosen and working
+      → **Mechanism chosen 2026-07-29: manual updates, not a live counter.** At fifty seats this is roughly a dozen updates over the program's life, and the failure modes are asymmetric — a live counter that lags or breaks publishes a false number automatically, while a manual one fails safe as long as it's only ever revised downward. Source of truth is the count of GHL contacts tagged `pilot-member`. Cancellations do not free a seat: fifty is the number of people admitted at the founding rate. The remaining count is never revised upward, because a scarcity number that rises is the clearest signal that the scarcity is manufactured.
+      → Note: the sales page's current wording states the total rather than the remaining count, so it stays literally true at any number sold — Standing Rule 2 is satisfied by honouring fifty and actually retiring the rate.
 
 ## PHASE 4 — GHL sequences & tracking
 
@@ -132,7 +134,8 @@ App-side work from the July 28 onboarding verification session (allowed under St
 **Open follow-ups:**
 
 - [ ] **Verify Fix A's fallback path:** confirm it logs when it fires, and confirm a macro-less parent entry actually renders in Recent Meals. This is now the only route by which the July 28 failure mode can occur.
-- [ ] **Behavioral timezone check:** log a meal after 5 PM Pacific and confirm it attaches to the correct local day. Configuration (`TZ=UTC`) is confirmed; behavior is not. Do not mark done until the after-5-PM test passes.
+- [x] **Behavioral timezone check:** log a meal after 5 PM Pacific and confirm it attaches to the correct local day. Configuration (`TZ=UTC`) is confirmed; behavior is not. Do not mark done until the after-5-PM test passes.
+      → **Passed 2026-07-29:** an evening meal logged as `drchad+founding1` attached to the correct local day.
 - [ ] **Delete plus-addressed test records.** Done 2026-07-29: GHL contacts (`f0729a`, `Founding One`, `score1`, `test1`–`test4`, `phone1`) and all ScoreApp test leads deleted. Remaining: the `drchad+founding1` app user, held for the behavioral timezone check and to be deleted once it passes, plus confirming the `drchad+f0729a` app user row is gone. Stripe test-mode transactions and subscriptions need no cleanup — separate ledger from live.
 - [ ] **Plan tagging asymmetry:** checkout tagging distinguishes plans via `founding-3mo`, but there is no positive monthly equivalent, so any sequence targeting monthly members needs a negative condition. Consider adding a `founding-monthly` tag before the Phase 4 sequences are built.
 - [ ] **Design system — Recommended badge size:** the component spec puts the badge at 12px, below both the 14px accessibility floor and the 13px eyebrow-label exception. Needs resolving in the canonical doc (`~/Documents/EA/AIS-OS/references/design-system.md`). The sales page (3.3) shipped at 14px.
