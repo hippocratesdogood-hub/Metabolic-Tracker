@@ -848,6 +848,17 @@ export async function registerRoutes(
   // Food routes (PHI data - audit all access)
   app.post("/api/food", requireAuth, auditCreate("FOOD_ENTRY"), async (req, res) => {
     try {
+      // Sent by the onboarding first-meal fallback when analysis failed and
+      // the entry is being saved bare (no macros, no child items). Logged so
+      // degraded first meals are visible server-side. Truncated to 200 chars
+      // so an error message that echoes request text can leak at most a
+      // fragment into persisted logs; the field is stripped by the Zod parse
+      // below and never stored.
+      if (req.body.analysisFallbackReason) {
+        const fallbackReason = String(req.body.analysisFallbackReason).slice(0, 200);
+        console.error(`[Food Fallback] Unanalyzed entry saved for user ${req.user!.id}: ${fallbackReason}`);
+      }
+
       const timestamp = req.body.timestamp ? new Date(req.body.timestamp) : new Date();
 
       // Server-side timestamp validation

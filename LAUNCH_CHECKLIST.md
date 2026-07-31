@@ -141,6 +141,7 @@ App-side work from the July 28 onboarding verification session (allowed under St
 - [x] **Fix A** (`7b015ff`) — onboarding first meal runs the real analysis pipeline. Pushed and deployed. Verified in production: the onboarding first-meal entry lands with real macros in Today's Nutrition, and the Recent Meals card shows a numeric quality score, macro chips, and item pills.
 - [x] **Fix B** (`7f57820`) — UTC timestamp handling made explicit, not accidental. Pushed and deployed; `TZ=UTC` confirmed active in the running container.
 - [x] **Recent Meals discrepancy (July 28)** — closed, but **not by reproducing it**. With Fix A in place the entry rendered both before and after a hard refresh. This neither confirms nor refutes the five-minute staleTime theory, because Fix A produces a structurally different row than the macro-less parent that failed on July 28.
+      → **Update 2026-07-30 — staleTime theory dead:** `git log -S staleTime` shows the `['food']` query has had `staleTime: 0` (refetch on mount) since commit `6b1eee7`, 2026-02-23 — five months before the failure. The July 28 non-render therefore had another, still-unidentified cause. Mitigations regardless of cause: the fallback row shape now has a rendering regression test (`client/src/pages/FoodLog.recentMeals.test.tsx` — macro-less parents render with a `--` score), and the fallback logs server-side (`[Food Fallback]`) whenever it fires, so a recurrence would be visible.
 
 **Open follow-ups:**
 

@@ -112,15 +112,24 @@ export default function Onboarding() {
             notes: analysis.notes,
             inputType: 'text',
           });
-        } catch {
+        } catch (analysisErr: any) {
           // Analysis unavailable (503 with Nutritionix also unconfigured,
           // consent missing, or empty parse) — save unanalyzed so onboarding
           // never blocks. Degrades to the prior behavior; the member can
-          // edit the entry from the Food tab later.
+          // edit the entry from the Food tab later. The reason rides along
+          // so the server can log that a first meal came through unanalyzed.
+          // Prefer status/code over the raw message: server error messages
+          // can echo request text, and this string ends up in deploy logs
+          // (the server additionally truncates it to 200 chars).
+          const fallbackReason =
+            typeof analysisErr?.status === 'number'
+              ? `HTTP ${analysisErr.status}${analysisErr?.code ? ` ${analysisErr.code}` : ''}`
+              : `${analysisErr?.name || 'Error'}: ${analysisErr?.message || 'unknown analysis failure'}`;
           await api.createFoodEntry({
             inputType: 'text',
             mealType: 'Breakfast',
             rawText: text,
+            analysisFallbackReason: fallbackReason,
           });
         }
       }

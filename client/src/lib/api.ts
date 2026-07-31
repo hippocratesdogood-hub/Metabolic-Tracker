@@ -128,6 +128,7 @@ class ApiClient {
     aiOutputJson?: any;
     userCorrectionsJson?: any;
     tags?: any;
+    analysisFallbackReason?: string;
   }) {
     return this.request<FoodEntry>("/food", {
       method: "POST",
