@@ -706,6 +706,48 @@ export default function FoodLog() {
         <p className="text-muted-foreground">{aiAvailable ? 'Snap a photo or describe your meal.' : 'Describe your meal.'}</p>
       </div>
 
+      {foodStreak && (
+        <Card className="border-none shadow-sm bg-gradient-to-r from-orange-50/50 to-amber-50/50 dark:from-orange-950/30 dark:to-amber-950/30">
+          <CardContent className="px-3 py-2">
+            <div className="flex flex-wrap items-center gap-y-2">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                <span className="font-medium text-sm whitespace-nowrap">Meal Streak</span>
+                {foodStreak.streak > 0 && (
+                  <span className="text-sm font-medium text-orange-700 dark:text-orange-400">{foodStreak.streak}</span>
+                )}
+              </div>
+              <div className="order-3 flex w-full justify-between sm:order-none sm:mx-2 sm:flex-1 sm:justify-center sm:gap-1 lg:mx-4 lg:gap-2">
+                {foodStreak.weekDays.map((day) => {
+                  // Use local date (YYYY-MM-DD) to match server's timezone-aware dates
+                  const isToday = day.date === new Date().toLocaleDateString("en-CA");
+                  return (
+                    <div key={day.date} className="relative">
+                      <div className={cn(
+                        "w-5 h-5 rounded-full flex items-center justify-center text-sm font-medium transition-colors",
+                        day.logged ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                        isToday && "ring-2 ring-primary/30"
+                      )}>
+                        {day.dayLabel}
+                      </div>
+                      {day.logged && (
+                        <CheckCircle2 className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-background text-primary" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <span className="ml-auto text-sm text-muted-foreground whitespace-nowrap">
+                {foodStreak.daysLoggedThisWeek}/7 this week
+              </span>
+              <p className="order-4 w-full text-sm text-muted-foreground">
+                {foodStreak.message}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {macroProgress && (
         <Card className="border-none shadow-md bg-gradient-to-r from-primary/5 to-secondary/5">
           <CardContent className="p-4">
@@ -779,46 +821,6 @@ export default function FoodLog() {
             {!macroProgress.target && (
               <p className="text-xs text-muted-foreground mt-3 italic">Set macro targets in your profile to see progress bars.</p>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {foodStreak && (
-        <Card className="border-none shadow-sm bg-gradient-to-r from-orange-50/50 to-amber-50/50 dark:from-orange-950/30 dark:to-amber-950/30">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-500" />
-                <span className="font-medium text-sm">Meal Streak</span>
-                {foodStreak.streak > 0 && (
-                  <span className="text-xs font-bold text-orange-600">{foodStreak.streak}</span>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {foodStreak.daysLoggedThisWeek}/7 this week
-              </span>
-            </div>
-            <div className="flex justify-between px-2">
-              {foodStreak.weekDays.map((day) => {
-                // Use local date (YYYY-MM-DD) to match server's timezone-aware dates
-                const isToday = day.date === new Date().toLocaleDateString("en-CA");
-                return (
-                  <div key={day.date} className="flex flex-col items-center gap-1.5">
-                    <span className="text-[10px] text-muted-foreground font-medium">{day.dayLabel}</span>
-                    <div className={cn(
-                      "w-7 h-7 rounded-full flex items-center justify-center transition-colors",
-                      day.logged ? "bg-primary" : "bg-muted",
-                      isToday && "ring-2 ring-primary/30"
-                    )}>
-                      {day.logged && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground mt-3 text-center italic">
-              {foodStreak.message}
-            </p>
           </CardContent>
         </Card>
       )}

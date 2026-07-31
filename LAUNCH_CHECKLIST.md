@@ -158,6 +158,7 @@ App-side work from the July 28 onboarding verification session (allowed under St
 
 ## STANDING RULES
 1. Dev scope FROZEN — nothing beyond `SPRINT_NOTES.md` triage unless a paying member's core journey breaks
+   - **Waiver 2026-07-30 (this change only):** Meal Streak card layout on the Food Log page — moved above Today's Progress and compacted (presentational only; no logic/query/data changes). Rationale: reshaping a daily-use screen is cheapest with zero members on it and gets more expensive once the founding cohort arrives — the window closes at launch. The freeze remains in force for everything else.
 2. Real scarcity, real numbers — seat counts and "founding rate retired" must be literally true
 3. One link per asset — everything → quiz (launch emails: quiz primary, sales page secondary)
 4. Warm-list conversion under ~3–4% = offer problem — flag to Claude before any ad spend
