@@ -398,6 +398,9 @@ Recorded so a later reader knows these were considered rather than overlooked.
    questions, several of which assume they are already losing weight. Accepted
    for v1 rather than branched: they get tagged `glp1-prestart` and the noise
    is tolerated. Revisit after fifty completions.
+   *Superseded 2026-08-01:* moved earlier — fifty completions only happen
+   post-launch. Now tracked as LAUNCH_CHECKLIST.md item 5.4 (pre-starter
+   results content with a consult CTA), gated before launch.
 
 2. **Weighting.** The relative weights in §4 were a proposal built from the
    clinical model and are confirmed as written. Q3 and Q4 carry the most at

@@ -121,7 +121,10 @@
 - [ ] **5.2** DRESS REHEARSAL: real live-mode purchase (own card) → tags → provisioning → welcome email → first login → wizard → baseline → Partner opens w/ first question → Day-0 messages arrive
       ✓ = entire member journey, zero manual intervention
 - [ ] **5.3** Support readiness: standard reply for clinical questions from non-patients drafted
-- [ ] **5.4** **GO/NO-GO** — Phases 0–5 all green
+- [ ] **5.4** Pre-starter results path: quiz completions choosing Q1 "Not currently, but I'm considering it" (tagged `glp1-prestart`) currently answer all eight questions — several of which assume they're already losing weight on the medication — then land on a normal results page with a score and risk band that aren't true of them, and a CTA for a $49/mo program built around a drug they aren't taking. Fix: pre-starters get their own results content with a consult-funnel CTA instead of the founding-member sales page — someone considering a GLP-1 is a good lead for the practice, and a consult is a better offer than "come back later."
+      ✓ = a quiz completion selecting "Not currently, but I'm considering it" lands on pre-starter content with a consult CTA, and does not display a risk band framed as a current risk
+      → Original plan (`glp1-quiz-spec.md` §10, decision 1) was to accept the noise for v1 and revisit after fifty completions; moved into Phase 5 because fifty completions only happen post-launch.
+- [ ] **5.5** **GO/NO-GO** — Phases 0–5 all green
 
 ## PHASE 6 — Launch
 
