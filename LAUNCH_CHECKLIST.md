@@ -16,7 +16,7 @@
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
-**Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
+**Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
 ---
 
@@ -106,9 +106,11 @@
 
 - [ ] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `glp1-risk-high/elevated/low`, `glp1-quiz-complete`, `glp1-prestart`
       (`glp1-` prefix on quiz tags avoids collision with the existing consult-funnel quiz, which writes into the same GHL account)
+      → Full architecture documented 2026-08-01 in `glp1-tags.md` — nine tags in three groups (adds `founding-monthly` and `src-list` to the list above), with application timing, Sunday cadence, and the at-risk add/remove rule
 - [ ] **4.2** Sequence 1 (Onboarding, Days 0–7) with conditional branches
 - [ ] **4.3** Sequence 2 (Weekly rhythm): Monday SMS + Thursday rotating emails
-- [ ] **4.4** Sequence 3 (Re-engagement): 5-day-inactivity trigger; fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
+- [ ] **4.4** Sequence 3 (Re-engagement): `at-risk` trigger (fewer than 2 days logged in the past week); fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
+      → Trigger definition changed 2026-08-01 from the original "5-day-inactivity" wording — deliberate, not drift (see `glp1-tags.md`). Someone silent a full week has usually already decided to leave; someone logging once a week is drifting but still reachable.
 - [ ] **4.5** Sequence 4 (Pre-renewal): renewal −5 email + −1 SMS; `founding-3mo` variant at ~day 85
       ✓ (4.1–4.5) = test contact fires every message in every sequence correctly
 - [ ] **4.6** Metrics sheet: quiz completions, quiz→paid % per channel, day-7 activation %, wk-4 engagement %, M1→M2 retention % — with green/yellow/kill thresholds beside each
