@@ -1,7 +1,7 @@
 # GLP-1 Pilot — GHL Tag Architecture
 
-Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Nine tags in
-three groups, defined by when and how they are applied. The `glp1-` prefix on
+Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Ten tags in
+four groups, defined by when and how they are applied. The `glp1-` prefix on
 the quiz tags avoids collision with the existing consult-funnel quiz, which
 writes into the same GHL account.
 
@@ -22,7 +22,13 @@ writes into the same GHL account.
 | `glp1-prestart` | Chose "Not currently, but I'm considering it" on Q1. Gets a risk tag too. See checklist 5.4 (pre-starter results path). |
 | `src-list` | Clicked the trigger link in the launch email ("Founding — list CTA" workflow). Marks list-sourced rather than cold. |
 
-## Group 3 — Applied by hand each Sunday from the CSV export
+## Group 3 — Applied automatically during onboarding (engagement tracking)
+
+| Tag | Who gets it |
+|---|---|
+| `kit-viewed` | Clicked the device-kit page trigger link in an onboarding-sequence email (Sequence 1, checklist 4.2). Applied automatically by the separate "Kit link clicked" workflow. A record of who opened the kit page — the planned day-2 conditional branch on this tag was dropped (GHL branches cannot rejoin; see checklist 4.2), so nothing currently branches on it. |
+
+## Group 4 — Applied by hand each Sunday from the CSV export
 
 Source: weekly run of `scripts/export-member-activity` (see checklist 4.4).
 

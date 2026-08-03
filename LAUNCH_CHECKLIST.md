@@ -8,13 +8,13 @@
 
 | | |
 |---|---|
-| **Current phase** | 3 — Funnel build (Phase 2 complete 2026-07-22) |
+| **Current phase** | 4 — GHL sequences & tracking (Phase 3 complete 2026-08-03) |
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-07-29 · Claude Code — 3.3 + 3.4 done: sales page live at join.theadaptlab.com/founding, both plans through test-mode checkout end to end; all three quiz CTAs repointed and verified. Kit page v2, scorecard score-readout line added. Fix A + Fix B deployed and verified in prod (see July 28–29 log below). BAA request submitted to Anthropic 2026-07-27 |
+| **Last updated** | 2026-08-03 · Claude Code — 3.5 closed (`src-list` fired in the Phase 4 email test) → **Phase 3 complete**. 4.2 Sequence 1 built, tested, and published in GHL (day-2 conditional branch dropped — GHL branches can't rejoin; recorded at 4.2). New `kit-viewed` tag added to `glp1-tags.md`. BAA request submitted to Anthropic 2026-07-27 |
 
-**Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ⬜ · 4 ⬜ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
@@ -84,8 +84,9 @@
 - [x] **3.4** Quiz → sales page handoff, identical CTA from all 3 results pages
       ✓ = click-through verified from each band
       → All three result-page CTAs now point to https://join.theadaptlab.com/founding. All three bands run end to end and verified, including on mobile. (2026-07-29)
-- [ ] **3.5** Short links + per-channel UTMs (yt/ig/li/x/email) so list-vs-cold conversion is separable
+- [x] **3.5** Short links + per-channel UTMs (yt/ig/li/x/email) so list-vs-cold conversion is separable
       ✓ = each link resolves and registers source
+      → **Done 2026-08-03:** the last remaining condition (`src-list`) verified during the Phase 4 email test — a test contact received an email containing the "Founding — list CTA" trigger-link merge field, clicked it, and the `src-list` tag landed on the contact. All five channel links plus the list path are now verified end to end. **Phase 3 complete.**
       → **Progress 2026-07-29 (built and verified in GHL + ScoreApp, outside the repo):** the scorecard's GoHighLevel integration now carries three Tracking mappings — utm source, utm medium, utm campaign — each mapped to the matching pre-existing GHL contact custom field (`utm_source`, `utm_medium`, `utm_campaign`). Verified end to end: a live scorecard completion with `utm_source=youtube&utm_medium=video&utm_campaign=founding` produced a GHL contact whose fields read youtube / video / founding, alongside the correct risk-band tags. Two GHL URL redirects created on join.theadaptlab.com: `/yt` and `/pod`, both 301, pointing at the scorecard with youtube and podcast parameters respectively; `/yt` click-tested, parameters arrive intact. Instagram, LinkedIn and X use full scorecard URLs with their own `utm_source` values — deliberately unshortened since those placements are clickable. The list path gets positive identification rather than relying on the absence of UTMs: GHL trigger link "Founding — list CTA" points at join.theadaptlab.com/founding, merge field `{{trigger_link.A0TnsnX2RZ8Q1uk3mnlt}}`, with a published workflow that tags a clicker `src-list`.
       → **Update 2026-07-29:** all five channel links are now click-tested and their parameters arrive intact — `/yt` and `/pod` through the GHL redirects, and the Instagram, LinkedIn and X scorecard URLs directly. The five links, recorded so they never get retyped from memory:
         - YouTube: https://join.theadaptlab.com/yt
@@ -106,8 +107,10 @@
 
 - [ ] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `glp1-risk-high/elevated/low`, `glp1-quiz-complete`, `glp1-prestart`
       (`glp1-` prefix on quiz tags avoids collision with the existing consult-funnel quiz, which writes into the same GHL account)
-      → Full architecture documented 2026-08-01 in `glp1-tags.md` — nine tags in three groups (adds `founding-monthly` and `src-list` to the list above), with application timing, Sunday cadence, and the at-risk add/remove rule
+      → Full architecture documented 2026-08-01 in `glp1-tags.md` — now ten tags in four groups (adds `founding-monthly`, `src-list`, and `kit-viewed` to the list above), with application timing, Sunday cadence, and the at-risk add/remove rule
 - [ ] **4.2** Sequence 1 (Onboarding, Days 0–7) with conditional branches
+      → **Built, tested, and published 2026-08-03** (not checked — 4.1–4.5 share one acceptance criterion and the other three sequences aren't built). Five emails on days 1, 2, 4, 6, 7, triggered by `pilot-member`, wait step before each, 9am–5pm send window across all seven days. Tested by cloning the workflow, shortening the waits, and running a test contact through: all five emails fired correctly, the kit-page trigger link rendered and landed, and clicking it applied `kit-viewed` via the separate "Kit link clicked" workflow.
+      → **Planned day-2 conditional branch dropped — deliberate.** GHL condition branches cannot rejoin, so keeping it would have meant duplicating days 4, 6, and 7 on both paths. One day-2 email now goes to everyone. The `kit-viewed` tag and its workflow remain in place as a record of who opened the kit page (see `glp1-tags.md`).
 - [ ] **4.3** Sequence 2 (Weekly rhythm): Monday SMS + Thursday rotating emails
 - [ ] **4.4** Sequence 3 (Re-engagement): `at-risk` trigger (fewer than 2 days logged in the past week); fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
       → Trigger definition changed 2026-08-01 from the original "5-day-inactivity" wording — deliberate, not drift (see `glp1-tags.md`). Someone silent a full week has usually already decided to leave; someone logging once a week is drifting but still reachable.
