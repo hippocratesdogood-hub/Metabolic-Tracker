@@ -12,7 +12,7 @@
 | **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-03 · Claude Code — 3.5 closed (`src-list` fired in the Phase 4 email test) → **Phase 3 complete**. 4.2 Sequence 1 built, tested, and published in GHL (day-2 conditional branch dropped — GHL branches can't rejoin; recorded at 4.2). New `kit-viewed` tag added to `glp1-tags.md`. BAA request submitted to Anthropic 2026-07-27 |
+| **Last updated** | 2026-08-03 · Claude Code — 4.1–4.5 done: all four sequences built, tested end to end (cloned-workflow method; 4b's `sms-ok` branch verified both paths from execution logs), and published; design departures recorded at 4.2–4.5. New `onboarded` tag (Sequence 1 → Sequence 2 handoff) — `glp1-tags.md` now twelve tags. Remaining in Phase 4: 4.6 metrics sheet. BAA request submitted to Anthropic 2026-07-27 |
 
 **Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
@@ -105,20 +105,25 @@
 
 ## PHASE 4 — GHL sequences & tracking
 
-- [ ] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `glp1-risk-high/elevated/low`, `glp1-quiz-complete`, `glp1-prestart`
+- [x] **4.1** Tag architecture: `pilot-member`, `founding-3mo`, `activated`, `at-risk`, `glp1-risk-high/elevated/low`, `glp1-quiz-complete`, `glp1-prestart`
       (`glp1-` prefix on quiz tags avoids collision with the existing consult-funnel quiz, which writes into the same GHL account)
-      → Full architecture documented 2026-08-01 in `glp1-tags.md` — now eleven tags in four groups (adds `founding-monthly`, `src-list`, `kit-viewed`, and `sms-ok` to the list above), with application timing, Sunday cadence, and the at-risk add/remove rule
-- [ ] **4.2** Sequence 1 (Onboarding, Days 0–7) with conditional branches
-      → **Built, tested, and published 2026-08-03** (not checked — 4.1–4.5 share one acceptance criterion and the other three sequences aren't built). Five emails on days 1, 2, 4, 6, 7, triggered by `pilot-member`, wait step before each, 9am–5pm send window across all seven days. Tested by cloning the workflow, shortening the waits, and running a test contact through: all five emails fired correctly, the kit-page trigger link rendered and landed, and clicking it applied `kit-viewed` via the separate "Kit link clicked" workflow.
+      → Full architecture documented 2026-08-01 in `glp1-tags.md` — now twelve tags in four groups (adds `founding-monthly`, `src-list`, `kit-viewed`, `sms-ok`, and `onboarded` to the list above), with application timing, Sunday cadence, and the at-risk add/remove rule
+- [x] **4.2** Sequence 1 (Onboarding, Days 0–7) with conditional branches
+      → **Built, tested, and published 2026-08-03.** Five emails on days 1, 2, 4, 6, 7, triggered by `pilot-member`, wait step before each, 9am–5pm send window across all seven days. Tested by cloning the workflow, shortening the waits, and running a test contact through: all five emails fired correctly, the kit-page trigger link rendered and landed, and clicking it applied `kit-viewed` via the separate "Kit link clicked" workflow.
       → **Planned day-2 conditional branch dropped — deliberate.** GHL condition branches cannot rejoin, so keeping it would have meant duplicating days 4, 6, and 7 on both paths. One day-2 email now goes to everyone. The `kit-viewed` tag and its workflow remain in place as a record of who opened the kit page (see `glp1-tags.md`).
-- [ ] **4.3** Sequence 2 (Weekly rhythm): Monday SMS + Thursday rotating emails
+      → **Update 2026-08-03:** final action now applies `onboarded` — the trigger for Sequence 2 (see 4.3 and `glp1-tags.md`).
+- [x] **4.3** Sequence 2 (Weekly rhythm): Monday SMS + Thursday rotating emails
       → Monday message: the email goes to everyone automatically; **the text is NOT automated.** GHL condition branches can't rejoin, so branching on `sms-ok` at the start of an eight-week chain would mean building everything after the split twice. Instead the Monday text is sent by hand as a bulk message to the `sms-ok` segment as part of the weekly routine. SMS consent is optional by design (collected post-purchase via the day 7 opt-in link; see `glp1-tags.md`) and some members will never opt in.
-- [ ] **4.4** Sequence 3 (Re-engagement): `at-risk` trigger (fewer than 2 days logged in the past week); fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
+      → **Built and published 2026-08-03.** Trigger is the new `onboarded` tag, applied as the final action of Sequence 1. Schedule: eight Monday messages rotating through three variants, plus four Thursday teaching emails at weeks 2, 4, 6, and 8. Every wait uses the Advance window's day checkboxes, so Monday messages land on Mondays regardless of when the member enrolled.
+- [x] **4.4** Sequence 3 (Re-engagement): `at-risk` trigger (fewer than 2 days logged in the past week); fed by weekly CSV from `scripts/export-member-activity` → **no new app plumbing**
       → Trigger definition changed 2026-08-01 from the original "5-day-inactivity" wording — deliberate, not drift (see `glp1-tags.md`). Someone silent a full week has usually already decided to leave; someone logging once a week is drifting but still reachable.
-- [ ] **4.5** Sequence 4 (Pre-renewal): renewal −5 email + −1 SMS; `founding-3mo` variant at ~day 85
+      → **Built and published 2026-08-03 — a single email, not a drip (deliberate).** Activity data reaches GHL only weekly, so a follow-up couldn't be conditioned on whether the member returned. Re-entry is off: `at-risk` is added and removed weekly, and a sporadic member would otherwise receive the email every week. Waits two days after the tag so it lands Tuesday rather than colliding with Sequence 2's Monday message.
+- [x] **4.5** Sequence 4 (Pre-renewal): renewal −5 email + −1 SMS; `founding-3mo` variant at ~day 85
       → The −1 SMS **is** automated, unlike Sequence 2's Monday text: it branches on `sms-ok`, with an email fallback for contacts without the tag. Automation is right here for two reasons — the branch sits near the end of a short sequence, so it duplicates little or nothing; and a manual bulk send can't work because members renew on rolling dates rather than all on the same day.
       → **General rule — branch late, not early.** A condition near the end of a sequence is cheap; one near the start duplicates everything after it (GHL branches can't rejoin). This is why 4.2's day-2 branch was dropped and Sequence 2's Monday text is manual, while 4.5's −1 branch is fine.
+      → **Built and published 2026-08-03 — two workflows, not one (deliberate), split by plan tag** (`founding-monthly` / `founding-3mo`), because a single workflow would have branched at the very start (see the branch-late rule above). Monthly (4a): fires before the first renewal only; no day-before text. Three-month (4b): email at day 85, then branches on `sms-ok` at day 89 for the text with an email fallback. Both pre-renewal emails link to the Stripe customer portal for self-serve cancellation — portal activated in live mode, set to cancel at end of billing period.
       ✓ (4.1–4.5) = test contact fires every message in every sequence correctly
+      → **Criterion met 2026-08-03.** Method: each sequence cloned, the clone's trigger filter changed to a throwaway tag, every wait shortened to 2 minutes with the Advance window switched off, test contacts run through. Every message in every sequence fired correctly, including 4b's condition branch, verified from the execution logs — a contact tagged `sms-ok` took the Texts OK path and received the SMS; one without it took the None path and received the email fallback. All test workflows, contacts, and tags deleted afterwards; re-entry off on all four originals.
 - [ ] **4.6** Metrics sheet: quiz completions, quiz→paid % per channel, day-7 activation %, wk-4 engagement %, M1→M2 retention % — with green/yellow/kill thresholds beside each
       ✓ = sheet exists with formulas; weekly source for each number known
 
@@ -128,6 +133,7 @@
       ✓ = all six pass in production; no 400s from covered-org feature enforcement
 - [ ] **5.2** DRESS REHEARSAL: real live-mode purchase (own card) → tags → provisioning → welcome email → first login → wizard → baseline → Partner opens w/ first question → Day-0 messages arrive
       ✓ = entire member journey, zero manual intervention
+      → **Buy on the MONTHLY plan specifically.** `founding-monthly` has never been observed landing on a real buyer (`founding-3mo` was already seen in the 2026-07-29 test-mode purchases). Buying monthly closes that verification and exercises Sequence 4a's trigger for real at the same time. Recorded here so the choice isn't left to chance on the day.
 - [ ] **5.3** Support readiness: standard reply for clinical questions from non-patients drafted
 - [ ] **5.4** Pre-starter results path: quiz completions choosing Q1 "Not currently, but I'm considering it" (tagged `glp1-prestart`) currently answer all eight questions — several of which assume they're already losing weight on the medication — then land on a normal results page with a score and risk band that aren't true of them, and a CTA for a $49/mo program built around a drug they aren't taking. Fix: pre-starters get their own results content with a consult-funnel CTA instead of the founding-member sales page — someone considering a GLP-1 is a good lead for the practice, and a consult is a better offer than "come back later."
       ✓ = a quiz completion selecting "Not currently, but I'm considering it" lands on pre-starter content with a consult CTA, and does not display a risk band framed as a current risk

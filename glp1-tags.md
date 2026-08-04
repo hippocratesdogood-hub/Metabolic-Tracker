@@ -1,6 +1,6 @@
 # GLP-1 Pilot — GHL Tag Architecture
 
-Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Eleven tags in
+Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Twelve tags in
 four groups, defined by when and how they are applied. The `glp1-` prefix on
 the quiz tags avoids collision with the existing consult-funnel quiz, which
 writes into the same GHL account.
@@ -28,6 +28,7 @@ writes into the same GHL account.
 |---|---|
 | `kit-viewed` | Clicked the device-kit page trigger link in an onboarding-sequence email (Sequence 1, checklist 4.2). Applied automatically by the separate "Kit link clicked" workflow. A record of who opened the kit page — the planned day-2 conditional branch on this tag was dropped (GHL branches cannot rejoin; see checklist 4.2), so nothing currently branches on it. |
 | `sms-ok` | Clicked the SMS opt-in trigger link (points at join.theadaptlab.com/texts). Applied automatically by the "SMS opt-in — tag sms-ok" workflow. The record that someone consented to text check-ins. Consumed two ways: Sequence 2's Monday text is a **manual bulk send** to this segment as part of the weekly routine (the email goes to everyone automatically; see checklist 4.3), and Sequence 4's renewal −1 message **branches automatically** on this tag with an email fallback (checklist 4.5). |
+| `onboarded` | Applied automatically as the final action of Sequence 1 (checklist 4.2), marking completion of the onboarding sequence. Consumed as the trigger for Sequence 2 (checklist 4.3) — the handoff from onboarding into the weekly rhythm. |
 
 **Why `sms-ok` exists — the reasoning matters more than the tag.** The order
 form collects a phone number but carries no consent language, and GoHighLevel's
