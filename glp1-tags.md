@@ -72,3 +72,20 @@ routine.
   and the re-engagement sequence fires at people who came back weeks ago.
 - The two hand-applied tags (`activated`, `at-risk`) are the only ones that can
   go stale if a week is skipped.
+
+### Sunday procedure (stock GHL features — both halves tested 2026-08-04 with throwaway contacts)
+
+1. **Remove last week's `at-risk`:** filter contacts by the `at-risk` tag →
+   select all → More → Remove tags → name `at-risk`.
+   ⚠️ **Caution:** bulk tag removal runs against whatever list is currently
+   filtered, in an account holding 547 mostly real patient records. Confirm
+   the contact count before acting, and never use the "Remove all tags"
+   option in that modal.
+2. **Import the week's CSV** and tick "Add tags to imported contacts" on the
+   final **Verify** screen. Two easy-to-miss details: the tagging option
+   appears only on Verify (not on Upload or Map), and Start import is gated
+   behind a consent checkbox that has to be ticked by hand every time.
+
+The full weekly routine has three hand-run steps (see checklist 6.4): this
+Sunday tagging pass, the Monday bulk text to the `sms-ok` segment, and a check
+of Stripe cancellations.
