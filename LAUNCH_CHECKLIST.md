@@ -9,26 +9,31 @@
 | | |
 |---|---|
 | **Current phase** | 4 — GHL sequences & tracking (Phase 3 complete 2026-08-03) |
-| **Blocked on (external)** | BAA execution + HIPAA-ready enablement (Anthropic sales) |
+| **Blocked on (external)** | Nothing — launch is not externally blocked. BAA path redirected 2026-08-05 to AWS/Bedrock for the post-pilot Partner build (see Phase 0) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-05 · Claude Code — 5.4 done: pre-starter results path live (fourth result page at /considering-a-glp-1, audience-based routing, $29 consult calendar + /consult redirect, `glp1-prestart-consult` tag); verified with two live completions. Side effect recorded: pre-starters no longer receive a risk band tag. `glp1-tags.md` now thirteen tags. Remaining in Phase 4: 4.6 metrics sheet; Phase 5 otherwise gated on Phase 0. BAA request submitted to Anthropic 2026-07-27 |
+| **Last updated** | 2026-08-05 · Claude Code — Phase 0 REDIRECTED to AWS/Bedrock (obligation stands: AWS BAA before any PHI reaches Bedrock); 5.1 out of the launch gate; 5.2 journey text ends at completion screen → dashboard; launch no longer externally blocked. New UNRESOLVED RISKS section: R1 Railway Postgres PHI without BAA ($1K/mo × 12mo June quote). Earlier today: 5.4 pre-starter results path done and verified; `glp1-tags.md` at fourteen tags |
 
-**Phase gate:** 0 ⬜ · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
 ---
 
-## PHASE 0 — Legal/external gate (in flight — blocks Phase 5 only)
+## PHASE 0 — Legal/external gate (REDIRECTED 2026-08-05 — out of the launch gate, into the Partner build)
+
+→ **Decision 2026-08-05:** no longer waiting on Anthropic for a direct-API BAA. When the Optimization Partner is built, it will run on Claude via **Amazon Bedrock** — Anthropic's own compliance matrix marks HIPAA as partner-managed on Bedrock, and AWS signs a **self-serve BAA with no review and no minimum spend**. Items 0.1–0.3 are **REDIRECTED, not dropped: the obligation stands — AWS's BAA must be signed before any PHI reaches Bedrock.** They move out of the launch gate into the post-pilot Partner build. Phase 5 no longer requires this phase.
 
 - [ ] **0.1** BAA executed (Claude Extension preps; Chad signs as Primary Owner)
       ✓ = countersigned BAA in hand
-      → In flight: request submitted to Anthropic 2026-07-27 via the contact-sales form under the Business Associate Agreement category. Generic autoresponder only so far. **Follow up Friday 2026-07-31 if no human reply.**
+      → In flight: request submitted to Anthropic 2026-07-27 via the contact-sales form under the Business Associate Agreement category. Generic autoresponder only so far. ~~Follow up Friday 2026-07-31 if no human reply.~~
+      → **Redirected 2026-08-05:** no longer pursuing the Anthropic-direct BAA (no human reply ever came). The BAA counterparty becomes AWS, signed self-serve when the Partner build starts.
 - [ ] **0.2** HIPAA-ready enablement confirmed by Anthropic for the API org — *note: 30-day retention config is correct; do NOT enable ZDR*
       ✓ = written confirmation org is HIPAA-enabled
+      → **Redirected 2026-08-05:** on Bedrock this is AWS's side of the shared-responsibility model, covered by the AWS BAA — no Anthropic org enablement involved.
 - [ ] **0.3** Production `ANTHROPIC_API_KEY` set in Railway from the enabled org
       ✓ = Partner returns real responses in prod (not 503)
+      → **Redirected 2026-08-05:** becomes Bedrock credentials/config in the Partner build. Until then the AI surfaces stay gated off and every AI endpoint 503s by design.
 
 ## PHASE 1 — Code ship & production safety (do first)
 
@@ -127,12 +132,14 @@
 - [ ] **4.6** Metrics sheet: quiz completions, quiz→paid % per channel, day-7 activation %, wk-4 engagement %, M1→M2 retention % — with green/yellow/kill thresholds beside each
       ✓ = sheet exists with formulas; weekly source for each number known
 
-## PHASE 5 — Verification & go-live gate (requires Phase 0)
+## PHASE 5 — Verification & go-live gate (Phase 0 requirement removed 2026-08-05 — see Phase 0 redirect note)
 
 - [ ] **5.1** Six-query acceptance test vs PROD with HIPAA-enabled key (script in `PILOT_RUNBOOK.md`)
       ✓ = all six pass in production; no 400s from covered-org feature enforcement
-- [ ] **5.2** DRESS REHEARSAL: real live-mode purchase (own card) → tags → provisioning → welcome email → first login → wizard → baseline → Partner opens w/ first question → Day-0 messages arrive
+      → **Not launch-gating as of 2026-08-05.** Written when the Partner was expected inside the pilot with a direct Anthropic key. Redirected with Phase 0: this test re-homes to the post-pilot Partner build, to run against Bedrock. The script in `PILOT_RUNBOOK.md` §5 remains valid as the test plan. Left unchecked deliberately — it is not part of the 5.6 gate.
+- [ ] **5.2** DRESS REHEARSAL: real live-mode purchase (own card) → tags → provisioning → welcome email → first login → wizard → baseline → completion screen ("Your baseline is set!") → dashboard → Day-0 messages arrive
       ✓ = entire member journey, zero manual intervention
+      → **Journey text amended 2026-08-05:** originally ended "Partner opens w/ first question," written when the Partner was expected in-pilot. With the AI surfaces gated off, the completion-screen → dashboard branch is the designed path, already observed working in prod during the 3.3 test purchase. No Phase 0 dependency remains in this item.
       → **Buy on the MONTHLY plan specifically.** `founding-monthly` has never been observed landing on a real buyer (`founding-3mo` was already seen in the 2026-07-29 test-mode purchases). Buying monthly closes that verification and exercises Sequence 4a's trigger for real at the same time. Recorded here so the choice isn't left to chance on the day.
 - [ ] **5.3** Support readiness: standard reply for clinical questions from non-patients drafted
 - [x] **5.4** Pre-starter results path: quiz completions choosing Q1 "Not currently, but I'm considering it" (tagged `glp1-prestart`) currently answer all eight questions — several of which assume they're already losing weight on the medication — then land on a normal results page with a score and risk band that aren't true of them, and a CTA for a $49/mo program built around a drug they aren't taking. Fix: pre-starters get their own results content with a consult-funnel CTA instead of the founding-member sales page — someone considering a GLP-1 is a good lead for the practice, and a consult is a better offer than "come back later."
@@ -144,7 +151,7 @@
 - [ ] **5.5** Reconcile `glp1-tags.md` against the live tag list in GoHighLevel
       ✓ = every tag in the doc exists in GHL, every pilot-relevant tag in GHL is in the doc, and each definition matches the workflow that writes it
       → Added 2026-08-05 after the doc missed `glp1-quiz-started` — a lead-capture tag in the quiz spec from the start. The doc claims to be the full architecture and has been wrong once, so it can't be trusted to not be wrong twice. Cheap check; expensive if stale, since the sequences and the weekly routine act on these tags.
-- [ ] **5.6** **GO/NO-GO** — Phases 0–5 all green
+- [ ] **5.6** **GO/NO-GO** — Phases 0–5 all green or redirected (Phase 0 and 5.1 redirected to the Partner build, 2026-08-05)
 
 ## PHASE 6 — Launch
 
@@ -178,6 +185,14 @@ App-side work from the July 28 onboarding verification session (allowed under St
       → **Done 2026-07-29:** `founding-monthly` tag added to the Monthly provisioning workflow — both plans are now positively identifiable. The tag is configured but has not yet been observed landing on a buyer, since confirming that means another test-mode checkout, which requires flipping the funnel's Payment mode again. Verification rides along with the next test run or the first real monthly sale.
 - [x] **Design system — Recommended badge size:** the component spec puts the badge at 12px, below both the 14px accessibility floor and the 13px eyebrow-label exception. Needs resolving in the canonical doc (`~/Documents/EA/AIS-OS/references/design-system.md`). The sales page (3.3) shipped at 14px.
       → **Resolved 2026-07-31 (design-system v1.2):** badge raised to 14px in the component spec and CSS, and badges removed from the 13px exception, which now covers eyebrow labels only. Resolved toward the floor, not the exception — pricing-card badges carry persuasive copy a buyer actually reads, and the 14px floor is a foundation governing the app as well as marketing. Note the item's wording was stale: v1.1 had already moved the badge from 12px to 13px (and quietly added badges to the 13px exception, contradicting two other sections); v1.2 settles it at 14px. The live sales page already matches — no page changes needed.
+
+---
+
+## UNRESOLVED RISKS (not launch-blocking — on the board so they don't live only in Chad's head)
+
+- [ ] **R1** Patient data sits in Railway's Postgres with **no BAA in place**. Railway quoted **$1,000/month with a twelve-month commitment** (June 2026) for their HIPAA/BAA tier; deferred on cost. Launching doesn't create this exposure but **multiplies it** — from ~8 real-patient records today to 50+ at a full pilot. Recorded 2026-08-05.
+      → **Scope question open — for a qualified adviser, not a conclusion.** HIPAA binds covered entities and their business associates. The practice is cash-pay, and the sales page states the program is a wellness and tracking service, not medical care, and that joining does not create a doctor-patient relationship — so pilot members may not be patients and their data may not be PHI in the HIPAA sense at all (direct-to-consumer wellness data falls under FTC health breach rules and state privacy law instead). But the same Railway database also holds records for actual existing patients through app.doctorchadlarson.com, and that data plainly is PHI. Open question: whether the exposure attaches to the pilot members, to the existing patient records, or to both. The answer changes what needs doing — the Railway BAA may be needed for the patient records regardless of whether the pilot ever happens.
+      ✓ = BAA in place with Railway, or PHI moved to a BAA-covered database
 
 ---
 

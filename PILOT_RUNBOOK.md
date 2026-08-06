@@ -143,6 +143,13 @@ psql "$PROD_DATABASE_URL" \
 
 ## 5. Six-query acceptance test (run once the HIPAA key is set — 0.3 / 5.1)
 
+*Superseded in part 2026-08-05:* 0.3 and 5.1 were redirected out of the launch
+gate — the Partner will run on Claude via Amazon Bedrock (AWS self-serve BAA)
+as part of the post-pilot Partner build, and no direct Anthropic key will be
+set. This section remains valid as the test plan for that build; run it against
+the Bedrock-backed Partner instead. See LAUNCH_CHECKLIST.md Phase 0 redirect
+note and item 5.1.
+
 Runs the six promised Partner queries against **production** as a seeded,
 clearly-labeled disposable participant, then deletes it. Requires
 `ANTHROPIC_API_KEY` to be live (otherwise the Partner 503s — that's expected until

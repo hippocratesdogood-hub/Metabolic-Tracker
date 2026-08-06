@@ -296,6 +296,11 @@ When T1–T10 pass in test mode, flip Stripe to **Live**, repoint the GHL order 
 the **live Price IDs** (§1.3), and do **one** real live-mode dry run — that's
 **checklist 5.2 (dress rehearsal)**, gated behind Phase 0 (the Partner key).
 
+*Superseded in part 2026-08-05:* 5.2 is no longer gated behind Phase 0. The
+Partner moved out of the pilot (it will run on Bedrock when built), the AI
+surfaces are gated off in the app, and the member journey never calls the
+Anthropic API. See LAUNCH_CHECKLIST.md Phase 0 redirect note and item 5.2.
+
 ---
 
 ## Appendix — manual webhook check (copy-paste)
