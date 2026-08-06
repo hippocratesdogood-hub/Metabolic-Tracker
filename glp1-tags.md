@@ -1,9 +1,14 @@
 # GLP-1 Pilot — GHL Tag Architecture
 
-Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Thirteen tags in
+Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Fourteen tags in
 four groups, defined by when and how they are applied. The `glp1-` prefix on
 the quiz tags avoids collision with the existing consult-funnel quiz, which
 writes into the same GHL account.
+
+> **Reconcile before launch (checklist 5.5):** this doc claims to be the full
+> tag architecture and has been wrong once already (`glp1-quiz-started` was
+> missing until 2026-08-05, despite being in the quiz spec from the start).
+> Before launch, reconcile it against the live tag list in GoHighLevel.
 
 ## Group 1 — Applied automatically at purchase (existing GHL provisioning workflows)
 
@@ -17,6 +22,7 @@ writes into the same GHL account.
 
 | Tag | Who gets it |
 |---|---|
+| `glp1-quiz-started` | Applied at lead capture, before the questions (the lead form sits ahead of Q1). Gives abandoners provenance in GoHighLevel — a contact with this tag but not `glp1-quiz-complete` started the scorecard and didn't finish. |
 | `glp1-quiz-complete` | Finished the scorecard. |
 | `glp1-risk-high` / `glp1-risk-elevated` / `glp1-risk-low` | Their scored risk band. Since the 5.4 rework (2026-08-05), applied only to respondents who are not pre-starters — the audience conditions require Q1 "Is not" the pre-starter answer, so the four result audiences are mutually exclusive. |
 | `glp1-prestart` | Chose "Not currently, but I'm considering it" on Q1. Since the 5.4 rework (2026-08-05), routed to the pre-starter result page and **no longer receives a risk band tag** — a score computed from questions that assume active GLP-1 use isn't true of them. See checklist 5.4. |
