@@ -1,6 +1,6 @@
 # GLP-1 Pilot — GHL Tag Architecture
 
-Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Twelve tags in
+Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Thirteen tags in
 four groups, defined by when and how they are applied. The `glp1-` prefix on
 the quiz tags avoids collision with the existing consult-funnel quiz, which
 writes into the same GHL account.
@@ -13,13 +13,14 @@ writes into the same GHL account.
 | `founding-3mo` | Three-month ($129) buyers. |
 | `founding-monthly` | Monthly ($49) buyers. Configured 2026-07-29; not yet observed landing on a real buyer — verification rides with the next test checkout or the first real monthly sale. |
 
-## Group 2 — Applied automatically before purchase (scorecard + launch email)
+## Group 2 — Applied automatically before purchase (scorecard, launch email, consult booking)
 
 | Tag | Who gets it |
 |---|---|
 | `glp1-quiz-complete` | Finished the scorecard. |
-| `glp1-risk-high` / `glp1-risk-elevated` / `glp1-risk-low` | Their scored risk band. |
-| `glp1-prestart` | Chose "Not currently, but I'm considering it" on Q1. Gets a risk tag too. See checklist 5.4 (pre-starter results path). |
+| `glp1-risk-high` / `glp1-risk-elevated` / `glp1-risk-low` | Their scored risk band. Since the 5.4 rework (2026-08-05), applied only to respondents who are not pre-starters — the audience conditions require Q1 "Is not" the pre-starter answer, so the four result audiences are mutually exclusive. |
+| `glp1-prestart` | Chose "Not currently, but I'm considering it" on Q1. Since the 5.4 rework (2026-08-05), routed to the pre-starter result page and **no longer receives a risk band tag** — a score computed from questions that assume active GLP-1 use isn't true of them. See checklist 5.4. |
+| `glp1-prestart-consult` | Booked an appointment on the "Thinking about a GLP-1? Talk to Dr. Larson" calendar (reached via join.theadaptlab.com/consult from the pre-starter result page). Applied automatically by the "Consult booked — tag glp1-prestart-consult" workflow. Makes pre-starter → consult conversion measurable. |
 | `src-list` | Clicked the trigger link in the launch email ("Founding — list CTA" workflow). Marks list-sourced rather than cold. |
 
 ## Group 3 — Applied automatically during onboarding (engagement tracking)
