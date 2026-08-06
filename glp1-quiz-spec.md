@@ -260,6 +260,12 @@ and in what they name as the driver, never in the offer.
 
 Each page carries the disclaimer footer described in §9.
 
+*Superseded in part 2026-08-05:* routing moved from Overall score tier to
+Audience, and there are now **four** result pages — a Pre-starter page at
+/considering-a-glp-1 (no score line, consult CTA instead of the founding
+offer) evaluates first, so it wins regardless of score; the three risk pages
+below apply only to non-pre-starters. See LAUNCH_CHECKLIST.md item 5.4.
+
 ---
 
 ### Low band
@@ -469,6 +475,12 @@ Expected score: **24**. Expected band: high. Expected tags:
 Q1 not currently but considering, remaining answers arbitrary.
 
 Expected tags include `glp1-prestart`.
+
+*Superseded 2026-08-05:* pre-starters no longer receive a risk band tag
+(audience-based routing; see LAUNCH_CHECKLIST.md item 5.4). Expected tags are
+`glp1-quiz-started`, `glp1-quiz-complete`, and `glp1-prestart` only — a run
+that also lands a risk band tag is a failure, and the original expectation
+above would fail a correctly working system.
 
 ### Also verify
 
