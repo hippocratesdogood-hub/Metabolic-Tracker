@@ -12,11 +12,11 @@
 | **Blocked on (external)** | Nothing — launch is not externally blocked. BAA path redirected 2026-08-05 to AWS/Bedrock for the post-pilot Partner build (see Phase 0) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-05 · Claude Code — Phase 0 REDIRECTED to AWS/Bedrock (obligation stands: AWS BAA before any PHI reaches Bedrock); 5.1 out of the launch gate; 5.2 journey text ends at completion screen → dashboard; launch no longer externally blocked. New UNRESOLVED RISKS section: R1 Railway Postgres PHI without BAA ($1K/mo × 12mo June quote). Earlier today: 5.4 pre-starter results path done and verified; `glp1-tags.md` at fourteen tags |
+| **Last updated** | 2026-08-06 · Claude Code — 5.3 done: two standard replies (questions vs symptoms, when in doubt symptoms) in new `glp1-support-replies.md`. Remaining to launch: 4.6 metrics sheet, 5.2 dress rehearsal (monthly plan), 5.5 tag reconciliation, 5.6 GO/NO-GO. Prior day: Phase 0 REDIRECTED to AWS/Bedrock; R1 Railway BAA risk recorded |
 
 **Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
 
-**Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
+**Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · `glp1-support-replies.md` (5.3 standard replies) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
 ---
 
@@ -141,7 +141,8 @@
       ✓ = entire member journey, zero manual intervention
       → **Journey text amended 2026-08-05:** originally ended "Partner opens w/ first question," written when the Partner was expected in-pilot. With the AI surfaces gated off, the completion-screen → dashboard branch is the designed path, already observed working in prod during the 3.3 test purchase. No Phase 0 dependency remains in this item.
       → **Buy on the MONTHLY plan specifically.** `founding-monthly` has never been observed landing on a real buyer (`founding-3mo` was already seen in the 2026-07-29 test-mode purchases). Buying monthly closes that verification and exercises Sequence 4a's trigger for real at the same time. Recorded here so the choice isn't left to chance on the day.
-- [ ] **5.3** Support readiness: standard reply for clinical questions from non-patients drafted
+- [x] **5.3** Support readiness: standard reply for clinical questions from non-patients drafted
+      → **Done 2026-08-06:** two standard replies in `glp1-support-replies.md` — Reply 1 for questions (numbers, medication, "is this a problem"), Reply 2 for anyone describing symptoms. Selection rule recorded there: questions get 1, feelings get 2, when in doubt 2 — guarding against sending a prescriber template to someone describing acute symptoms at night. Reply 1 deliberately points at the prescriber before offering a consult.
 - [x] **5.4** Pre-starter results path: quiz completions choosing Q1 "Not currently, but I'm considering it" (tagged `glp1-prestart`) currently answer all eight questions — several of which assume they're already losing weight on the medication — then land on a normal results page with a score and risk band that aren't true of them, and a CTA for a $49/mo program built around a drug they aren't taking. Fix: pre-starters get their own results content with a consult-funnel CTA instead of the founding-member sales page — someone considering a GLP-1 is a good lead for the practice, and a consult is a better offer than "come back later."
       ✓ = a quiz completion selecting "Not currently, but I'm considering it" lands on pre-starter content with a consult CTA, and does not display a risk band framed as a current risk
       → Original plan (`glp1-quiz-spec.md` §10, decision 1) was to accept the noise for v1 and revisit after fifty completions; moved into Phase 5 because fifty completions only happen post-launch.
