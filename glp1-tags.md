@@ -1,14 +1,22 @@
 # GLP-1 Pilot — GHL Tag Architecture
 
-Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Fourteen tags in
-four groups, defined by when and how they are applied. The `glp1-` prefix on
+Reference for checklist item **4.1** in `LAUNCH_CHECKLIST.md`. Fourteen entries
+in four groups (sixteen individual tags — the risk band row counts three),
+defined by when and how they are applied. The `glp1-` prefix on
 the quiz tags avoids collision with the existing consult-funnel quiz, which
 writes into the same GHL account.
 
-> **Reconcile before launch (checklist 5.5):** this doc claims to be the full
-> tag architecture and has been wrong once already (`glp1-quiz-started` was
-> missing until 2026-08-05, despite being in the quiz spec from the start).
-> Before launch, reconcile it against the live tag list in GoHighLevel.
+**Scope:** this doc describes the **pilot's tags only**, not the sub-account's
+whole tag list. The account also carries eleven non-pilot tags from other
+funnels — listed at the bottom so a future reader doesn't mistake them for
+undocumented gaps.
+
+> **Reconciled against the live GHL tag list 2026-08-06 (checklist 5.5).**
+> 26 tags existed in the sub-account; fifteen of the sixteen documented tags
+> were present. The one gap, `activated`, was created by hand during the audit
+> (nothing references it in a workflow — it's applied during the Sunday import
+> and read for the metrics sheet — which is why it was never auto-created).
+> A leftover `test` tag was deleted.
 
 ## Group 1 — Applied automatically at purchase (existing GHL provisioning workflows)
 
@@ -55,7 +63,7 @@ Source: weekly run of `scripts/export-member-activity` (see checklist 4.4).
 
 | Tag | Definition |
 |---|---|
-| `activated` | Logged a meal AND a weight within their first 7 days. Deliberately does not require a glucose reading, because the meter ships from Amazon and needs strips, so requiring it would make day-7 activation partly a measure of shipping speed. |
+| `activated` | Logged a meal AND a weight within their first 7 days. Deliberately does not require a glucose reading, because the meter ships from Amazon and needs strips, so requiring it would make day-7 activation partly a measure of shipping speed. Created by hand 2026-08-06 during the 5.5 reconciliation — no workflow references it, so it was never auto-created. |
 | `at-risk` | Fewer than 2 days logged in the past week. |
 
 **`at-risk` departs from the checklist's original 4.4 wording ("5-day-inactivity
@@ -96,3 +104,28 @@ routine.
 The full weekly routine has three hand-run steps (see checklist 6.4): this
 Sunday tagging pass, the Monday bulk text to the `sms-ok` segment, and a check
 of Stripe cancellations.
+
+## Filter hazards
+
+- **Prefix collisions inside the pilot.** `glp1-prestart` is a strict prefix
+  of `glp1-prestart-consult`, so any filter using **"contains" matches both**
+  while "is" matches only the first. The same applies across the three
+  `glp1-risk-*` tags. Everything built so far uses "is" or a tag picker, so
+  nothing is broken — but this is the kind of thing that silently catches the
+  wrong people later. Use "is", never "contains", when filtering on pilot tags.
+- **Semantic near-duplicates outside the pilot** (known issue in the account,
+  not something to fix now — they belong to funnels the pilot isn't touching):
+  `edge` vs `metabolic edge`, `elite` vs `metabolic elite`, `rescue` vs
+  `metabolic rescue`. These will break filters just as silently.
+
+## Non-pilot tags in the same sub-account (not documented above — deliberately)
+
+Recorded during the 2026-08-06 reconciliation so they don't read as
+undocumented gaps. None is a pilot tag; none is governed by this doc.
+
+- Tier vocabulary from other funnels (6): `edge`, `elite`, `rescue`,
+  `metabolic edge`, `metabolic elite`, `metabolic rescue`
+- Earlier quiz funnel (1): `appointment booked - mmm quiz results`
+- Generic CRM (3): `follow-up`, `high priority`, `warm lead`
+
+(A leftover `test` tag was the eleventh; deleted 2026-08-06.)
