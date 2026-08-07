@@ -8,13 +8,13 @@
 
 | | |
 |---|---|
-| **Current phase** | 4 — GHL sequences & tracking (Phase 3 complete 2026-08-03) |
+| **Current phase** | 5 — Verification & go-live gate (Phase 4 complete 2026-08-06) |
 | **Blocked on (external)** | Nothing — launch is not externally blocked. BAA path redirected 2026-08-05 to AWS/Bedrock for the post-pilot Partner build (see Phase 0) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-06 · Claude Code — 5.5 done: tag reconciliation vs live GHL (26 tags; `activated` gap found and created by hand; 11 non-pilot tags recorded; `test` deleted; filter hazards documented). Earlier today: 5.3 done (standard replies in `glp1-support-replies.md`). Remaining to launch: 4.6 metrics sheet, 5.2 dress rehearsal (monthly plan), 5.6 GO/NO-GO |
+| **Last updated** | 2026-08-06 · Claude Code — 4.6 done → **Phase 4 complete**: metrics workbook live with thresholds recorded at 4.6, calibrated to reach (150–300 completions; 10–20 seat expectation — fifty is a ceiling, not a target). Sixth channel link (email UTM) added to 3.5's list; 6.2 two-link requirement recorded (warm = `utm_source=email` OR `src-list`). Earlier today: 5.3 + 5.5 done. Remaining to launch: 5.2 dress rehearsal (monthly plan), 5.6 GO/NO-GO |
 
-**Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ⬜ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ✅ · 5 ⬜ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · `glp1-support-replies.md` (5.3 standard replies) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
@@ -101,6 +101,9 @@
         - Instagram: https://chad-5tf3c8bv.scoreapp.com?utm_source=instagram&utm_medium=social&utm_campaign=founding
         - LinkedIn: https://chad-5tf3c8bv.scoreapp.com?utm_source=linkedin&utm_medium=social&utm_campaign=founding
         - X: https://chad-5tf3c8bv.scoreapp.com?utm_source=x&utm_medium=social&utm_campaign=founding
+        - Email (added 2026-08-06 — launch email primary CTA; needed for 4.6's warm/cold split):
+          https://chad-5tf3c8bv.scoreapp.com?utm_source=email&utm_medium=email&utm_campaign=founding
+          Plain URL rather than a shortened redirect — email links are clickable and need no shortening, matching the three social links.
         Both redirects are 301 on join.theadaptlab.com, source type "Specific Path", target type "Custom URL". GHL gives no 301-versus-302 choice, so a recreated redirect will always be permanent.
         **Remaining before ✓ is now only:** verify `src-list` fires during the Phase 4 email test.
 - [x] **3.6** Seat counter: live "spots remaining" or manual updates at 40/45/48. Scarcity must be REAL
@@ -129,8 +132,15 @@
       → **Built and published 2026-08-03 — two workflows, not one (deliberate), split by plan tag** (`founding-monthly` / `founding-3mo`), because a single workflow would have branched at the very start (see the branch-late rule above). Monthly (4a): fires before the first renewal only; no day-before text. Three-month (4b): email at day 85, then branches on `sms-ok` at day 89 for the text with an email fallback. Both pre-renewal emails link to the Stripe customer portal for self-serve cancellation — portal activated in live mode, set to cancel at end of billing period.
       ✓ (4.1–4.5) = test contact fires every message in every sequence correctly
       → **Criterion met 2026-08-03.** Method: each sequence cloned, the clone's trigger filter changed to a throwaway tag, every wait shortened to 2 minutes with the Advance window switched off, test contacts run through. Every message in every sequence fired correctly, including 4b's condition branch, verified from the execution logs — a contact tagged `sms-ok` took the Texts OK path and received the SMS; one without it took the None path and received the email fallback. All test workflows, contacts, and tags deleted afterwards; re-entry off on all four originals.
-- [ ] **4.6** Metrics sheet: quiz completions, quiz→paid % per channel, day-7 activation %, wk-4 engagement %, M1→M2 retention % — with green/yellow/kill thresholds beside each
+- [x] **4.6** Metrics sheet: quiz completions, quiz→paid % per channel, day-7 activation %, wk-4 engagement %, M1→M2 retention % — with green/yellow/kill thresholds beside each
       ✓ = sheet exists with formulas; weekly source for each number known
+      → **Done 2026-08-06.** Workbook exists with formulas; every number has a known weekly source (GHL tags + UTM fields, Sunday CSV export, Stripe). **Phase 4 complete.** Thresholds as agreed:
+      → **Quiz completions — cumulative, not weekly average** (launch emails front-load the curve), checked at three points: end of wk 2 ≥100 green / 60–100 yellow / <60 red · end of wk 4 ≥150 / 90–150 / <90 · end of wk 8 ≥220 / 130–220 / <130. Calibrated to a realistic reach of 150–300 completions (2,000 email list + 1,200 social), NOT to the seat count. The wk-2 checkpoint deliberately shares a date with 6.5's ad-spend decision — red there is that decision's input, not an alarm to ignore.
+      → **Quiz→paid** (separate rows, warm never blended with cold): warm ≥4% green / 2–4% yellow / <2% red — the yellow band encodes Standing Rule 4's "under ~3–4% = offer problem"; cold ≥1% / 0.3–1% / <0.3%. Warm = `utm_source=email` OR `src-list` (see 6.2).
+      → **Day-7 activation** (`activated`: meal AND weight in first 7 days): ≥70% green / 50–70% yellow / <50% red. Strictest bar of the five on purpose — paying members plus a wizard that captures weight on day 0 means failure here is broken onboarding, not a wrong market, and it's fixable same-week with sequences already built.
+      → **Wk-4 engagement** (defined: ≥3 logged days in week 4 — sits above the at-risk line of <2 so the two vocabularies don't fight): ≥60% green / 40–60% yellow / <40% red. Leading indicator for the day-~30 renewal; engagement must run ~10 points above the retention target since some engaged members still churn.
+      → **M1→M2 retention: references 6.6's thresholds (≥70/50–70/<50) rather than restating them** — one source of truth.
+      → **Calibration decision: fifty is a ceiling that makes the scarcity real, not a target.** At current reach the arithmetic expectation is **10–20 seats**, and that is the reference point the sheet reads against. A sheet that treats fifty as the goal reads every number as failure.
 
 ## PHASE 5 — Verification & go-live gate (Phase 0 requirement removed 2026-08-05 — see Phase 0 redirect note)
 
@@ -159,6 +169,7 @@
 
 - [ ] **6.1** Content Day 1: YouTube + podcast live; LinkedIn post (link in first comment)
 - [ ] **6.2** Launch Email 1 to list (active patients excluded/handled) — **⏱ 8-WEEK CLOCK STARTS HERE — record the date in STATUS**
+      → **The launch email carries TWO links, per Standing Rule 3** (quiz primary, sales page secondary): (1) primary CTA = the quiz link with `utm_source=email` (recorded in 3.5's link list — do not retype it); (2) secondary = the existing "Founding — list CTA" trigger link to /founding, which is what fires `src-list`. **Warm identification for the metrics sheet is the OR of `utm_source=email` and `src-list` — both links are needed.** Without the email-UTM quiz link, warm traffic arrives at the scorecard looking like everyone else and 4.6's quiz→paid warm row (the number carrying Standing Rule 4) is unmeasurable.
 - [ ] **6.3** Rollout days 2–14 per content plan: reels, X thread, Email 2 (day 4), Email 3 (day 9–10 or ~40 seats)
 - [ ] **6.4** Weekly ops rhythm (30 min, same day weekly): metrics sheet update · activity CSV export→GHL import · 1-line personal emails to day-7+ silent members · cancellation intercepts <24h · log qualitative feedback
       → **Three hand-run steps each week, recorded 2026-08-05 so none is dropped:** (1) **Sunday tagging pass** — works with stock GHL features; both halves tested 2026-08-04 with throwaway contacts. Step-by-step procedure in `glp1-tags.md`, including two easy-to-miss UI details (tag option only on the Verify screen; consent checkbox gates Start import every time) and a caution: bulk tag removal runs against whatever list is currently filtered, in an account holding 547 mostly real patient records — confirm the count before acting, never use "Remove all tags". (2) **Monday bulk text** to the `sms-ok` segment (see 4.3 — the Monday SMS is deliberately not automated). (3) **Stripe cancellation check** — a cancellation made in the Stripe customer portal (linked from the 4.5 pre-renewal emails) may not propagate back to GHL, so check Stripe directly rather than relying on GHL contact state.
