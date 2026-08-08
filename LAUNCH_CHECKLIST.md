@@ -12,7 +12,7 @@
 | **Blocked on (external)** | Nothing — launch is not externally blocked. BAA path redirected 2026-08-05 to AWS/Bedrock for the post-pilot Partner build (see Phase 0) |
 | **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-06 · Claude Code — 4.6 done → **Phase 4 complete**: metrics workbook live with thresholds recorded at 4.6, calibrated to reach (150–300 completions; 10–20 seat expectation — fifty is a ceiling, not a target). Sixth channel link (email UTM) added to 3.5's list; 6.2 two-link requirement recorded (warm = `utm_source=email` OR `src-list`). Earlier today: 5.3 + 5.5 done. Remaining to launch: 5.2 dress rehearsal (monthly plan), 5.6 GO/NO-GO |
+| **Last updated** | 2026-08-07 · Claude Code — Phase 0 AWS side executed: BAA Active via Artifact (acct 899042280313, 2026-08-06); HLS addendum deliberately declined; Bedrock working in Oregon. New Partner-build prerequisite replaces it: verify model-level HIPAA eligibility on AWS's own reference before any PHI flows. Launch path unchanged — remaining: 5.2 dress rehearsal (monthly plan), 5.6 GO/NO-GO |
 
 **Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ✅ · 5 ⬜ · 6 ⬜
 
@@ -23,6 +23,12 @@
 ## PHASE 0 — Legal/external gate (REDIRECTED 2026-08-05 — out of the launch gate, into the Partner build)
 
 → **Decision 2026-08-05:** no longer waiting on Anthropic for a direct-API BAA. When the Optimization Partner is built, it will run on Claude via **Amazon Bedrock** — Anthropic's own compliance matrix marks HIPAA as partner-managed on Bedrock, and AWS signs a **self-serve BAA with no review and no minimum spend**. Items 0.1–0.3 are **REDIRECTED, not dropped: the obligation stands — AWS's BAA must be signed before any PHI reaches Bedrock.** They move out of the launch gate into the post-pilot Partner build. Phase 5 no longer requires this phase.
+
+→ **Update 2026-08-07 — AWS side executed; the signed-BAA obligation is satisfied.** AWS account **899042280313 (The Adapt Lab)**: the AWS Business Associate Addendum was accepted through Artifact **2026-08-06** and shows **Active**. The Healthcare and Life Sciences addendum was **deliberately not accepted** — it authorises de-identification for service improvement by a team not in use. Region: **US West (Oregon)**. Root MFA on; a **$50/month budget alert** is set as a tripwire for Bedrock token spend. Bedrock access confirmed working: Claude Sonnet 4.6 returned a response in the Oregon playground, which cleared Anthropic's first-time use-case gate. (AWS retired the model access page — models now enable on first invocation.)
+
+→ **New prerequisite, replacing the signed-BAA obligation (belongs with the Partner build, not the launch path): verify model-level HIPAA eligibility before any PHI flows.** Eligibility is not blanket at the model level: Amazon Bedrock is on AWS's HIPAA-eligible services list, but the reference carries **model-level exclusions** (Fable and Mythos reportedly excluded), and Bedrock model availability lags direct provider availability. Before any PHI flows, the **specific model the app calls** must be verified as covered on **AWS's own reference page** (aws.amazon.com/compliance/hipaa-eligible-services-reference) — not a third-party summary. The app currently calls `claude-sonnet-4-6`.
+
+→ **Standing distinction:** HIPAA-**eligible** means the service *can* hold PHI once a BAA is signed and the configuration is right. It does **not** make the workload compliant — encryption, access control, logging, and architecture remain Chad's responsibility under the shared responsibility model.
 
 - [ ] **0.1** BAA executed (Claude Extension preps; Chad signs as Primary Owner)
       ✓ = countersigned BAA in hand
