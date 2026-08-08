@@ -35,7 +35,7 @@ undocumented gaps.
 | `glp1-risk-high` / `glp1-risk-elevated` / `glp1-risk-low` | Their scored risk band. Since the 5.4 rework (2026-08-05), applied only to respondents who are not pre-starters — the audience conditions require Q1 "Is not" the pre-starter answer, so the four result audiences are mutually exclusive. |
 | `glp1-prestart` | Chose "Not currently, but I'm considering it" on Q1. Since the 5.4 rework (2026-08-05), routed to the pre-starter result page and **no longer receives a risk band tag** — a score computed from questions that assume active GLP-1 use isn't true of them. See checklist 5.4. |
 | `glp1-prestart-consult` | Booked an appointment on the "Thinking about a GLP-1? Talk to Dr. Larson" calendar (reached via join.theadaptlab.com/consult from the pre-starter result page). Applied automatically by the "Consult booked — tag glp1-prestart-consult" workflow. Makes pre-starter → consult conversion measurable. |
-| `src-list` | Clicked the trigger link in the launch email ("Founding — list CTA" workflow). Marks list-sourced rather than cold. |
+| `src-list` | Clicked the trigger link in a launch email sent from GoHighLevel ("Founding — list CTA" workflow). Marks list-sourced rather than cold. **Expected to stay empty for the pilot (decision 2026-08-08):** launch Email 1 sends from Kartra, which cannot render the GHL trigger link, so this tag stays empty unless a future send goes out from GHL — see checklist 6.2. Warm identification for the Kartra send rests on `utm_source=email` alone; 4.6's warm definition (`utm_source=email` OR `src-list`) holds as written. |
 
 ## Group 3 — Applied automatically during onboarding (engagement tracking)
 
