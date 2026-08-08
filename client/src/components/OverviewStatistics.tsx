@@ -48,24 +48,30 @@ interface MetricStats {
   count: number;
 }
 
-// Extract numeric value from a metric entry
-function getValue(entry: MetricEntry, type: string): number | null {
+// Extract numeric value from a metric entry, in display units.
+// normalizedValue is in storage units (kg/cm/mg-dL) and gets converted;
+// entries without it (e.g. onboarding baseline) carry valueJson.value in the
+// user's own units already, so it must pass through unconverted — same
+// fallback contract as Trends, ProgressCharts, and the Health Metrics card.
+function getValue(entry: MetricEntry, type: string, unitsPref: UnitsPreference): number | null {
   if (type === 'BP') {
     const vj = entry.valueJson as { systolic?: number };
     return vj?.systolic ?? null;
   }
-  if (entry.normalizedValue != null) return entry.normalizedValue;
+  if (entry.normalizedValue != null) return toDisplayValue(entry.normalizedValue, type, unitsPref);
   const vj = entry.valueJson as { value?: number };
   return vj?.value ?? null;
 }
 
-// Compute stats from entries (entries are sorted desc by timestamp)
-function computeStats(entries: MetricEntry[], type: string): MetricStats {
+// Compute stats from entries (entries are sorted desc by timestamp).
+// Values are converted per-entry before aggregating so normalized and
+// raw-only entries can coexist in avg/min/max.
+function computeStats(entries: MetricEntry[], type: string, unitsPref: UnitsPreference): MetricStats {
   if (entries.length === 0) {
     return { latest: null, avg: null, min: null, max: null, count: 0 };
   }
 
-  const values = entries.map(e => getValue(e, type)).filter((v): v is number => v != null);
+  const values = entries.map(e => getValue(e, type, unitsPref)).filter((v): v is number => v != null);
   if (values.length === 0) {
     return { latest: null, avg: null, min: null, max: null, count: entries.length };
   }
@@ -96,11 +102,11 @@ function toDisplayValue(
   }
 }
 
-function formatVal(val: number | null, type: string, unitsPref: UnitsPreference): string {
+// val is already in display units (see getValue) — format only, no conversion
+function formatVal(val: number | null, type: string): string {
   if (val == null) return '--';
-  const display = type === 'BP' ? val : toDisplayValue(val, type, unitsPref);
-  if (type === 'KETONES') return display.toFixed(1);
-  return Math.round(display).toString();
+  if (type === 'KETONES') return val.toFixed(1);
+  return Math.round(val).toString();
 }
 
 const STORAGE_KEY = 'overview-stats-collapsed';
@@ -166,7 +172,7 @@ export default function OverviewStatistics({ metrics, trends, unitLabels, unitsP
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {metricConfigs.map(({ key, type, label, icon: Icon, iconColor, unitKey }) => {
             const entries = metrics[key as keyof typeof metrics];
-            const stats = computeStats(entries, type);
+            const stats = computeStats(entries, type, unitsPref);
             const trend = trends?.[key as keyof NonNullable<typeof trends>];
             const unit = unitLabels[unitKey] || '';
 
@@ -186,7 +192,7 @@ export default function OverviewStatistics({ metrics, trends, unitLabels, unitsP
                 {/* Latest value */}
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-3xl font-bold tracking-tight">
-                    {formatVal(stats.latest, type, unitsPref)}
+                    {formatVal(stats.latest, type)}
                   </span>
                   <span className="text-sm text-muted-foreground font-medium">{unit}</span>
                 </div>
@@ -194,12 +200,12 @@ export default function OverviewStatistics({ metrics, trends, unitLabels, unitsP
                 {/* Footer stats */}
                 <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
                   <div className="text-center">
-                    <div className="font-semibold text-foreground">{formatVal(stats.avg, type, unitsPref)}</div>
+                    <div className="font-semibold text-foreground">{formatVal(stats.avg, type)}</div>
                     <div>Avg</div>
                   </div>
                   <div className="text-center">
                     <div className="font-semibold text-foreground">
-                      {formatVal(stats.min, type, unitsPref)}-{formatVal(stats.max, type, unitsPref)}
+                      {formatVal(stats.min, type)}-{formatVal(stats.max, type)}
                     </div>
                     <div>Range</div>
                   </div>

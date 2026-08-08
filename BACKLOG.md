@@ -293,6 +293,25 @@ The two index drops are the notable half: those indexes exist only in `migrate.t
 - Apply the same bounds to the regular metric-logging path, not just the wizard, since post-baseline typos corrupt trends the same way.
 - Consider a one-time audit query for existing out-of-range baselines before the pilot's first report cycle.
 
+**Possible relation to item 21 / the 2026-08-08 Overview Statistics bug:** the "463 lbs / 14-inch waist" observed in the July 21 T5 journey are exactly the values the Overview Statistics display bug produces for an entered 210 lbs / 36 in (210 × 2.2046 = 463; 36 ÷ 2.54 = 14.2). If the tester entered plausible values and *read* 463/14 off the Today screen, this item's premise ("wizard accepted impossible values") may partly describe the display bug fixed 2026-08-08 rather than missing validation. Input validation is still worth adding, but re-verify what the wizard actually accepts before sizing this work.
+
+---
+
+### 21. Server-side metric normalization — `POST /api/metrics` accepts rows without `normalizedValue`
+
+**Status:** open — deliberately deferred to the pilot weeks (decision 2026-08-08)
+**Where:** `server/routes.ts` `POST /api/metrics` (~line 688); writers that skip normalization: `client/src/pages/Onboarding.tsx` baseline step (~line 61) and `client/src/components/MacroCalculatorStep.tsx` (~line 127)
+**Why deferred:** `POST /api/metrics` is the hot path for every metric write in the app. A unit-parsing mistake there would **corrupt new data** rather than misdisplay old data — a strictly worse failure than the one it prevents — so it was held out of the pre-launch window. The fix should be verified against a real onboarding run, which is easier during the pilot than before it.
+
+**What's wrong:** The convention is that metric entries carry `normalizedValue` in storage units (kg / cm / mg-dL), computed client-side via `normalizeMetricForStorage()`. Two writers silently violate it — the onboarding baseline step and the macro-calculator step both send only `valueJson.value` + `rawUnit`, and the server stores what it receives (`normalized_value = NULL`). Every **current** reader accommodates this with a raw-value fallback (Trends, ProgressCharts, Health Metrics card, edit-modal prefill, the macro calculator endpoint's `metricToImperial`, and — since the 2026-08-08 fix — OverviewStatistics). The risk is any **future** reader written on the reasonable assumption that `normalizedValue` exists: it will silently mis-handle exactly the rows produced by onboarding, i.e., every member's baseline. This is how the dress-rehearsal bug happened (OverviewStatistics converted the raw fallback as if it were kg/cm, showing 215 lbs as 474).
+
+**Suggested approach:**
+- In `POST /api/metrics`, when `normalizedValue` is absent but `valueJson.value` + `rawUnit` are present, compute it server-side with the existing `normalizeMetricForStorage()` from `shared/units.ts` (same function the modals use — do not reimplement conversion).
+- Leave client behavior unchanged; entries that already send `normalizedValue` pass through untouched.
+- Backfill: one idempotent pass over rows where `normalized_value IS NULL AND raw_unit IS NOT NULL` (types WEIGHT/WAIST/GLUCOSE), computing from `value_json.value` + `raw_unit`. Fits the `runIncrementalMigrations()` pattern or a one-off script.
+- Verify against a **real onboarding run**: create a member, complete baseline with imperial values, confirm the stored row has `normalized_value` in kg/cm and that Today screen, Trends, and the macro calculator all agree.
+- Tests: unit tests for the endpoint's normalize-on-missing branch (imperial and metric `rawUnit`, plus absent `rawUnit` → store as-is), and keep `OverviewStatistics.test.tsx`'s raw-fallback cases green — readers must keep tolerating NULL rows because historical rows may predate the backfill.
+
 ---
 
 ## Completed
