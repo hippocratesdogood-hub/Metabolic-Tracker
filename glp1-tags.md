@@ -24,7 +24,7 @@ undocumented gaps.
 |---|---|
 | `pilot-member` | Every buyer, both plans. The count of contacts carrying this tag is the seat count for checklist 3.6 (never revised upward). |
 | `founding-3mo` | Three-month ($129) buyers. |
-| `founding-monthly` | Monthly ($49) buyers. Configured 2026-07-29; not yet observed landing on a real buyer — verification rides with the next test checkout or the first real monthly sale. |
+| `founding-monthly` | Monthly ($49) buyers. Configured 2026-07-29; **verified on a real buyer 2026-08-08** during the 5.2 dress rehearsal (live-mode monthly purchase — contact carried both `pilot-member` and `founding-monthly`). |
 
 ## Group 2 — Applied automatically before purchase (scorecard, launch email, consult booking)
 
