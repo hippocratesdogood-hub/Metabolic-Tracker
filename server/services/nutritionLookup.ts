@@ -530,6 +530,8 @@ class NutritionLookupService {
     sourceName: 'Nutritionix';
     brand: string | null;
     confidence: number;
+    servingWeightGrams: number | null;
+    altMeasures: Array<{ qty: number; measure: string; servingWeightGrams: number }> | null;
   }> | null> {
     const appId = process.env.NUTRITIONIX_APP_ID;
     const appKey = process.env.NUTRITIONIX_APP_KEY;
@@ -574,6 +576,18 @@ class NutritionLookupService {
       const items: DetectedItem[] = foods.map((f: any) => {
         const totalCarbs = Math.round((f.nf_total_carbohydrate || 0) * 10) / 10;
         const fiber = Math.round((f.nf_dietary_fiber || 0) * 10) / 10;
+        // Resolved portion weight + alternate serving sizes. Nutritionix picks
+        // a container size invisibly (e.g. "1 can tuna" → 172 g); persisting
+        // the grams is what lets the UI expose and correct that choice.
+        const altMeasures = Array.isArray(f.alt_measures)
+          ? f.alt_measures
+              .filter((m: any) => m && typeof m.serving_weight === 'number' && m.measure)
+              .map((m: any) => ({
+                qty: typeof m.qty === 'number' ? m.qty : 1,
+                measure: String(m.measure),
+                servingWeightGrams: m.serving_weight,
+              }))
+          : null;
         return {
           name: f.food_name || 'food',
           quantity: f.serving_qty || 1,
@@ -588,6 +602,8 @@ class NutritionLookupService {
           sourceName: 'Nutritionix' as const,
           brand: f.brand_name || null,
           confidence: 0.95,
+          servingWeightGrams: typeof f.serving_weight_grams === 'number' ? f.serving_weight_grams : null,
+          altMeasures: altMeasures && altMeasures.length > 0 ? altMeasures : null,
         };
       });
 

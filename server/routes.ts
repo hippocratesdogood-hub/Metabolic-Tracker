@@ -1198,6 +1198,8 @@ export async function registerRoutes(
             },
             quantity: item.quantity,
             unit: item.unit,
+            servingWeightGrams: item.servingWeightGrams ?? null,
+            altMeasures: item.altMeasures ?? null,
           },
         });
         children.push(child);
@@ -1322,6 +1324,8 @@ export async function registerRoutes(
               name: sib.itemName,
               quantity: (sib.aiOutputJson as any)?.quantity,
               unit: (sib.aiOutputJson as any)?.unit,
+              servingWeightGrams: (sib.aiOutputJson as any)?.servingWeightGrams ?? null,
+              altMeasures: (sib.aiOutputJson as any)?.altMeasures ?? null,
               ...(m || {}),
             });
           }
