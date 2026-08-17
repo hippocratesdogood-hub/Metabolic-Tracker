@@ -66,6 +66,8 @@ export interface DetectedFoodItem {
   matchQuality?: 'loose';
   /** The food names the parser did match, for "matched only X" UI copy. */
   matchedFrom?: string[];
+  /** The member's original phrase for this line, so Re-check can prefill it. */
+  originalInput?: string;
 }
 
 // ── Skip patterns ──────────────────────────────────────────────────────────
@@ -631,6 +633,7 @@ class NutritionLookupService {
       if (coverage < LOOSE_MATCH_THRESHOLD) {
         item.matchQuality = 'loose';
         item.matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
+        item.originalInput = food;
         console.warn(
           `[Nutritionix] loose match for item "${food}": matched ${JSON.stringify(item.matchedFrom)}, unmatched ${JSON.stringify(unmatched)}`,
         );
@@ -827,6 +830,7 @@ class NutritionLookupService {
         for (const m of mapped) {
           m.matchQuality = 'loose';
           m.matchedFrom = matchedFrom;
+          m.originalInput = line;
         }
         console.warn(
           `[Nutritionix] loose match for "${line}": matched ${JSON.stringify(matchedFrom)}, unmatched tokens ${JSON.stringify(unmatched)}`,

@@ -1198,6 +1198,7 @@ export async function registerRoutes(
             altMeasures: item.altMeasures ?? null,
             ...(item.source ? { source: item.source, sourceName: item.sourceName ?? null, brand: item.brand ?? null } : {}),
             ...(item.gramsEstimated === true ? { gramsEstimated: true } : {}),
+            ...(item.matchQuality === 'loose' ? { matchQuality: 'loose', matchedFrom: item.matchedFrom ?? null } : {}),
             ...(item.unresolved === true ? { unresolved: true } : {}),
           },
         });
@@ -1359,6 +1360,8 @@ export async function registerRoutes(
         servingWeightGrams: item.servingWeightGrams ?? null,
         altMeasures: item.altMeasures ?? null,
         ...(item.source ? { source: item.source, sourceName: item.sourceName ?? null, brand: item.brand ?? null } : {}),
+        ...(item.gramsEstimated === true ? { gramsEstimated: true } : {}),
+        ...(item.matchQuality === 'loose' ? { matchQuality: 'loose', matchedFrom: item.matchedFrom ?? null } : {}),
         ...(item.unresolved === true ? { unresolved: true } : {}),
       });
 

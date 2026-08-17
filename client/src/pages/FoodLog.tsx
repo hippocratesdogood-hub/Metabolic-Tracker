@@ -511,6 +511,7 @@ export default function FoodLog() {
             gramsEstimated: item.gramsEstimated === true ? true : undefined,
             matchQuality: item.matchQuality,
             matchedFrom: item.matchedFrom ?? null,
+            originalInput: item.originalInput ?? null,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }).concat(unresolvedItems));
@@ -580,6 +581,9 @@ export default function FoodLog() {
           brand: f.brand || null,
           servingWeightGrams: f.servingWeightGrams ?? null,
           altMeasures: f.altMeasures ?? null,
+          matchQuality: f.matchQuality,
+          matchedFrom: f.matchedFrom ?? null,
+          originalInput: f.originalInput ?? null,
           _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
@@ -629,6 +633,8 @@ export default function FoodLog() {
           servingWeightGrams: item.servingWeightGrams ?? null,
           altMeasures: item.altMeasures ?? null,
           gramsEstimated: item.gramsEstimated === true ? true : undefined,
+          matchQuality: item.matchQuality,
+          matchedFrom: item.matchedFrom ?? null,
           // Still-unresolved cards save with zero macros and this marker —
           // visible in the meal rather than silently dropped.
           unresolved: item.source === 'unresolved' ? true : undefined,
@@ -1221,9 +1227,16 @@ export default function FoodLog() {
                         {item.source === 'unresolved' ? (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            title="Not found in the nutrition database — enter macros below, scan a barcode, or re-describe it"
+                            title="Not found in the nutrition database. Enter macros below, scan a barcode, or re-describe it."
                           >
                             Not found
+                          </span>
+                        ) : item.matchQuality === 'loose' ? (
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            title={`Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
+                          >
+                            Partial match
                           </span>
                         ) : item.source === 'manual' ? (
                           <span
@@ -1348,6 +1361,12 @@ export default function FoodLog() {
                                 if (updated[idx].source === 'unresolved') {
                                   updated[idx].source = 'manual';
                                 }
+                                // Hand-corrected numbers supersede the
+                                // partial-match warning.
+                                if (updated[idx].matchQuality === 'loose') {
+                                  updated[idx].matchQuality = undefined;
+                                  updated[idx].matchedFrom = null;
+                                }
                                 setEditableItems(updated);
                               }}
                               className="h-6 text-xs text-center p-0 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1381,9 +1400,11 @@ export default function FoodLog() {
                             <button
                               type="button"
                               className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
-                              onClick={() => { setReMatchId(item.id); setReMatchText(item.name || ''); }}
+                              onClick={() => { setReMatchId(item.id); setReMatchText(item.originalInput || item.name || ''); }}
                             >
-                              {item.source === 'unresolved' ? 'Try a different description' : 'Not the right item? Re-check'}
+                              {item.source === 'unresolved' ? 'Try a different description'
+                                : item.matchQuality === 'loose' ? 'Re-check'
+                                : 'Not the right item? Re-check'}
                             </button>
                             {item.source === 'unresolved' && (
                               <button
