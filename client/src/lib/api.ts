@@ -198,6 +198,41 @@ class ApiClient {
     });
   }
 
+  async getFoodMeal(id: string) {
+    return this.request<{ parent: FoodEntry; children: FoodEntry[] }>(`/food/meal/${id}`);
+  }
+
+  async updateFoodMeal(
+    id: string,
+    data: {
+      items: {
+        childId?: string;
+        name: string;
+        quantity: number;
+        unit: string;
+        calories: number;
+        protein: number;
+        fat: number;
+        totalCarbs: number;
+        fiber: number;
+        netCarbs: number;
+        servingWeightGrams?: number | null;
+        altMeasures?: any;
+        source?: string | null;
+        sourceName?: string | null;
+        brand?: string | null;
+        unresolved?: boolean;
+      }[];
+      rawText?: string;
+      tags?: any;
+    },
+  ) {
+    return this.request<{ parent: FoodEntry; children: FoodEntry[] }>(`/food/meal/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   async updateEatenAt(entryId: string, eatenAt: Date) {
     return this.request<FoodEntry>(`/food/${entryId}/eaten-at`, {
       method: "PATCH",

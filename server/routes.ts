@@ -68,6 +68,7 @@ import {
   getCarbOverTargetCopy,
 } from "./services/coachingRules";
 import { calculateMealScore } from "./services/mealScore";
+import { computeAggregateMacros } from "./services/mealAggregate";
 import { scoreBiomarker } from "./services/scoring";
 
 // Anthropic is the sole LLM vendor (consolidated from OpenAI for HIPAA BAA
@@ -1125,19 +1126,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Timestamp cannot be more than 30 days in the past" });
       }
 
-      // Compute aggregate macros from items
-      const aggregateMacros = {
-        calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0,
-      };
-      for (const item of items) {
-        aggregateMacros.calories += item.calories || 0;
-        aggregateMacros.protein += item.protein || 0;
-        aggregateMacros.fat += item.fat || 0;
-        aggregateMacros.totalCarbs += item.totalCarbs || 0;
-        aggregateMacros.fiber += item.fiber || 0;
-        aggregateMacros.netCarbs += item.netCarbs || 0;
-      }
-      aggregateMacros.carbs = aggregateMacros.netCarbs; // compat with existing code
+      // Compute aggregate macros from items (shared with PUT /api/food/meal/:id)
+      const aggregateMacros = computeAggregateMacros(items);
 
       // Calculate deterministic meal quality score
       const user = await storage.getUser(userId);
@@ -1266,6 +1256,178 @@ export async function registerRoutes(
 
       const entry = await storage.updateFoodEntry(req.params.id, req.body);
       res.json(entry);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Meal with child items, for the per-item Edit Meal flow.
+  app.get("/api/food/meal/:id", requireAuth, auditPhiRead("FOOD_ENTRY"), async (req, res) => {
+    try {
+      const parent = await storage.getFoodEntryById(req.params.id);
+      if (!parent) {
+        return res.status(404).json({ message: "Entry not found" });
+      }
+      if (parent.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (parent.parentMealId) {
+        return res.status(400).json({ message: "Entry is a meal item, not a meal" });
+      }
+      const children = await storage.getFoodEntriesByParent(parent.id);
+      res.json({ parent, children });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Replace a meal's items (edit/delete/add) and recompute the parent
+  // aggregate in the same request. The invariant this endpoint exists to
+  // protect: /api/macro-progress and /api/log/day sum from the PARENT row's
+  // (userCorrectionsJson ?? aiOutputJson).macros — child rows contribute
+  // nothing — so item edits that don't recompute the parent silently desync
+  // Today's Nutrition from the meal detail. Corrections are written to
+  // userCorrectionsJson (user edits win the read order); aiOutputJson keeps
+  // the original analysis. Legacy entries without child rows are upgraded to
+  // parent+children on first save through here.
+  app.put("/api/food/meal/:id", requireAuth, auditUpdate("FOOD_ENTRY"), async (req, res) => {
+    try {
+      const parent = await storage.getFoodEntryById(req.params.id);
+      if (!parent) {
+        return res.status(404).json({ message: "Entry not found" });
+      }
+      if (parent.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (parent.parentMealId) {
+        return res.status(400).json({ message: "Entry is a meal item, not a meal" });
+      }
+
+      const { items, rawText, tags } = req.body;
+      if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
+        return res.status(400).json({ message: "items must be a non-empty array (max 50)" });
+      }
+      for (const item of items) {
+        if (typeof item?.name !== "string" || item.name.trim().length === 0) {
+          return res.status(400).json({ message: "Every item needs a name" });
+        }
+      }
+
+      const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+      // Same arithmetic as POST /api/food/meal — the parent aggregate is what
+      // /api/macro-progress reads, so both save paths must agree.
+      const aggregateMacros = computeAggregateMacros(items);
+
+      // Recompute the deterministic meal score against current targets
+      const user = await storage.getUser(parent.userId);
+      const macroTarget = await storage.getMacroTarget(parent.userId);
+      let scoreResult = null;
+      if (macroTarget && (macroTarget.proteinG || macroTarget.carbsG || macroTarget.fatG)) {
+        scoreResult = calculateMealScore(
+          {
+            proteinG: aggregateMacros.protein,
+            netCarbsG: aggregateMacros.netCarbs,
+            fatG: aggregateMacros.fat,
+            eatenAt: parent.eatenAt || parent.timestamp,
+          },
+          {
+            proteinTargetG: macroTarget.proteinG || 0,
+            netCarbTargetG: macroTarget.carbsG || 0,
+            fatTargetG: macroTarget.fatG || 0,
+            eatingWindowStart: (macroTarget as any).eatingWindowStart || "08:00",
+            eatingWindowEnd: (macroTarget as any).eatingWindowEnd || "20:00",
+            timezone: user?.timezone || "America/Los_Angeles",
+          }
+        );
+      }
+
+      const childOutputFor = (item: any) => ({
+        macros: {
+          calories: num(item.calories),
+          protein: num(item.protein),
+          fat: num(item.fat),
+          totalCarbs: num(item.totalCarbs),
+          fiber: num(item.fiber),
+          netCarbs: num(item.netCarbs),
+          carbs: num(item.netCarbs),
+        },
+        quantity: num(item.quantity) || 1,
+        unit: typeof item.unit === "string" && item.unit ? item.unit : "serving",
+        servingWeightGrams: item.servingWeightGrams ?? null,
+        altMeasures: item.altMeasures ?? null,
+        ...(item.source ? { source: item.source, sourceName: item.sourceName ?? null, brand: item.brand ?? null } : {}),
+        ...(item.unresolved === true ? { unresolved: true } : {}),
+      });
+
+      // Update kept children, create new ones, delete removed ones
+      const existingChildren = await storage.getFoodEntriesByParent(parent.id);
+      const existingIds = new Set(existingChildren.map((c) => c.id));
+      const keptIds = new Set<string>();
+      for (const item of items) {
+        if (item.childId && existingIds.has(item.childId)) {
+          keptIds.add(item.childId);
+          await storage.updateFoodEntry(item.childId, {
+            itemName: item.name,
+            aiOutputJson: childOutputFor(item),
+          });
+        } else {
+          await storage.createFoodEntry({
+            userId: parent.userId,
+            timestamp: parent.timestamp,
+            inputType: parent.inputType,
+            mealType: parent.mealType,
+            parentMealId: parent.id,
+            itemName: item.name,
+            eatenAt: parent.eatenAt || parent.timestamp,
+            aiOutputJson: childOutputFor(item),
+          });
+        }
+      }
+      for (const child of existingChildren) {
+        if (!keptIds.has(child.id)) {
+          await storage.deleteFoodEntry(child.id);
+        }
+      }
+
+      const foodsDetected = items.map((item: any) => ({
+        name: item.name,
+        quantity: num(item.quantity) || 1,
+        unit: typeof item.unit === "string" && item.unit ? item.unit : "serving",
+        calories: num(item.calories),
+        protein: num(item.protein),
+        fat: num(item.fat),
+        totalCarbs: num(item.totalCarbs),
+        fiber: num(item.fiber),
+        netCarbs: num(item.netCarbs),
+        servingWeightGrams: item.servingWeightGrams ?? null,
+        altMeasures: item.altMeasures ?? null,
+        source: item.source ?? null,
+        sourceName: item.sourceName ?? null,
+        brand: item.brand ?? null,
+        ...(item.unresolved === true ? { unresolved: true } : {}),
+      }));
+
+      const existingCorrections = (parent.userCorrectionsJson as any) || {};
+      const updates: any = {
+        userCorrectionsJson: {
+          ...existingCorrections,
+          macros: aggregateMacros,
+          foods_detected: foodsDetected,
+          qualityScore: scoreResult?.qualityScore ?? existingCorrections.qualityScore ?? null,
+          scoreBreakdown: scoreResult?.scoreBreakdown ?? existingCorrections.scoreBreakdown ?? null,
+        },
+      };
+      if (typeof rawText === "string" && rawText.trim().length > 0) {
+        updates.rawText = rawText;
+      }
+      if (tags !== undefined) {
+        updates.tags = tags;
+      }
+
+      const updatedParent = await storage.updateFoodEntry(parent.id, updates);
+      const children = await storage.getFoodEntriesByParent(parent.id);
+      res.json({ parent: updatedParent, children });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
