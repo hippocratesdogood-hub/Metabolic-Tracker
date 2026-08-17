@@ -107,7 +107,7 @@ Pre-existing code paths that **will graceful-degrade** if `ANTHROPIC_API_KEY` is
 ## Testing / typecheck
 
 - `npm run check` — TypeScript. Three known error clusters listed above; anything else was likely introduced.
-- `npm test` — Vitest. Baseline **762 passing / 0 failures** as of Aug 17 2026 (calendar-drift tests fixed with a frozen clock the same day). Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
+- `npm test` — Vitest. Baseline **767 passing / 0 failures** as of Aug 17 2026 (calendar-drift tests fixed with a frozen clock the same day). Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
 - Tests live colocated as `*.test.ts` or in `tests/`, use Vitest, run via `npm test` — don't introduce custom assert-based test scripts.
 - No watch mode on `npm run dev` — restart the server after server-side edits.
 
