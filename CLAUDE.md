@@ -43,7 +43,8 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 ## Deployment
 
-- Push to `main` → Railway auto-deploys. No staging.
+- Push to `main` → Railway auto-deploys production.
+- A **staging** environment exists on the same Railway project (env `staging`): `Metabolic-Tracker` service at metabolic-tracker-staging.up.railway.app with its **own Postgres** (separate from production — verified via environment-scoped private networking). Use it to verify server changes (especially external-API paths like Nutritionix) before they reach production: `railway up --environment staging --service Metabolic-Tracker` deploys the local working tree without a git push.
 - `runMigrations()` runs on every boot — **must stay idempotent**.
 - Railway session cookie: Secure + SameSite=Lax + HttpOnly.
 - CSP allowlist is in [server/middleware/security.ts](server/middleware/security.ts) — includes Google Fonts + Sentry ingest.
