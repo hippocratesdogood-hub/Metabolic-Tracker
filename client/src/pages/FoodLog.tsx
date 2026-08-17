@@ -1216,10 +1216,9 @@ export default function FoodLog() {
                         />
                         {item.source === 'unresolved' ? (
                           <span
-                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                             title="Not found in the nutrition database — enter macros below, scan a barcode, or re-describe it"
                           >
-                            <X className="w-2.5 h-2.5" />
                             Not found
                           </span>
                         ) : item.source === 'manual' ? (
