@@ -221,6 +221,8 @@ class ApiClient {
         source?: string | null;
         sourceName?: string | null;
         brand?: string | null;
+        matchQuality?: 'loose';
+        matchedFrom?: string[];
         unresolved?: boolean;
       }[];
       rawText?: string;

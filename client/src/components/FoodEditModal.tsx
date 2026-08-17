@@ -38,6 +38,8 @@ type EditRow = {
   sourceName: string | null;
   brand: string | null;
   unresolved?: boolean;
+  matchQuality?: 'loose';
+  matchedFrom?: string[] | null;
   _baseCal: number;
   _basePro: number;
   _baseFat: number;
@@ -84,6 +86,8 @@ function rowFromChild(child: any): EditRow {
     sourceName: out.sourceName ?? null,
     brand: out.brand ?? null,
     unresolved: out.unresolved === true,
+    matchQuality: out.matchQuality === 'loose' ? 'loose' : undefined,
+    matchedFrom: out.matchedFrom ?? null,
   });
 }
 
@@ -105,6 +109,8 @@ function rowFromFood(f: any, i: number): EditRow {
     sourceName: f.sourceName ?? null,
     brand: f.brand ?? null,
     unresolved: f.unresolved === true || f.source === 'unresolved',
+    matchQuality: f.matchQuality === 'loose' ? 'loose' : undefined,
+    matchedFrom: f.matchedFrom ?? null,
   });
 }
 
@@ -263,6 +269,8 @@ export default function FoodEditModal({
             source: row.source,
             sourceName: row.sourceName,
             brand: row.brand,
+            matchQuality: row.matchQuality,
+            matchedFrom: row.matchedFrom ?? undefined,
             unresolved: row.source === 'unresolved' ? true : undefined,
           })),
           rawText: hasNewAnalysis && hasTextChanged ? editedText : undefined,
@@ -372,8 +380,15 @@ export default function FoodEditModal({
                       className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0 flex-1 min-w-0"
                     />
                     {item.source === 'unresolved' ? (
-                      <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Not found in the nutrition database — enter macros below">
+                      <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Not found in the nutrition database. Enter macros below.">
                         Not found
+                      </span>
+                    ) : item.matchQuality === 'loose' ? (
+                      <span
+                        className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        title={`Only ${(item.matchedFrom || []).map((n) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
+                      >
+                        Partial match
                       </span>
                     ) : item.source === 'verified' ? (
                       <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" title={`Matched from ${item.sourceName || 'a nutrition database'}`}>
@@ -458,6 +473,12 @@ export default function FoodEditModal({
                             if (item.source === 'unresolved') {
                               updates.source = 'manual';
                               updates.unresolved = false;
+                            }
+                            // Hand-corrected numbers supersede the
+                            // partial-match warning.
+                            if (item.matchQuality === 'loose') {
+                              updates.matchQuality = undefined;
+                              updates.matchedFrom = null;
                             }
                             updateRow(idx, updates);
                           }}

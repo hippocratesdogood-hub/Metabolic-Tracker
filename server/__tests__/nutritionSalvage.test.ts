@@ -91,6 +91,8 @@ describe("analyzeNaturalTextDetailed partial-salvage pass", () => {
     expect(result!.items).toHaveLength(1);
     expect(result!.items[0].matchQuality).toBe("loose");
     expect(result!.items[0].matchedFrom).toEqual(["wafer"]);
+    // Re-check prefills the member's phrase, not the salvaged name
+    expect(result!.items[0].originalInput).toContain("zzqx flurbganitz wafer");
     expect(result!.unresolved).toEqual([]);
   });
 
