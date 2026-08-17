@@ -80,6 +80,47 @@ export function coverageFor(text: string, matchedNames: string[]): CoverageResul
 /** Below this, a line that DID return foods is marked a loose match. */
 export const LOOSE_MATCH_THRESHOLD = 0.5;
 
+/** Damerau-Levenshtein distance (with adjacent transposition), for typo tolerance. */
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+
+/** Typo-tolerant token match: exact, substring (len ≥3), or small edit distance. */
+export function fuzzyTokenMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a))) return true;
+  const maxDist = Math.min(a.length, b.length) >= 6 ? 2 : 1;
+  return editDistance(a, b) <= maxDist;
+}
+
+/**
+ * Does an instant-search "common" suggestion plausibly denote the same food
+ * the member typed, up to typos? True only when EVERY content token of the
+ * suggestion fuzzy-matches a token of the member's line — "scrambled eggs"
+ * matches "scrambled egs", but "teriyaki chicken rice bowls" does not match
+ * a Chipotle order. Used to spell-correct typo lines that parsed to nothing,
+ * without ever substituting a different dish.
+ */
+export function suggestionMatchesLine(suggestion: string, line: string): boolean {
+  const sugg = contentTokens(suggestion);
+  if (sugg.length === 0) return false;
+  const lineToks = contentTokens(line);
+  return sugg.every((s) => lineToks.some((l) => fuzzyTokenMatch(s, l)));
+}
+
 /**
  * Acceptance bar for swapping a line's natural-parse result for a branded
  * product: the branded hit's full name must cover at least this fraction of
@@ -87,3 +128,52 @@ export const LOOSE_MATCH_THRESHOLD = 0.5;
  * gummies" must not become Maverik Adventure Fuel Gummies).
  */
 export const BRANDED_UPGRADE_MIN_COVERAGE = 2 / 3;
+
+/**
+ * Did the member's text NAME this brand? Exact token match, or a member
+ * token that contains a brand token of ≥4 chars ("wendys" names "Wendy's").
+ * Deliberately NOT the reverse: a member token contained in a brand token
+ * does not count — "eggs" must never be read as naming "Eggsmart".
+ */
+export function brandTokenNamed(textTokens: string[], brandName: string | null | undefined): boolean {
+  const brandToks = contentTokens(brandName || '');
+  return textTokens.some((t) => brandToks.some((b) => t === b || (b.length >= 4 && t.includes(b))));
+}
+
+export interface BrandedHit {
+  brand_name: string | null;
+  food_name: string | null;
+}
+
+/**
+ * Acceptance for the unresolved path (the line parsed to nothing): the
+ * member must have named the brand (brand-conflict guard — a Chipotle order
+ * must never log a Wahoo's bowl) AND the product's full name must cover
+ * ≥2/3 of the phrase.
+ */
+export function acceptableBrandedDefault(searchTerm: string, hit: BrandedHit): boolean {
+  if (!brandTokenNamed(contentTokens(searchTerm), hit.brand_name)) return false;
+  const cov = coverageFor(searchTerm, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
+  // Strictly above the bar: "morning fuel stack gummies" vs Maverik
+  // Adventure Fuel Grizzly Gummies lands exactly AT 2/3 and must not pass.
+  // Epsilon guards the float artifact where 1 - 1/3 lands one ulp above 2/3.
+  return cov > BRANDED_UPGRADE_MIN_COVERAGE + 1e-9;
+}
+
+/**
+ * Acceptance for the salvage-upgrade path (the line parsed partially): the
+ * brand must be named by one of the UNMATCHED words specifically, the full
+ * name must cover ≥2/3 of the line, and it must beat the natural parse.
+ */
+export function acceptableBrandedUpgrade(
+  line: string,
+  unmatchedTokens: string[],
+  naturalCoverage: number,
+  hit: BrandedHit,
+): boolean {
+  if (!brandTokenNamed(unmatchedTokens, hit.brand_name)) return false;
+  const cov = coverageFor(line, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
+  // Strictly above the bar (see acceptableBrandedDefault), and better than
+  // what the natural parse already had.
+  return cov > BRANDED_UPGRADE_MIN_COVERAGE + 1e-9 && cov > naturalCoverage;
+}
