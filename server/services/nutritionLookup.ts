@@ -33,6 +33,25 @@ export interface EnrichedFoodItem {
   matchConfidence: number;
 }
 
+/** One resolved food in the route's foods_detected shape (Nutritionix-native analysis). */
+export interface DetectedFoodItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  totalCarbs: number;
+  fiber: number;
+  netCarbs: number;
+  source: 'verified';
+  sourceName: 'Nutritionix';
+  brand: string | null;
+  confidence: number;
+  servingWeightGrams: number | null;
+  altMeasures: Array<{ qty: number; measure: string; servingWeightGrams: number }> | null;
+}
+
 // ── Skip patterns ──────────────────────────────────────────────────────────
 // Generic/vague descriptions that food databases won't match well
 const SKIP_PATTERNS = [
@@ -516,23 +535,37 @@ class NutritionLookupService {
    * Returns one item per detected food (in the route's foods_detected shape),
    * or null if not configured / the request failed / nothing parsed.
    */
-  async analyzeNaturalText(rawText: string): Promise<Array<{
-    name: string;
-    quantity: number;
-    unit: string;
-    calories: number;
-    protein: number;
-    fat: number;
-    totalCarbs: number;
-    fiber: number;
-    netCarbs: number;
-    source: 'verified';
-    sourceName: 'Nutritionix';
-    brand: string | null;
-    confidence: number;
-    servingWeightGrams: number | null;
-    altMeasures: Array<{ qty: number; measure: string; servingWeightGrams: number }> | null;
-  }> | null> {
+  async analyzeNaturalText(rawText: string): Promise<DetectedFoodItem[] | null> {
+    const detailed = await this.analyzeNaturalTextDetailed(rawText);
+    if (!detailed || detailed.items.length === 0) return null;
+    return detailed.items;
+  }
+
+  /**
+   * Full-text analysis that also reports what could NOT be resolved.
+   *
+   * Nutritionix's natural endpoint silently omits phrases its NLP can't
+   * match (branded foods like "1 RxBar" — the Aug 2026 silent-drop bug), so
+   * a plain query gives no unmatched signal. In line_delimited mode the API
+   * returns a per-line `errors` array instead:
+   *   err_code 101 — no foods detected on the line → genuinely unresolved
+   *   err_code 100 — multiple foods on one line → resolvable; re-sent as a
+   *                  plain query and merged (otherwise "tuna and rice" on
+   *                  one line would return nothing)
+   *
+   * The meal text is split into candidate lines on commas/newlines. Single
+   * lines skip line_delimited (plain query, same signal: empty foods →
+   * unresolved). On a hard request failure every line is reported as
+   * unresolved rather than returning null — the UI can then offer manual
+   * entry instead of silently losing the meal.
+   *
+   * Returns null only when Nutritionix is unconfigured or the input is
+   * effectively empty.
+   */
+  async analyzeNaturalTextDetailed(rawText: string): Promise<{
+    items: DetectedFoodItem[];
+    unresolved: string[];
+  } | null> {
     const appId = process.env.NUTRITIONIX_APP_ID;
     const appKey = process.env.NUTRITIONIX_APP_KEY;
     if (!appId || !appKey) return null;
@@ -540,12 +573,74 @@ class NutritionLookupService {
     const query = (rawText || '').trim();
     if (query.length < 2) return null;
 
-    type DetectedItem = NonNullable<Awaited<ReturnType<NutritionLookupService['analyzeNaturalText']>>>[number];
-    const cacheKey = cacheKeys.nutritionLookup(`nix-nl:${query.toLowerCase()}`);
-    const cached = cache.get<DetectedItem[]>(cacheKey);
+    type Detailed = { items: DetectedFoodItem[]; unresolved: string[] };
+    const cacheKey = cacheKeys.nutritionLookup(`nix-nld:${query.toLowerCase()}`);
+    const cached = cache.get<Detailed>(cacheKey);
     if (cached !== undefined && cached !== null) return cached;
-    if (cache.get<string>(`${cacheKey}:miss`) === 'miss') return null;
 
+    const lines = query
+      .split(/[\n,]+/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    let result: Detailed;
+    if (lines.length <= 1) {
+      const data = await this.nixNaturalRequest({ query }, appId, appKey);
+      const items = this.mapNixFoods(data?.foods);
+      result = { items, unresolved: items.length === 0 ? [query] : [] };
+    } else {
+      const data = await this.nixNaturalRequest(
+        { query: lines.join('\n'), line_delimited: true },
+        appId,
+        appKey,
+      );
+      if (!data) {
+        // Hard failure: surface every line as unresolved so nothing is lost.
+        result = { items: [], unresolved: lines };
+      } else {
+        const items = this.mapNixFoods(data.foods);
+        const unresolved: string[] = [];
+        for (const err of Array.isArray(data.errors) ? data.errors : []) {
+          const phrase = typeof err?.original_text === 'string' ? err.original_text.trim() : '';
+          if (!phrase) continue;
+          if (err.err_code === 100) {
+            // Multiple foods on one line — the plain parser handles this.
+            const sub = await this.nixNaturalRequest({ query: phrase }, appId, appKey);
+            const subItems = this.mapNixFoods(sub?.foods);
+            if (subItems.length > 0) items.push(...subItems);
+            else unresolved.push(phrase);
+          } else {
+            unresolved.push(phrase);
+          }
+        }
+        result = { items, unresolved };
+      }
+    }
+
+    if (result.unresolved.length > 0) {
+      // De-identified (food text only) — this is the visibility the silent
+      // drop never had. Grep target: "unresolved phrase".
+      console.warn(
+        `[Nutritionix] ${result.unresolved.length} unresolved phrase(s) for "${query}": ${result.unresolved.join(' | ')}`,
+      );
+    }
+    console.log(`[Nutritionix] natural "${query}" → ${result.items.length} item(s), ${result.unresolved.length} unresolved`);
+    cache.set(cacheKey, result, 60 * 60 * 1000);
+    return result;
+  }
+
+  /**
+   * Single POST to /v2/natural/nutrients. De-identified by design: only the
+   * food description is sent, never a patient identifier (see PHI note
+   * above; regression-tested). Returns the parsed body, or null on any
+   * failure. line_delimited responses put per-line failures in `errors`
+   * alongside a 200 status.
+   */
+  private async nixNaturalRequest(
+    body: { query: string; line_delimited?: boolean },
+    appId: string,
+    appKey: string,
+  ): Promise<any | null> {
     try {
       const response = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
         method: 'POST',
@@ -554,67 +649,55 @@ class NutritionLookupService {
           'x-app-id': appId,
           'x-app-key': appKey,
         },
-        // De-identified by design: only the food description is sent, never a
-        // patient identifier. See the PHI note above.
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
-
       if (!response.ok) {
-        console.error(`[Nutritionix] natural ${response.status} for "${query}"`);
-        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
+        console.error(`[Nutritionix] natural ${response.status} for "${body.query}"`);
         return null;
       }
-
-      const data = await response.json();
-      const foods = data.foods || [];
-      if (foods.length === 0) {
-        cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
-        return null;
-      }
-
-      const items: DetectedItem[] = foods.map((f: any) => {
-        const totalCarbs = Math.round((f.nf_total_carbohydrate || 0) * 10) / 10;
-        const fiber = Math.round((f.nf_dietary_fiber || 0) * 10) / 10;
-        // Resolved portion weight + alternate serving sizes. Nutritionix picks
-        // a container size invisibly (e.g. "1 can tuna" → 172 g); persisting
-        // the grams is what lets the UI expose and correct that choice.
-        const altMeasures = Array.isArray(f.alt_measures)
-          ? f.alt_measures
-              .filter((m: any) => m && typeof m.serving_weight === 'number' && m.measure)
-              .map((m: any) => ({
-                qty: typeof m.qty === 'number' ? m.qty : 1,
-                measure: String(m.measure),
-                servingWeightGrams: m.serving_weight,
-              }))
-          : null;
-        return {
-          name: f.food_name || 'food',
-          quantity: f.serving_qty || 1,
-          unit: f.serving_unit || 'serving',
-          calories: Math.round(f.nf_calories || 0),
-          protein: Math.round((f.nf_protein || 0) * 10) / 10,
-          fat: Math.round((f.nf_total_fat || 0) * 10) / 10,
-          totalCarbs,
-          fiber,
-          netCarbs: Math.round((totalCarbs - fiber) * 10) / 10,
-          source: 'verified' as const,
-          sourceName: 'Nutritionix' as const,
-          brand: f.brand_name || null,
-          confidence: 0.95,
-          servingWeightGrams: typeof f.serving_weight_grams === 'number' ? f.serving_weight_grams : null,
-          altMeasures: altMeasures && altMeasures.length > 0 ? altMeasures : null,
-        };
-      });
-
-      cache.set(cacheKey, items, 60 * 60 * 1000);
-      console.log(`[Nutritionix] natural "${query}" → ${items.length} item(s)`);
-      return items;
+      return await response.json();
     } catch (err) {
       console.error('[Nutritionix] natural analysis failed:', err);
-      cache.set(`${cacheKey}:miss`, 'miss', 5 * 60 * 1000);
       return null;
     }
+  }
+
+  private mapNixFoods(foods: any): DetectedFoodItem[] {
+    if (!Array.isArray(foods)) return [];
+    return foods.map((f: any) => {
+      const totalCarbs = Math.round((f.nf_total_carbohydrate || 0) * 10) / 10;
+      const fiber = Math.round((f.nf_dietary_fiber || 0) * 10) / 10;
+      // Resolved portion weight + alternate serving sizes. Nutritionix picks
+      // a container size invisibly (e.g. "1 can tuna" → 172 g); persisting
+      // the grams is what lets the UI expose and correct that choice.
+      const altMeasures = Array.isArray(f.alt_measures)
+        ? f.alt_measures
+            .filter((m: any) => m && typeof m.serving_weight === 'number' && m.measure)
+            .map((m: any) => ({
+              qty: typeof m.qty === 'number' ? m.qty : 1,
+              measure: String(m.measure),
+              servingWeightGrams: m.serving_weight,
+            }))
+        : null;
+      return {
+        name: f.food_name || 'food',
+        quantity: f.serving_qty || 1,
+        unit: f.serving_unit || 'serving',
+        calories: Math.round(f.nf_calories || 0),
+        protein: Math.round((f.nf_protein || 0) * 10) / 10,
+        fat: Math.round((f.nf_total_fat || 0) * 10) / 10,
+        totalCarbs,
+        fiber,
+        netCarbs: Math.round((totalCarbs - fiber) * 10) / 10,
+        source: 'verified' as const,
+        sourceName: 'Nutritionix' as const,
+        brand: f.brand_name || null,
+        confidence: 0.95,
+        servingWeightGrams: typeof f.serving_weight_grams === 'number' ? f.serving_weight_grams : null,
+        altMeasures: altMeasures && altMeasures.length > 0 ? altMeasures : null,
+      };
+    });
   }
 }
 

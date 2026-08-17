@@ -274,6 +274,7 @@ async function buildNutritionixTextAnalysis(
   mealTypeSuggestion: string,
 ): Promise<{
   foods_detected: any[];
+  unresolved: string[];
   macros: { calories: number; protein: number; fat: number; totalCarbs: number; fiber: number; netCarbs: number; carbs: number };
   notes: string | null;
   suggestedMealType: string;
@@ -282,7 +283,11 @@ async function buildNutritionixTextAnalysis(
   const nutritionixConfigured = !!(process.env.NUTRITIONIX_APP_ID && process.env.NUTRITIONIX_APP_KEY);
   if (!nutritionixConfigured) return null;
 
-  const items = (await nutritionLookup.analyzeNaturalText(rawText)) ?? [];
+  const detailed = await nutritionLookup.analyzeNaturalTextDetailed(rawText);
+  const items = detailed?.items ?? [];
+  // Phrases Nutritionix could not resolve. Surfaced to the confirm UI so a
+  // dropped item ("1 RxBar") shows up as not-found instead of vanishing.
+  const unresolved = detailed?.unresolved ?? [];
   const macros = { calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0, carbs: 0 };
   for (const item of items) {
     macros.calories += item.calories || 0;
@@ -296,6 +301,7 @@ async function buildNutritionixTextAnalysis(
 
   return {
     foods_detected: items,
+    unresolved,
     macros,
     notes: null,
     suggestedMealType: mealTypeSuggestion,
@@ -1200,6 +1206,7 @@ export async function registerRoutes(
             unit: item.unit,
             servingWeightGrams: item.servingWeightGrams ?? null,
             altMeasures: item.altMeasures ?? null,
+            ...(item.unresolved === true ? { unresolved: true } : {}),
           },
         });
         children.push(child);
