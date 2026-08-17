@@ -136,19 +136,19 @@ class NutritionLookupService {
   async enrichFoodsDetected(foods: any[]): Promise<EnrichedFoodItem[]> {
     const results = await Promise.allSettled(
       foods.map(async (item) => {
-        // Route through lookupItemMacros so the quantity AND unit (e.g.,
-        // "2 slice mango") are honored. searchFood() alone doesn't know
-        // about units, so it silently treated "2 slices" as "2 whole
-        // mangoes" before this fix.
+        // Route through lookupItemDetailed so the quantity AND unit are
+        // honored and the full resolution chain runs (Nutritionix natural
+        // with grams/alt measures, branded database, OFF/USDA) — the image
+        // path previously discarded gram weights the API already returned.
         const qty = item.quantity || 1;
         const unit = item.unit || 'serving';
-        const match = await this.lookupItemMacros(item.name, qty, unit);
+        const match = await this.lookupItemDetailed(item.name, qty, unit);
 
         if (match) {
           // Sanity check: reject matches where the macro profile is wildly
           // different from the AI estimate — indicates a wrong food matched
           // (e.g., "egg noodles" for "egg"). Compare already-scaled totals
-          // since lookupItemMacros returns values for the full quantity.
+          // since lookupItemDetailed returns values for the full quantity.
           const aiCal = item.calories || 0;
           const aiPro = item.protein || 0;
           if (aiCal > 0 && match.calories > 0) {
@@ -168,12 +168,6 @@ class NutritionLookupService {
             }
           }
 
-          const sourceName =
-            match.source === 'nutritionix' ? 'Nutritionix'
-              : match.source === 'openfoodfacts' ? 'Open Food Facts'
-              : match.source === 'usda' ? 'USDA FoodData Central'
-              : null;
-
           return {
             ...item,
             calories: match.calories,
@@ -182,10 +176,15 @@ class NutritionLookupService {
             totalCarbs: match.totalCarbs,
             fiber: match.fiber,
             netCarbs: match.netCarbs,
+            servingWeightGrams: match.servingWeightGrams,
+            altMeasures: match.altMeasures,
             source: 'verified' as const,
-            sourceName,
-            brand: null,
+            sourceName: match.sourceName,
+            brand: match.brand,
             matchConfidence: 0.95,
+            // matchQuality is intentionally NOT propagated here: vision item
+            // names are AI-generated, so "matched what you typed" copy does
+            // not apply to photo entries.
             _aiEstimate: {
               calories: item.calories,
               protein: item.protein,
