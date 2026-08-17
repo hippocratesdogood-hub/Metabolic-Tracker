@@ -5,7 +5,16 @@
  * Tests validation, error handling, duplicate detection, and performance.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
+
+// Frozen clock: relative-date assertions drifted with the real calendar
+// (documented drift, fixed Aug 2026). Frozen, results are deterministic.
+beforeAll(() => {
+  vi.useFakeTimers({ now: new Date("2026-08-17T12:00:00Z"), toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -253,12 +262,14 @@ describe("Import Validation", () => {
       expect(result.message).toContain("future");
     });
 
-    it("rejects very old timestamps", () => {
+    it("accepts very old timestamps with a warning", () => {
+      // Product decision in importUtils.validateTimestamp: 5+ year data is
+      // allowed with a warning, not blocked.
       const tenYearsAgo = new Date();
       tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
       const result = validateTimestamp(tenYearsAgo);
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("5 years");
+      expect(result.valid).toBe(true);
+      expect(result.warning).toContain("5 years");
     });
   });
 

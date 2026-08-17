@@ -61,7 +61,7 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 - [server/routes.ts](server/routes.ts) has TS errors flagged by `npm run check` around `metric.value_json` property access and a couple of `logAuditEvent` argument-count mismatches. These predate current work and don't affect runtime.
 - Untracked `migrations/0001_curved_captain_midlands.sql` + `migrations/meta/` are Drizzle Kit-generated files that aren't used (we use `runIncrementalMigrations` instead).
-- Five calendar-drift test failures (pre-existing, unrelated to current work): `backfillAnalytics.test.ts:1101`, `historicalEdgeCases.test.ts:107` and `:147`, `import.test.ts:260`. They hardcode "X years ago" baselines that decay as the calendar moves forward and will fail more often over time. Fix by switching to relative date helpers or `vi.useFakeTimers()` with a frozen clock.
+- ~~Calendar-drift test failures~~ Fixed Aug 17 2026: `backfillAnalytics`, `historicalEdgeCases`, and `import` test files now run on a frozen clock (`vi.useFakeTimers`, fixed at 2026-08-17), and two stale `validateTimestamp` expectations were corrected to the implemented allow-with-warning behavior. The full suite is expected green.
 
 ## Lab PDF ingestion (Phase 2 — code complete, prod-gated on BAA)
 
@@ -107,7 +107,7 @@ Pre-existing code paths that **will graceful-degrade** if `ANTHROPIC_API_KEY` is
 ## Testing / typecheck
 
 - `npm run check` — TypeScript. Three known error clusters listed above; anything else was likely introduced.
-- `npm test` — Vitest. Baseline **743 passing / 3 known calendar-drift failures** (746 total) as of Aug 16 2026. Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
+- `npm test` — Vitest. Baseline **762 passing / 0 failures** as of Aug 17 2026 (calendar-drift tests fixed with a frozen clock the same day). Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
 - Tests live colocated as `*.test.ts` or in `tests/`, use Vitest, run via `npm test` — don't introduce custom assert-based test scripts.
 - No watch mode on `npm run dev` — restart the server after server-side edits.
 
