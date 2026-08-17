@@ -7,6 +7,12 @@
  */
 
 import cache, { cacheKeys } from './cache';
+import {
+  contentTokens,
+  coverageFor,
+  LOOSE_MATCH_THRESHOLD,
+  BRANDED_UPGRADE_MIN_COVERAGE,
+} from './matchCoverage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +56,15 @@ export interface DetectedFoodItem {
   confidence: number;
   servingWeightGrams: number | null;
   altMeasures: Array<{ qty: number; measure: string; servingWeightGrams: number }> | null;
+  /**
+   * 'loose' when token coverage of the input by the matched names fell
+   * below LOOSE_MATCH_THRESHOLD — the parser salvaged only part of what the
+   * member typed (see matchCoverage.ts). Absent on full matches. Lexical
+   * signal only: absence does NOT mean the match was verified correct.
+   */
+  matchQuality?: 'loose';
+  /** The food names the parser did match, for "matched only X" UI copy. */
+  matchedFrom?: string[];
 }
 
 // ── Skip patterns ──────────────────────────────────────────────────────────
@@ -583,11 +598,16 @@ class NutritionLookupService {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    let result: Detailed;
+    // Per-line raw foods, so partial-salvage detection can compare each
+    // input line against what it actually matched.
+    const lineFoods: Array<{ line: string; raw: any[] }> = [];
+    let unresolved: string[] = [];
+
     if (lines.length <= 1) {
       const data = await this.nixNaturalRequest({ query }, appId, appKey);
-      const items = this.mapNixFoods(data?.foods);
-      result = { items, unresolved: items.length === 0 ? [query] : [] };
+      const raw = Array.isArray(data?.foods) ? data.foods : [];
+      if (raw.length > 0) lineFoods.push({ line: query, raw });
+      else unresolved.push(query);
     } else {
       const data = await this.nixNaturalRequest(
         { query: lines.join('\n'), line_delimited: true },
@@ -596,26 +616,91 @@ class NutritionLookupService {
       );
       if (!data) {
         // Hard failure: surface every line as unresolved so nothing is lost.
-        result = { items: [], unresolved: lines };
+        unresolved = [...lines];
       } else {
-        const items = this.mapNixFoods(data.foods);
-        const unresolved: string[] = [];
+        // Attribute foods to lines via metadata.original_input. Foods
+        // without one (defensive — the live API always sets it in
+        // line_delimited mode) are scored against the whole query, which
+        // can only make their coverage more lenient, never a false flag.
+        const byLine = new Map<string, any[]>(lines.map((l) => [l, []]));
+        const push = (line: string, foods: any[]) =>
+          byLine.set(line, [...(byLine.get(line) ?? []), ...foods]);
+        for (const f of Array.isArray(data.foods) ? data.foods : []) {
+          const origin = typeof f?.metadata?.original_input === 'string' ? f.metadata.original_input.trim() : '';
+          push(byLine.has(origin) ? origin : query, [f]);
+        }
         for (const err of Array.isArray(data.errors) ? data.errors : []) {
           const phrase = typeof err?.original_text === 'string' ? err.original_text.trim() : '';
           if (!phrase) continue;
           if (err.err_code === 100) {
             // Multiple foods on one line — the plain parser handles this.
             const sub = await this.nixNaturalRequest({ query: phrase }, appId, appKey);
-            const subItems = this.mapNixFoods(sub?.foods);
-            if (subItems.length > 0) items.push(...subItems);
+            const subRaw = Array.isArray(sub?.foods) ? sub.foods : [];
+            if (subRaw.length > 0) push(phrase, subRaw);
             else unresolved.push(phrase);
           } else {
             unresolved.push(phrase);
           }
         }
-        result = { items, unresolved };
+        byLine.forEach((raw, line) => {
+          if (raw.length > 0) lineFoods.push({ line, raw });
+        });
       }
     }
+
+    // Partial-salvage pass. The natural parser can salvage one known word
+    // from a phrase it didn't really understand ("in n out double double no
+    // bun" → a 140-kcal "bun") and nothing in the response marks the loss.
+    // Per line: compute token coverage of the input by the matched names;
+    // on partial coverage try a branded upgrade (the phrase is often a real
+    // product — Quest bar, In-N-Out burger); whatever is still below the
+    // loose threshold is labeled matchQuality:'loose' for the UI.
+    const items: DetectedFoodItem[] = [];
+    for (const { line, raw } of lineFoods) {
+      const matchedNames: string[] = [];
+      for (const f of raw) {
+        if (f?.food_name) matchedNames.push(String(f.food_name));
+        if (f?.brand_name) matchedNames.push(String(f.brand_name));
+        const tagItem = f?.tags?.item;
+        if (tagItem) matchedNames.push(String(tagItem));
+      }
+      const { coverage, unmatched } = coverageFor(line, matchedNames);
+      const mapped = this.mapNixFoods(raw);
+
+      if (coverage < 1 && unmatched.length > 0) {
+        const upgrade = await this.searchBrandedFood(line, {
+          accept: (hit) => {
+            const brandToks = contentTokens(hit.brand_name || '');
+            const brandOverlap = unmatched.some((u) =>
+              brandToks.some((b) => u === b || (u.length >= 3 && b.length >= 3 && (u.includes(b) || b.includes(u)))),
+            );
+            if (!brandOverlap) return false;
+            const hitCov = coverageFor(line, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
+            // One overlapping word is not enough — the product name must
+            // account for most of the line, and beat the natural parse.
+            return hitCov >= BRANDED_UPGRADE_MIN_COVERAGE && hitCov > coverage;
+          },
+        });
+        if (upgrade) {
+          items.push(upgrade);
+          continue;
+        }
+      }
+
+      if (coverage < LOOSE_MATCH_THRESHOLD) {
+        const matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
+        for (const m of mapped) {
+          m.matchQuality = 'loose';
+          m.matchedFrom = matchedFrom;
+        }
+        console.warn(
+          `[Nutritionix] loose match for "${line}": matched ${JSON.stringify(matchedFrom)}, unmatched tokens ${JSON.stringify(unmatched)}`,
+        );
+      }
+      items.push(...mapped);
+    }
+
+    let result: Detailed = { items, unresolved };
 
     // Second pass: phrases the natural (common-foods) parser couldn't match
     // are often branded products ("1 RxBar") — try Nutritionix's branded
@@ -653,7 +738,19 @@ class NutritionLookupService {
    * Returns a DetectedFoodItem labeled with the real source (verified /
    * Nutritionix + brand), or null when nothing matches.
    */
-  async searchBrandedFood(phrase: string): Promise<DetectedFoodItem | null> {
+  async searchBrandedFood(
+    phrase: string,
+    opts?: {
+      /**
+       * Custom acceptance test over the top instant-search hits (default:
+       * first hit with a nix_item_id). Used by the salvage upgrade path,
+       * which requires the product name to cover most of the input line.
+       * Results are NOT cached when a predicate is supplied — acceptance
+       * depends on caller context, so cached entries would cross-contaminate.
+       */
+      accept?: (hit: { brand_name: string | null; food_name: string | null }) => boolean;
+    },
+  ): Promise<DetectedFoodItem | null> {
     const appId = process.env.NUTRITIONIX_APP_ID;
     const appKey = process.env.NUTRITIONIX_APP_KEY;
     if (!appId || !appKey) return null;
@@ -668,10 +765,13 @@ class NutritionLookupService {
     const searchTerm = (qtyMatch ? qtyMatch[2] : cleaned).trim();
     if (searchTerm.length < 2 || quantity <= 0 || quantity > 50) return null;
 
+    const useCache = !opts?.accept;
     const cacheKey = cacheKeys.nutritionLookup(`nix-branded:${quantity}|${searchTerm.toLowerCase()}`);
-    const cached = cache.get<DetectedFoodItem | 'miss'>(cacheKey);
-    if (cached === 'miss') return null;
-    if (cached !== undefined && cached !== null) return cached;
+    if (useCache) {
+      const cached = cache.get<DetectedFoodItem | 'miss'>(cacheKey);
+      if (cached === 'miss') return null;
+      if (cached !== undefined && cached !== null) return cached;
+    }
 
     try {
       const headers = { 'x-app-id': appId, 'x-app-key': appKey };
@@ -684,9 +784,14 @@ class NutritionLookupService {
         return null;
       }
       const instant = await instantRes.json();
-      const hit = Array.isArray(instant.branded) ? instant.branded.find((b: any) => b?.nix_item_id) : null;
+      const candidates = (Array.isArray(instant.branded) ? instant.branded : [])
+        .filter((b: any) => b?.nix_item_id)
+        .slice(0, 5);
+      const hit = opts?.accept
+        ? candidates.find((b: any) => opts.accept!({ brand_name: b.brand_name ?? null, food_name: b.food_name ?? null }))
+        : candidates[0];
       if (!hit) {
-        cache.set(cacheKey, 'miss', 60 * 60 * 1000);
+        if (useCache) cache.set(cacheKey, 'miss', 60 * 60 * 1000);
         return null;
       }
 
@@ -723,7 +828,7 @@ class NutritionLookupService {
         // different flavor) — flag lower confidence than an exact NLP parse.
         confidence: 0.7,
       };
-      cache.set(cacheKey, item, 60 * 60 * 1000);
+      if (useCache) cache.set(cacheKey, item, 60 * 60 * 1000);
       console.log(`[Nutritionix] branded "${searchTerm}" → ${item.name}`);
       return item;
     } catch (err) {

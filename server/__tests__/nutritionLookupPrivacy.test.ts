@@ -14,13 +14,24 @@ const NIX_URL = "https://trackapi.nutritionix.com/v2/natural/nutrients";
 
 describe("Nutritionix de-identification guardrail", () => {
   const realFetch = global.fetch;
+  // The natural POST and any salvage-pass instant GETs are recorded
+  // separately; BOTH must stay de-identified.
   let lastCall: { url: string; init: any } | null = null;
+  let instantCalls: Array<{ url: string; init: any }> = [];
 
   beforeEach(() => {
     process.env.NUTRITIONIX_APP_ID = "test-app-id";
     process.env.NUTRITIONIX_APP_KEY = "test-app-key";
     lastCall = null;
+    instantCalls = [];
     global.fetch = vi.fn(async (url: any, init: any) => {
+      if (String(url).includes("/v2/search/")) {
+        instantCalls.push({ url: String(url), init });
+        return new Response(JSON.stringify({ common: [], branded: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       lastCall = { url: String(url), init };
       return new Response(
         JSON.stringify({
@@ -62,6 +73,13 @@ describe("Nutritionix de-identification guardrail", () => {
     const body = JSON.parse(lastCall!.init.body);
     expect(Object.keys(body)).toEqual(["query"]);
     expect(body.query).toBe(query);
+
+    // Salvage-pass instant searches (if any fired) carry only the food
+    // text in the URL and API credentials in headers.
+    for (const call of instantCalls) {
+      const h = Object.keys(call.init?.headers ?? {}).map((k) => k.toLowerCase()).sort();
+      expect(h).toEqual(["x-app-id", "x-app-key"]);
+    }
   });
 
   it("multi-line queries add only the line_delimited flag — still no identifiers", async () => {
