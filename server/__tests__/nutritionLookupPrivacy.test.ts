@@ -64,6 +64,17 @@ describe("Nutritionix de-identification guardrail", () => {
     expect(body.query).toBe(query);
   });
 
+  it("multi-line queries add only the line_delimited flag — still no identifiers", async () => {
+    await nutritionLookup.analyzeNaturalTextDetailed("guardrail-eggs, guardrail-toast");
+
+    expect(lastCall).not.toBeNull();
+    const body = JSON.parse(lastCall!.init.body);
+    expect(Object.keys(body).sort()).toEqual(["line_delimited", "query"]);
+
+    const headerKeys = Object.keys(lastCall!.init.headers).map((k) => k.toLowerCase()).sort();
+    expect(headerKeys).toEqual(["content-type", "x-app-id", "x-app-key"]);
+  });
+
   it("serialized request carries no common patient-identifier keys", async () => {
     await nutritionLookup.analyzeNaturalText("guardrail-grilled-chicken");
 

@@ -124,6 +124,9 @@ export default function FoodLog() {
   const [reMatchLoading, setReMatchLoading] = useState(false);
   const [consentPending, setConsentPending] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+  // When set, the next scanned item replaces the editable item at this index
+  // (used to resolve a not-found card) instead of appending to the list.
+  const [barcodeReplaceIdx, setBarcodeReplaceIdx] = useState<number | null>(null);
   const [recipeBuilderOpen, setRecipeBuilderOpen] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   // True after an AI-unavailable (503 AI_UNAVAILABLE) analyze attempt —
@@ -450,7 +453,28 @@ export default function FoodLog() {
         mealType: mealType,
         hasImage: !!selectedImage,
       });
-      // Populate editable items from AI response
+      // Phrases the analyzer could not resolve (Nutritionix fallback mode).
+      // They MUST appear in the confirm list — as not-found cards with manual
+      // macro entry / barcode / re-describe — never silently vanish.
+      const unresolvedItems = (Array.isArray(result.unresolved) ? result.unresolved : []).map(
+        (phrase: string, i: number) => ({
+          id: `unresolved-${Date.now()}-${i}`,
+          name: phrase,
+          quantity: 1,
+          unit: 'serving',
+          calories: 0, protein: 0, fat: 0, totalCarbs: 0, fiber: 0, netCarbs: 0,
+          _baseCal: 0, _basePro: 0, _baseFat: 0, _baseTotalCarbs: 0, _baseFiber: 0, _baseNetCarbs: 0,
+          _baseGrams: null,
+          servingWeightGrams: null,
+          altMeasures: null,
+          confidence: 0,
+          source: 'unresolved',
+          sourceName: null,
+          brand: null,
+        }),
+      );
+      // Populate editable items from AI response (resolved first, then
+      // not-found cards, matching the typed order more closely)
       if (result.foods_detected && Array.isArray(result.foods_detected)) {
         setEditableItems(result.foods_detected.map((item: any, i: number) => {
           const qty = item.quantity || 1;
@@ -486,7 +510,14 @@ export default function FoodLog() {
             altMeasures: item.altMeasures ?? null,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
-        }));
+        }).concat(unresolvedItems));
+      } else if (unresolvedItems.length > 0) {
+        setEditableItems(unresolvedItems);
+      }
+      if (unresolvedItems.length > 0) {
+        toast.warning(
+          `${unresolvedItems.length} item${unresolvedItems.length === 1 ? ' was' : 's were'} not found — enter macros, scan a barcode, or re-describe below.`,
+        );
       }
       // Don't override user's meal type selection with AI suggestion
       toast.success('Analysis complete!');
@@ -594,6 +625,9 @@ export default function FoodLog() {
           brand: item.brand || null,
           servingWeightGrams: item.servingWeightGrams ?? null,
           altMeasures: item.altMeasures ?? null,
+          // Still-unresolved cards save with zero macros and this marker —
+          // visible in the meal rather than silently dropped.
+          unresolved: item.source === 'unresolved' ? true : undefined,
         })),
         mealType,
         rawText: input || analysisResult?.description || 'Photo analysis',
@@ -1180,7 +1214,22 @@ export default function FoodLog() {
                           }}
                           className="h-7 text-sm font-medium border-none bg-transparent p-0 focus-visible:ring-0 flex-1 min-w-0"
                         />
-                        {item.source === 'verified' ? (
+                        {item.source === 'unresolved' ? (
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            title="Not found in the nutrition database — enter macros below, scan a barcode, or re-describe it"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                            Not found
+                          </span>
+                        ) : item.source === 'manual' ? (
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground"
+                            title="Macros entered manually"
+                          >
+                            Manual
+                          </span>
+                        ) : item.source === 'verified' ? (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
                             title={`Matched from ${item.sourceName || 'a nutrition database'} — confirm it's the right product`}
@@ -1291,6 +1340,11 @@ export default function FoodLog() {
                                 if (updated[idx].servingWeightGrams && qty) {
                                   updated[idx]._baseGrams = updated[idx].servingWeightGrams / qty;
                                 }
+                                // Typing macros into a not-found card resolves it
+                                // to a manual entry.
+                                if (updated[idx].source === 'unresolved') {
+                                  updated[idx].source = 'manual';
+                                }
                                 setEditableItems(updated);
                               }}
                               className="h-6 text-xs text-center p-0 border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1320,13 +1374,25 @@ export default function FoodLog() {
                             </Button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
-                            onClick={() => { setReMatchId(item.id); setReMatchText(item.name || ''); }}
-                          >
-                            Not the right item? Re-check
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
+                              onClick={() => { setReMatchId(item.id); setReMatchText(item.name || ''); }}
+                            >
+                              {item.source === 'unresolved' ? 'Try a different description' : 'Not the right item? Re-check'}
+                            </button>
+                            {item.source === 'unresolved' && (
+                              <button
+                                type="button"
+                                className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
+                                onClick={() => { setBarcodeReplaceIdx(idx); setBarcodeScannerOpen(true); }}
+                              >
+                                <ScanBarcode className="w-3 h-3" />
+                                Scan barcode
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1647,11 +1713,17 @@ export default function FoodLog() {
 
       <BarcodeScannerModal
         isOpen={barcodeScannerOpen}
-        onClose={() => setBarcodeScannerOpen(false)}
+        onClose={() => { setBarcodeScannerOpen(false); setBarcodeReplaceIdx(null); }}
         onItemFound={(item) => {
           setAiUnavailable(false);
-          // Add scanned item to editable items list
-          setEditableItems(prev => [...prev, item]);
+          if (barcodeReplaceIdx !== null) {
+            // Resolve a not-found card in place with the scanned product
+            setEditableItems(prev => prev.map((it, i) => (i === barcodeReplaceIdx ? item : it)));
+            setBarcodeReplaceIdx(null);
+          } else {
+            // Add scanned item to editable items list
+            setEditableItems(prev => [...prev, item]);
+          }
           // If no analysis result yet, create a minimal one so the items section renders
           if (!analysisResult) {
             setAnalysisResult({
