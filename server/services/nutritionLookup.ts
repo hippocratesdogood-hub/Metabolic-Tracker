@@ -39,7 +39,7 @@ export interface EnrichedFoodItem {
   matchConfidence: number;
 }
 
-/** One resolved food in the route's foods_detected shape (Nutritionix-native analysis). */
+/** One resolved food in the route's foods_detected shape (verified database lookups). */
 export interface DetectedFoodItem {
   name: string;
   quantity: number;
@@ -51,7 +51,8 @@ export interface DetectedFoodItem {
   fiber: number;
   netCarbs: number;
   source: 'verified';
-  sourceName: 'Nutritionix';
+  /** 'Nutritionix' | 'Open Food Facts' | 'USDA FoodData Central' */
+  sourceName: string;
   brand: string | null;
   confidence: number;
   servingWeightGrams: number | null;
@@ -532,6 +533,140 @@ class NutritionLookupService {
 
     // 3. No match — caller should fall back to LLM
     return null;
+  }
+
+  /**
+   * Stage-2 per-item resolver for the LLM text path (food-analysis
+   * follow-ups, Aug 2026). Same resolution machinery the Nutritionix-only
+   * path uses, so the four Phase-2 fixes survive the day ANTHROPIC_API_KEY
+   * is set: grams + alt measures come through (portion editing), the
+   * branded database is consulted before any invented estimate, provenance
+   * is accurate, and partial salvage is labeled.
+   *
+   * Chain: Nutritionix natural (with salvage detection + branded upgrade)
+   * → branded search → Open Food Facts / USDA → null (caller LLM-estimates,
+   * marked ai_estimate).
+   *
+   * Runs whenever Nutritionix keys exist — fully unit-testable without an
+   * Anthropic key.
+   */
+  async lookupItemDetailed(
+    food: string,
+    quantity: number,
+    unit: string,
+  ): Promise<DetectedFoodItem | null> {
+    const appId = process.env.NUTRITIONIX_APP_ID;
+    const appKey = process.env.NUTRITIONIX_APP_KEY;
+    if (!appId || !appKey) return null;
+    if (!food || food.trim().length < 2) return null;
+
+    const qty = quantity || 1;
+    const query = `${qty} ${unit || 'serving'} ${food}`.trim();
+    const cacheKey = cacheKeys.nutritionLookup(`nix-item-detailed:${query.toLowerCase()}`);
+    const cached = cache.get<DetectedFoodItem | 'miss'>(cacheKey);
+    if (cached === 'miss') return null;
+    if (cached !== undefined && cached !== null) return cached;
+
+    const finish = (item: DetectedFoodItem | null): DetectedFoodItem | null => {
+      cache.set(cacheKey, item ?? 'miss', 60 * 60 * 1000);
+      return item;
+    };
+
+    // 1. Nutritionix natural, with the same salvage handling as the
+    //    full-text path
+    const data = await this.nixNaturalRequest({ query }, appId, appKey);
+    const raw = Array.isArray(data?.foods) ? data.foods : [];
+    if (raw.length > 0) {
+      const mapped = this.mapNixFoods(raw);
+      let item: DetectedFoodItem;
+      if (mapped.length === 1) {
+        item = mapped[0];
+      } else {
+        // Rare: one parsed item resolved to multiple foods — merge under
+        // the parsed name; grams sum only when every part reported one.
+        const round1 = (n: number) => Math.round(n * 10) / 10;
+        const allGrams = mapped.every((m) => m.servingWeightGrams != null);
+        item = {
+          name: food,
+          quantity: qty,
+          unit: unit || 'serving',
+          calories: mapped.reduce((s, m) => s + m.calories, 0),
+          protein: round1(mapped.reduce((s, m) => s + m.protein, 0)),
+          fat: round1(mapped.reduce((s, m) => s + m.fat, 0)),
+          totalCarbs: round1(mapped.reduce((s, m) => s + m.totalCarbs, 0)),
+          fiber: round1(mapped.reduce((s, m) => s + m.fiber, 0)),
+          netCarbs: round1(mapped.reduce((s, m) => s + m.netCarbs, 0)),
+          source: 'verified',
+          sourceName: 'Nutritionix',
+          brand: null,
+          confidence: 0.95,
+          servingWeightGrams: allGrams
+            ? round1(mapped.reduce((s, m) => s + (m.servingWeightGrams as number), 0))
+            : null,
+          altMeasures: null,
+        };
+      }
+
+      const matchedNames: string[] = [];
+      for (const f of raw) {
+        if (f?.food_name) matchedNames.push(String(f.food_name));
+        if (f?.brand_name) matchedNames.push(String(f.brand_name));
+        if (f?.tags?.item) matchedNames.push(String(f.tags.item));
+      }
+      const { coverage, unmatched } = coverageFor(food, matchedNames);
+      if (coverage < 1 && unmatched.length > 0) {
+        const upgrade = await this.searchBrandedFood(`${qty} ${food}`, {
+          accept: (hit) => {
+            const brandToks = contentTokens(hit.brand_name || '');
+            const brandOverlap = unmatched.some((u) =>
+              brandToks.some((b) => u === b || (u.length >= 3 && b.length >= 3 && (u.includes(b) || b.includes(u)))),
+            );
+            if (!brandOverlap) return false;
+            const hitCov = coverageFor(food, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
+            return hitCov >= BRANDED_UPGRADE_MIN_COVERAGE && hitCov > coverage;
+          },
+        });
+        if (upgrade) return finish(upgrade);
+      }
+      if (coverage < LOOSE_MATCH_THRESHOLD) {
+        item.matchQuality = 'loose';
+        item.matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
+        console.warn(
+          `[Nutritionix] loose match for item "${food}": matched ${JSON.stringify(item.matchedFrom)}, unmatched ${JSON.stringify(unmatched)}`,
+        );
+      }
+      return finish(item);
+    }
+
+    // 2. Branded database — before any invented estimate
+    const branded = await this.searchBrandedFood(`${qty} ${food}`);
+    if (branded) return finish(branded);
+
+    // 3. Open Food Facts / USDA
+    const dbMatch = await this.searchFood(food);
+    if (dbMatch) {
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      return finish({
+        name: food,
+        quantity: qty,
+        unit: unit || 'serving',
+        calories: Math.round(dbMatch.calories * qty),
+        protein: round1(dbMatch.protein * qty),
+        fat: round1(dbMatch.fat * qty),
+        totalCarbs: round1(dbMatch.totalCarbs * qty),
+        fiber: round1(dbMatch.fiber * qty),
+        netCarbs: round1(dbMatch.netCarbs * qty),
+        source: 'verified',
+        sourceName: dbMatch.source === 'openfoodfacts' ? 'Open Food Facts' : 'USDA FoodData Central',
+        brand: dbMatch.brand,
+        confidence: dbMatch.matchConfidence,
+        servingWeightGrams: null,
+        altMeasures: null,
+      });
+    }
+
+    // 4. Nothing — caller falls back to an LLM estimate
+    return finish(null);
   }
 
   /**

@@ -1196,6 +1196,8 @@ export async function registerRoutes(
             unit: item.unit,
             servingWeightGrams: item.servingWeightGrams ?? null,
             altMeasures: item.altMeasures ?? null,
+            ...(item.source ? { source: item.source, sourceName: item.sourceName ?? null, brand: item.brand ?? null } : {}),
+            ...(item.gramsEstimated === true ? { gramsEstimated: true } : {}),
             ...(item.unresolved === true ? { unresolved: true } : {}),
           },
         });
@@ -2033,29 +2035,17 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
       const llmFallbackItems: any[] = [];
 
       for (const item of parsedItems) {
-        const macros = await nutritionLookup.lookupItemMacros(
+        // Stage-2 unification (Aug 2026): same resolution machinery as the
+        // Nutritionix-only path — grams/alt measures, branded database
+        // before invented estimates, salvage labeling, real provenance.
+        const detailed = await nutritionLookup.lookupItemDetailed(
           item.food,
           item.quantity || 1,
           item.unit || 'serving'
         );
 
-        if (macros) {
-          foodsDetected.push({
-            name: item.food,
-            quantity: item.quantity || 1,
-            unit: item.unit || 'serving',
-            calories: macros.calories,
-            protein: macros.protein,
-            fat: macros.fat,
-            totalCarbs: macros.totalCarbs,
-            fiber: macros.fiber,
-            netCarbs: macros.netCarbs,
-            source: macros.source === 'nutritionix' ? 'verified' : 'verified',
-            sourceName: macros.source === 'nutritionix' ? 'Nutritionix'
-              : macros.source === 'openfoodfacts' ? 'Open Food Facts'
-              : 'USDA FoodData Central',
-            confidence: 0.95,
-          });
+        if (detailed) {
+          foodsDetected.push(detailed);
         } else {
           llmFallbackItems.push(item);
         }
@@ -2068,7 +2058,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
 Return a JSON object with this exact structure:
 {
   "items": [
-    {"food": "name", "quantity": 1, "unit": "cup", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0}
+    {"food": "name", "quantity": 1, "unit": "cup", "calories": 0, "protein": 0, "fat": 0, "totalCarbs": 0, "fiber": 0, "netCarbs": 0, "servingWeightGrams": 0}
   ]
 }
 
@@ -2076,6 +2066,7 @@ Rules:
 - netCarbs = totalCarbs - fiber
 - Use standard USDA values
 - 1 oz = 28g, 1 lb = 454g
+- servingWeightGrams = estimated total gram weight of the stated quantity
 
 Respond with ONLY the JSON object — no markdown fences, no preamble, no commentary.`;
 
@@ -2098,6 +2089,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
                   totalCarbs: z.number().default(0),
                   fiber: z.number().default(0),
                   netCarbs: z.number().default(0),
+                  servingWeightGrams: z.number().positive().optional(),
                 })
                 .refine((i) => Boolean(i.food || i.name), { message: "food or name required" })
             )
@@ -2135,6 +2127,12 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
               source: 'ai_estimate',
               sourceName: null,
               confidence: 0.6,
+              // LLM-estimated portion weight: lets the gram editor work on
+              // estimate items, but flagged so an invented number can never
+              // pass as a database-resolved one (the item already carries
+              // source 'ai_estimate' → amber chip).
+              servingWeightGrams: item.servingWeightGrams ?? null,
+              gramsEstimated: item.servingWeightGrams != null ? true : undefined,
             });
           }
         } catch (fallbackErr) {

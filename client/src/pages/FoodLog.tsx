@@ -508,6 +508,9 @@ export default function FoodLog() {
             brand: item.brand || null,
             servingWeightGrams: item.servingWeightGrams ?? null,
             altMeasures: item.altMeasures ?? null,
+            gramsEstimated: item.gramsEstimated === true ? true : undefined,
+            matchQuality: item.matchQuality,
+            matchedFrom: item.matchedFrom ?? null,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }).concat(unresolvedItems));
@@ -625,6 +628,7 @@ export default function FoodLog() {
           brand: item.brand || null,
           servingWeightGrams: item.servingWeightGrams ?? null,
           altMeasures: item.altMeasures ?? null,
+          gramsEstimated: item.gramsEstimated === true ? true : undefined,
           // Still-unresolved cards save with zero macros and this marker —
           // visible in the meal rather than silently dropped.
           unresolved: item.source === 'unresolved' ? true : undefined,
