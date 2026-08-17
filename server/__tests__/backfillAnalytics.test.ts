@@ -10,7 +10,17 @@
  * - Edge cases (gaps, duplicates, stress tests)
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from "vitest";
+
+// Frozen clock: these tests build timelines with relative-date helpers, so
+// on a real clock their results changed as the calendar moved (documented
+// drift, fixed Aug 2026). Frozen, they pass or fail on their merits.
+beforeAll(() => {
+  vi.useFakeTimers({ now: new Date("2026-08-17T12:00:00Z"), toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 // ============================================================================
 // Test Data Generators

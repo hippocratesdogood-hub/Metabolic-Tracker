@@ -5,7 +5,16 @@
  * when dealing with backfilled/historical data.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from "vitest";
+
+// Frozen clock: relative-date timelines drifted with the real calendar
+// (documented drift, fixed Aug 2026). Frozen, results are deterministic.
+beforeAll(() => {
+  vi.useFakeTimers({ now: new Date("2026-08-17T12:00:00Z"), toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 import { isBackfilledEntry } from "../storage";
 import {
   validateMetricValue,
@@ -104,8 +113,11 @@ describe("Timeline Edge Cases", () => {
       const oldTimestamp = yearsAgo(6);
       const result = validateTimestamp(oldTimestamp);
 
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("5 years");
+      // Product decision in importUtils.validateTimestamp: 5+ year data is
+      // allowed with a warning, not blocked. The old expectation predated
+      // that decision.
+      expect(result.valid).toBe(true);
+      expect(result.warning).toContain("5 years");
     });
 
     it("accepts timestamps within 5 year limit", () => {
