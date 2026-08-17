@@ -481,6 +481,8 @@ export default function FoodLog() {
             source: item.source || 'ai_estimate',
             sourceName: item.sourceName || null,
             brand: item.brand || null,
+            servingWeightGrams: item.servingWeightGrams ?? null,
+            altMeasures: item.altMeasures ?? null,
           };
         }));
       }
@@ -540,6 +542,8 @@ export default function FoodLog() {
           source: f.source || 'ai_estimate',
           sourceName: f.sourceName || null,
           brand: f.brand || null,
+          servingWeightGrams: f.servingWeightGrams ?? null,
+          altMeasures: f.altMeasures ?? null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
           _baseFat: Math.round((fat / qty) * 10) / 10,
@@ -585,6 +589,8 @@ export default function FoodLog() {
           netCarbs: item.netCarbs,
           source: item.source || 'ai_estimate',
           brand: item.brand || null,
+          servingWeightGrams: item.servingWeightGrams ?? null,
+          altMeasures: item.altMeasures ?? null,
         })),
         mealType,
         rawText: input || analysisResult?.description || 'Photo analysis',
