@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useAiAvailable } from '@/hooks/use-ai-available';
+import { isContainerUnit, scaleByQuantity, scaleByGrams } from '@/lib/portionScaling';
 import { DialogFooter } from '@/components/ui/dialog';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
@@ -483,6 +484,7 @@ export default function FoodLog() {
             brand: item.brand || null,
             servingWeightGrams: item.servingWeightGrams ?? null,
             altMeasures: item.altMeasures ?? null,
+            _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }));
       }
@@ -544,6 +546,7 @@ export default function FoodLog() {
           brand: f.brand || null,
           servingWeightGrams: f.servingWeightGrams ?? null,
           altMeasures: f.altMeasures ?? null,
+          _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
           _baseFat: Math.round((fat / qty) * 10) / 10,
@@ -1195,23 +1198,14 @@ export default function FoodLog() {
                         )}
                       </div>
                       {/* Quantity / serving row */}
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <button
                           type="button"
                           className="w-6 h-6 rounded-full bg-muted hover:bg-accent flex items-center justify-center text-sm font-medium transition-colors"
                           onClick={() => {
                             const updated = [...editableItems];
                             const newQty = Math.max(0.5, (item.quantity || 1) - 0.5);
-                            updated[idx] = {
-                              ...updated[idx],
-                              quantity: newQty,
-                              calories: Math.round(item._baseCal * newQty),
-                              protein: Math.round(item._basePro * newQty * 10) / 10,
-                              fat: Math.round(item._baseFat * newQty * 10) / 10,
-                              totalCarbs: Math.round(item._baseTotalCarbs * newQty * 10) / 10,
-                              fiber: Math.round(item._baseFiber * newQty * 10) / 10,
-                              netCarbs: Math.round(item._baseNetCarbs * newQty * 10) / 10,
-                            };
+                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty) };
                             setEditableItems(updated);
                           }}
                         >
@@ -1226,21 +1220,36 @@ export default function FoodLog() {
                           onClick={() => {
                             const updated = [...editableItems];
                             const newQty = (item.quantity || 1) + 0.5;
-                            updated[idx] = {
-                              ...updated[idx],
-                              quantity: newQty,
-                              calories: Math.round(item._baseCal * newQty),
-                              protein: Math.round(item._basePro * newQty * 10) / 10,
-                              fat: Math.round(item._baseFat * newQty * 10) / 10,
-                              totalCarbs: Math.round(item._baseTotalCarbs * newQty * 10) / 10,
-                              fiber: Math.round(item._baseFiber * newQty * 10) / 10,
-                              netCarbs: Math.round(item._baseNetCarbs * newQty * 10) / 10,
-                            };
+                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty) };
                             setEditableItems(updated);
                           }}
                         >
                           +
                         </button>
+                        {/* Ambiguous container portions (e.g. "1 can" — which
+                            can?): surface the resolved gram weight as an
+                            editable field so the invisible size choice can be
+                            corrected; macros rescale linearly. */}
+                        {isContainerUnit(item.unit) && item.servingWeightGrams != null && item._baseGrams ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            ·
+                            <Input
+                              type="number"
+                              min={1}
+                              value={Math.round(item.servingWeightGrams)}
+                              aria-label={`Weight of ${item.quantity} ${item.unit} in grams`}
+                              className="h-6 w-16 px-1.5 text-xs text-right"
+                              onChange={(e) => {
+                                const newGrams = parseFloat(e.target.value);
+                                if (!Number.isFinite(newGrams) || newGrams <= 0) return;
+                                const updated = [...editableItems];
+                                updated[idx] = { ...updated[idx], ...scaleByGrams(item, newGrams) };
+                                setEditableItems(updated);
+                              }}
+                            />
+                            g
+                          </span>
+                        ) : null}
                       </div>
                       <div className="grid grid-cols-5 gap-1.5 text-center">
                         {[
@@ -1274,6 +1283,13 @@ export default function FoodLog() {
                                 }
                                 if (key === 'netCarbs' || key === 'fiber') {
                                   updated[idx]._baseTotalCarbs = Math.round(((updated[idx].netCarbs + updated[idx].fiber) / qty) * 10) / 10;
+                                }
+                                // Re-anchor the gram basis alongside the _base*
+                                // values so a later gram-weight edit scales from
+                                // the hand-corrected macros, not the original
+                                // analysis pair.
+                                if (updated[idx].servingWeightGrams && qty) {
+                                  updated[idx]._baseGrams = updated[idx].servingWeightGrams / qty;
                                 }
                                 setEditableItems(updated);
                               }}
