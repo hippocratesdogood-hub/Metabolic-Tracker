@@ -41,7 +41,16 @@ describe("analyzeNaturalTextDetailed unresolved reporting", () => {
   });
 
   function mockFetch(handler: (body: any) => { status?: number; json?: any }) {
-    global.fetch = vi.fn(async (_url: any, init: any) => {
+    global.fetch = vi.fn(async (url: any, init: any) => {
+      // The branded second pass (Fix 3) probes /v2/search/instant for
+      // unresolved phrases; these tests exercise the unresolved reporting
+      // itself, so the branded pass finds nothing.
+      if (String(url).includes("/v2/search/")) {
+        return new Response(JSON.stringify({ common: [], branded: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       const body = JSON.parse(init.body);
       calls.push({ body });
       const { status = 200, json = {} } = handler(body);

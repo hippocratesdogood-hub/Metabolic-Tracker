@@ -617,6 +617,19 @@ class NutritionLookupService {
       }
     }
 
+    // Second pass: phrases the natural (common-foods) parser couldn't match
+    // are often branded products ("1 RxBar") — try Nutritionix's branded
+    // database before declaring them unresolved.
+    if (result.unresolved.length > 0) {
+      const stillUnresolved: string[] = [];
+      for (const phrase of result.unresolved) {
+        const branded = await this.searchBrandedFood(phrase);
+        if (branded) result.items.push(branded);
+        else stillUnresolved.push(phrase);
+      }
+      result = { items: result.items, unresolved: stillUnresolved };
+    }
+
     if (result.unresolved.length > 0) {
       // De-identified (food text only) — this is the visibility the silent
       // drop never had. Grep target: "unresolved phrase".
@@ -627,6 +640,96 @@ class NutritionLookupService {
     console.log(`[Nutritionix] natural "${query}" → ${result.items.length} item(s), ${result.unresolved.length} unresolved`);
     cache.set(cacheKey, result, 60 * 60 * 1000);
     return result;
+  }
+
+  /**
+   * Branded-food lookup for a phrase the natural-language parser couldn't
+   * match: /v2/search/instant (branded results carry a nix_item_id), then
+   * /v2/search/item for full nutrients. Live-verified against RXBAR, which
+   * exists only in the branded database. A leading count ("2 RxBar") is
+   * stripped for the search and scales the result. Same de-identified
+   * posture as the natural requests: food text + API credentials only.
+   *
+   * Returns a DetectedFoodItem labeled with the real source (verified /
+   * Nutritionix + brand), or null when nothing matches.
+   */
+  async searchBrandedFood(phrase: string): Promise<DetectedFoodItem | null> {
+    const appId = process.env.NUTRITIONIX_APP_ID;
+    const appKey = process.env.NUTRITIONIX_APP_KEY;
+    if (!appId || !appKey) return null;
+
+    const cleaned = (phrase || '').trim();
+    if (cleaned.length < 2) return null;
+
+    // "2 RxBar" → search "RxBar", scale ×2. Only a leading bare count is
+    // treated as a multiplier; measured amounts ("40 g protein bar") search verbatim.
+    const qtyMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\D.*)$/);
+    const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
+    const searchTerm = (qtyMatch ? qtyMatch[2] : cleaned).trim();
+    if (searchTerm.length < 2 || quantity <= 0 || quantity > 50) return null;
+
+    const cacheKey = cacheKeys.nutritionLookup(`nix-branded:${quantity}|${searchTerm.toLowerCase()}`);
+    const cached = cache.get<DetectedFoodItem | 'miss'>(cacheKey);
+    if (cached === 'miss') return null;
+    if (cached !== undefined && cached !== null) return cached;
+
+    try {
+      const headers = { 'x-app-id': appId, 'x-app-key': appKey };
+      const instantRes = await fetch(
+        `https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(searchTerm)}`,
+        { headers, signal: AbortSignal.timeout(10000) },
+      );
+      if (!instantRes.ok) {
+        console.error(`[Nutritionix] instant ${instantRes.status} for "${searchTerm}"`);
+        return null;
+      }
+      const instant = await instantRes.json();
+      const hit = Array.isArray(instant.branded) ? instant.branded.find((b: any) => b?.nix_item_id) : null;
+      if (!hit) {
+        cache.set(cacheKey, 'miss', 60 * 60 * 1000);
+        return null;
+      }
+
+      const itemRes = await fetch(
+        `https://trackapi.nutritionix.com/v2/search/item?nix_item_id=${encodeURIComponent(hit.nix_item_id)}`,
+        { headers, signal: AbortSignal.timeout(10000) },
+      );
+      if (!itemRes.ok) {
+        console.error(`[Nutritionix] item ${itemRes.status} for "${hit.nix_item_id}"`);
+        return null;
+      }
+      const itemData = await itemRes.json();
+      const mapped = this.mapNixFoods(itemData.foods)[0];
+      if (!mapped) {
+        cache.set(cacheKey, 'miss', 60 * 60 * 1000);
+        return null;
+      }
+
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      const item: DetectedFoodItem = {
+        ...mapped,
+        // Brand in the display name so the match is auditable at a glance
+        name: mapped.brand ? `${mapped.brand} ${mapped.name}` : mapped.name,
+        quantity: mapped.quantity * quantity,
+        calories: Math.round(mapped.calories * quantity),
+        protein: round1(mapped.protein * quantity),
+        fat: round1(mapped.fat * quantity),
+        totalCarbs: round1(mapped.totalCarbs * quantity),
+        fiber: round1(mapped.fiber * quantity),
+        netCarbs: round1(mapped.netCarbs * quantity),
+        servingWeightGrams:
+          mapped.servingWeightGrams != null ? round1(mapped.servingWeightGrams * quantity) : null,
+        // Branded search matches on name similarity (first hit may be a
+        // different flavor) — flag lower confidence than an exact NLP parse.
+        confidence: 0.7,
+      };
+      cache.set(cacheKey, item, 60 * 60 * 1000);
+      console.log(`[Nutritionix] branded "${searchTerm}" → ${item.name}`);
+      return item;
+    } catch (err) {
+      console.error('[Nutritionix] branded lookup failed:', err);
+      return null;
+    }
   }
 
   /**
