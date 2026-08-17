@@ -49,7 +49,9 @@ describe("searchBrandedFood", () => {
         // Headers must stay de-identified here too
         const headerKeys = Object.keys(init?.headers ?? {}).map((k: string) => k.toLowerCase()).sort();
         expect(headerKeys).toEqual(["x-app-id", "x-app-key"]);
-        return json(found ? { common: [], branded: [{ nix_item_id: RXBAR_ITEM.nix_item_id, food_name: RXBAR_ITEM.food_name }] } : { common: [], branded: [] });
+        // brand_name is present on live instant results; the default
+        // acceptance requires the member's text to name it.
+        return json(found ? { common: [], branded: [{ nix_item_id: RXBAR_ITEM.nix_item_id, brand_name: RXBAR_ITEM.brand_name, food_name: RXBAR_ITEM.food_name }] } : { common: [], branded: [] });
       }
       if (u.includes("/v2/search/item")) {
         return json({ foods: [RXBAR_ITEM] });
@@ -83,14 +85,22 @@ describe("searchBrandedFood", () => {
     expect(requests.some((u) => u.includes("nix_item_id=560d65a15ad577cc23904afc"))).toBe(true);
   });
 
-  it("scales a leading count: '2 CountBar' doubles macros and grams", async () => {
+  it("scales a leading count: '2 rxbar' doubles macros and grams", async () => {
     mockBrandedApi();
-    const item = await nutritionLookup.searchBrandedFood("2 CountBar");
+    const item = await nutritionLookup.searchBrandedFood("2 rxbar");
     expect(item).not.toBeNull();
     expect(item!.quantity).toBe(2);
     expect(item!.calories).toBe(400);
     expect(item!.protein).toBe(24);
     expect(item!.servingWeightGrams).toBe(104);
+  });
+
+  it("rejects a candidate whose brand the member never named (brand-conflict guard)", async () => {
+    mockBrandedApi();
+    // Instant returns an RxBar product, but the member's phrase names no
+    // brand at all: must fall through rather than substitute.
+    const item = await nutritionLookup.searchBrandedFood("2 CountBar");
+    expect(item).toBeNull();
   });
 
   it("returns null when the branded database has no match", async () => {

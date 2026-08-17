@@ -139,9 +139,16 @@ describe("analyzeNaturalTextDetailed partial-salvage pass", () => {
       natural: () => ({ foods: [nixFood("gummies")] }),
       instant: () => ({
         branded: [
-          // brand overlaps 'fuel' but the product name covers only half the line
+          // brand overlaps 'fuel' but the product name covers exactly 2/3 of
+          // the content tokens — at the bar, not above it
           { nix_item_id: "maverik-1", brand_name: "Maverik Adventure Fuel", food_name: "Grizzly Gummies" },
         ],
+      }),
+      // A real item fixture, so if the predicate ever wrongly accepts, the
+      // upgrade COMPLETES and this test fails — previously the missing item
+      // fixture masked an acceptance at the boundary.
+      item: () => ({
+        foods: [nixFood("Grizzly Gummies", { brand_name: "Maverik Adventure Fuel", nf_calories: 190, tags: null })],
       }),
     });
 
@@ -194,6 +201,51 @@ describe("analyzeNaturalTextDetailed partial-salvage pass", () => {
     expect(result!.items).toHaveLength(2);
     expect(result!.items.every((i) => i.matchQuality === undefined)).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("REGRESSION (live find): a typo line is spell-corrected via common suggestions, never substituted", async () => {
+    mockApi({
+      natural: (body) =>
+        body.query.includes("eggs")
+          ? { foods: [nixFood("scrambled eggs", { nf_calories: 140, nf_protein: 12 })] }
+          : { foods: [] },
+      instant: () => ({
+        common: [{ food_name: "scrambled eggs" }],
+        branded: [{ nix_item_id: "x1", brand_name: "It's Superior", food_name: "Grade AA Large Egss" }],
+      }),
+    });
+
+    const result = await nutritionLookup.analyzeNaturalTextDetailed(`scrambled egs +${Math.random()}`);
+    expect(result).not.toBeNull();
+    expect(result!.items).toHaveLength(1);
+    expect(result!.items[0].name).toBe("scrambled eggs");
+    expect(result!.items[0].source).toBe("verified");
+    expect(result!.unresolved).toEqual([]);
+  });
+
+  it("REGRESSION (live find): an unnamed-brand substitution falls through to Not found (the Chipotle/Wahoo's case)", async () => {
+    mockApi({
+      natural: () => ({ foods: [] }),
+      instant: () => ({
+        // Suggestion is a different dish — must not be used for spell correction
+        common: [{ food_name: "teriyaki chicken rice bowls" }],
+        // High name coverage but a brand the member never named — must not
+        // be accepted as verified
+        branded: [
+          {
+            nix_item_id: "wahoos-1",
+            brand_name: "Wahoo's Fish Tacos",
+            food_name: "Banzai Bowl - Chicken Blackened - Brown Rice - Black Beans",
+          },
+        ],
+      }),
+    });
+
+    const phrase = `chipotle bowl with chicken brown rice black beans +${Math.random()}`;
+    const result = await nutritionLookup.analyzeNaturalTextDetailed(phrase);
+    expect(result).not.toBeNull();
+    expect(result!.items).toEqual([]);
+    expect(result!.unresolved).toEqual([phrase]);
   });
 
   it("multi-line meals attribute coverage per line via original_input", async () => {

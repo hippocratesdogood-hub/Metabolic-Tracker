@@ -10,8 +10,10 @@ import cache, { cacheKeys } from './cache';
 import {
   contentTokens,
   coverageFor,
+  suggestionMatchesLine,
+  acceptableBrandedDefault,
+  acceptableBrandedUpgrade,
   LOOSE_MATCH_THRESHOLD,
-  BRANDED_UPGRADE_MIN_COVERAGE,
 } from './matchCoverage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -617,15 +619,7 @@ class NutritionLookupService {
       const { coverage, unmatched } = coverageFor(food, matchedNames);
       if (coverage < 1 && unmatched.length > 0) {
         const upgrade = await this.searchBrandedFood(`${qty} ${food}`, {
-          accept: (hit) => {
-            const brandToks = contentTokens(hit.brand_name || '');
-            const brandOverlap = unmatched.some((u) =>
-              brandToks.some((b) => u === b || (u.length >= 3 && b.length >= 3 && (u.includes(b) || b.includes(u)))),
-            );
-            if (!brandOverlap) return false;
-            const hitCov = coverageFor(food, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
-            return hitCov >= BRANDED_UPGRADE_MIN_COVERAGE && hitCov > coverage;
-          },
+          accept: (hit) => acceptableBrandedUpgrade(food, unmatched, coverage, hit),
         });
         if (upgrade) return finish(upgrade);
       }
@@ -806,17 +800,7 @@ class NutritionLookupService {
 
       if (coverage < 1 && unmatched.length > 0) {
         const upgrade = await this.searchBrandedFood(line, {
-          accept: (hit) => {
-            const brandToks = contentTokens(hit.brand_name || '');
-            const brandOverlap = unmatched.some((u) =>
-              brandToks.some((b) => u === b || (u.length >= 3 && b.length >= 3 && (u.includes(b) || b.includes(u)))),
-            );
-            if (!brandOverlap) return false;
-            const hitCov = coverageFor(line, [`${hit.brand_name || ''} ${hit.food_name || ''}`]).coverage;
-            // One overlapping word is not enough — the product name must
-            // account for most of the line, and beat the natural parse.
-            return hitCov >= BRANDED_UPGRADE_MIN_COVERAGE && hitCov > coverage;
-          },
+          accept: (hit) => acceptableBrandedUpgrade(line, unmatched, coverage, hit),
         });
         if (upgrade) {
           items.push(upgrade);
@@ -840,12 +824,21 @@ class NutritionLookupService {
 
     let result: Detailed = { items, unresolved };
 
-    // Second pass: phrases the natural (common-foods) parser couldn't match
-    // are often branded products ("1 RxBar") — try Nutritionix's branded
-    // database before declaring them unresolved.
+    // Second pass over phrases the natural parser couldn't match:
+    // 1. Spell-corrected re-query — typos like "scrambled egs" defeat the
+    //    NLP but instant search's common suggestions correct them; a
+    //    suggestion is used only when every one of its words fuzzy-matches
+    //    the member's line, so a different dish is never substituted.
+    // 2. Branded database ("1 RxBar") under the default acceptance guards
+    //    (member-named brand + 2/3 name coverage).
     if (result.unresolved.length > 0) {
       const stillUnresolved: string[] = [];
       for (const phrase of result.unresolved) {
+        const corrected = await this.spellCorrectedRequery(phrase, appId, appKey);
+        if (corrected.length > 0) {
+          result.items.push(...this.mapNixFoods(corrected));
+          continue;
+        }
         const branded = await this.searchBrandedFood(phrase);
         if (branded) result.items.push(branded);
         else stillUnresolved.push(phrase);
@@ -925,9 +918,16 @@ class NutritionLookupService {
       const candidates = (Array.isArray(instant.branded) ? instant.branded : [])
         .filter((b: any) => b?.nix_item_id)
         .slice(0, 5);
+      // Default acceptance (unresolved-path callers): the member must have
+      // NAMED the matched brand (brand-conflict guard: "chipotle bowl..."
+      // must never log a Wahoo's bowl) AND the full product name must cover
+      // ≥2/3 of the phrase. Callers with a custom predicate (the salvage
+      // upgrade) supply their own rules. See matchCoverage.ts.
       const hit = opts?.accept
         ? candidates.find((b: any) => opts.accept!({ brand_name: b.brand_name ?? null, food_name: b.food_name ?? null }))
-        : candidates[0];
+        : candidates.find((b: any) =>
+            acceptableBrandedDefault(searchTerm, { brand_name: b.brand_name ?? null, food_name: b.food_name ?? null }),
+          );
       if (!hit) {
         if (useCache) cache.set(cacheKey, 'miss', 60 * 60 * 1000);
         return null;
@@ -972,6 +972,53 @@ class NutritionLookupService {
     } catch (err) {
       console.error('[Nutritionix] branded lookup failed:', err);
       return null;
+    }
+  }
+
+  /**
+   * Typo recovery for a line the natural parser returned nothing for:
+   * instant search's `common` suggestions spell-correct ("scrambled egs" →
+   * "scrambled eggs"). A suggestion is accepted only when EVERY one of its
+   * content words fuzzy-matches the member's line (suggestionMatchesLine),
+   * so this can fix spelling but never substitute a different dish. A
+   * leading count is preserved into the re-query. Returns the re-queried
+   * raw foods, or [] when no safe suggestion exists.
+   */
+  private async spellCorrectedRequery(
+    phrase: string,
+    appId: string,
+    appKey: string,
+  ): Promise<any[]> {
+    const cleaned = (phrase || '').trim();
+    if (cleaned.length < 3) return [];
+    const qtyMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\D.*)$/);
+    const qtyPrefix = qtyMatch ? `${qtyMatch[1]} ` : '';
+    const searchTerm = (qtyMatch ? qtyMatch[2] : cleaned).trim();
+    if (searchTerm.length < 3) return [];
+
+    try {
+      const instantRes = await fetch(
+        `https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(searchTerm)}`,
+        { headers: { 'x-app-id': appId, 'x-app-key': appKey }, signal: AbortSignal.timeout(10000) },
+      );
+      if (!instantRes.ok) return [];
+      const instant = await instantRes.json();
+      const suggestions = (Array.isArray(instant.common) ? instant.common : [])
+        .map((c: any) => String(c?.food_name || ''))
+        .filter((s: string) => s.length >= 3)
+        .slice(0, 3);
+      const safe = suggestions.find((s: string) => suggestionMatchesLine(s, searchTerm));
+      if (!safe) return [];
+
+      const requery = await this.nixNaturalRequest({ query: `${qtyPrefix}${safe}` }, appId, appKey);
+      const foods = Array.isArray(requery?.foods) ? requery.foods : [];
+      if (foods.length > 0) {
+        console.log(`[Nutritionix] spell-corrected "${phrase}" → "${qtyPrefix}${safe}" (${foods.length} food(s))`);
+      }
+      return foods;
+    } catch (err) {
+      console.error('[Nutritionix] spell-corrected requery failed:', err);
+      return [];
     }
   }
 
