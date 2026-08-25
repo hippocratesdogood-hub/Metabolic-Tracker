@@ -8,13 +8,13 @@
 
 | | |
 |---|---|
-| **Current phase** | 5 — Verification & go-live gate (Phase 4 complete 2026-08-06) |
+| **Current phase** | 6 — Launch (5.6 GO called 2026-08-24) — next item: 6.2 (launch email) |
 | **Blocked on (external)** | Nothing — launch is not externally blocked. BAA path redirected 2026-08-05 to AWS/Bedrock for the post-pilot Partner build (see Phase 0) |
-| **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1) |
+| **8-week clock** | NOT STARTED — starts at 6.2 (launch Email 1). Wave one scheduled to send 2026-08-25 from Kartra; the clock starts on the send date, not the gate date |
 | **Seats sold** | 0 / 50 |
-| **Last updated** | 2026-08-09 · Claude Code — 5.2 done: dress rehearsal passed end to end on a real live-mode monthly purchase (2026-08-08), zero manual intervention; `founding-monthly` verified on a real buyer; Sequence 1 day-1 email + `kit-viewed` confirmed on a real purchase (2026-08-09); cleanup complete. Rehearsal also found and closed the Overview Statistics unit-conversion bug (`0e26af0`, verified in prod). **Remaining before launch: 5.6 GO/NO-GO only** |
+| **Last updated** | 2026-08-24 · Claude Code — 5.6 GO called; Phase 5 gate closed, Phase 6 open. Wave one of the launch email sends from Kartra 2026-08-25, 9:30am Pacific, to the General newsletter segment (117 deliverable) |
 
-**Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ✅ · 5 ⬜ · 6 ⬜
+**Phase gate:** 0 ↪ (redirected to Partner build) · 1 ✅ · 2 ✅ · 3 ✅ · 4 ✅ · 5 ✅ · 6 ⬜
 
 **Reference docs:** `SPRINT_REPORT.md` (webhook spec) · `PILOT_RUNBOOK.md` (verification & ops) · `glp1-tags.md` (4.1 tag architecture) · `glp1-support-replies.md` (5.3 standard replies) · funnel copy docs: `glp1-quiz-spec.md`, `glp1-sales-page.md`, `glp1-ghl-sequences.md`, `glp1-content-hook.md`, `glp1-launch-emails.md`
 
@@ -174,7 +174,8 @@
       ✓ = every tag in the doc exists in GHL, every pilot-relevant tag in GHL is in the doc, and each definition matches the workflow that writes it
       → Added 2026-08-05 after the doc missed `glp1-quiz-started` — a lead-capture tag in the quiz spec from the start. The doc claims to be the full architecture and has been wrong once, so it can't be trusted to not be wrong twice. Cheap check; expensive if stale, since the sequences and the weekly routine act on these tags.
       → **Done 2026-08-06.** 26 tags in the sub-account; fifteen of the sixteen documented tags present. The one gap — `activated` — created by hand (no workflow references it; it's applied during the Sunday import and read for the metrics sheet, which is why it was never auto-created). Eleven non-pilot tags found and recorded in `glp1-tags.md` (tier vocabulary ×6, earlier quiz funnel ×1, generic CRM ×3); leftover `test` tag deleted. Third criterion (definitions match writing workflows) satisfied by construction — every pilot workflow was built and verified by live test within the past week. Also recorded in `glp1-tags.md`: the "contains"-filter prefix hazard (`glp1-prestart` / `glp1-prestart-consult`, and across `glp1-risk-*`) and the edge/metabolic-edge near-duplicate sets outside the pilot. Doc scoped to pilot tags only; "reconcile before launch" banner replaced with the reconciliation record.
-- [ ] **5.6** **GO/NO-GO** — Phases 0–5 all green or redirected (Phase 0 and 5.1 redirected to the Partner build, 2026-08-05)
+- [x] **5.6** **GO/NO-GO** — Phases 0–5 all green or redirected (Phase 0 and 5.1 redirected to the Partner build, 2026-08-05)
+      → **GO called 2026-08-24.** Gate satisfied — Phases 1–4 green, Phase 0 and 5.1 redirected to the post-pilot Partner build on Bedrock, 5.2–5.5 complete. Only open register item is R1 (Railway BAA and the adviser scope question), deliberately classed non-blocking, with the noted consequence that launching scales that exposure beyond the current ~8 records.
 
 ## PHASE 6 — Launch
 
@@ -184,6 +185,7 @@
       → **Decision 2026-08-08 — the launch email sends from KARTRA, not GoHighLevel. No contact consolidation: no Charm or Kartra data moves into GHL.** GHL keeps receiving contacts from the quiz and checkout exactly as it does now. Three reasons, recorded: (1) **data scope** — consolidating would make a third copy of patient-derived data in another vendor while the R1 scope question is still open with the adviser; (2) **deliverability** — Kartra carries years of clinical-newsletter sending history with this exact audience, whereas a first-ever send from a new platform to the same ~2,000 addresses risks the domain reputation the launch email depends on; (3) **reversibility** — nothing about this choice forecloses a later GHL send.
       → **Consequence for the links (amends the two-link note above):** the GHL "Founding — list CTA" trigger link is a GHL merge field Kartra cannot render, so **`src-list` cannot fire from this send.** The email still carries two links per Standing Rule 3: primary CTA = the quiz link with `utm_source=email` (a plain URL — works from any platform; use 3.5's recorded link, do not retype it); secondary = a **plain /founding URL that does not tag.** **Warm identification for this send rests on `utm_source=email` alone.**
       → **4.6 unaffected as written:** the warm definition (`utm_source=email` OR `src-list`) still holds — `src-list` simply stays empty unless a future send goes out from GHL. No formula change needed in the metrics sheet.
+      → **Scheduled 2026-08-24:** wave one sends from Kartra on **2026-08-25 at 9:30am Pacific** to the General newsletter segment (**117 deliverable**). **The eight-week pilot clock starts on that send date, not on the 5.6 gate date** — record 2026-08-25 in STATUS once the send goes out.
 - [ ] **6.3** Rollout days 2–14 per content plan: reels, X thread, Email 2 (day 4), Email 3 (day 9–10 or ~40 seats)
 - [ ] **6.4** Weekly ops rhythm (30 min, same day weekly): metrics sheet update · activity CSV export→GHL import · 1-line personal emails to day-7+ silent members · cancellation intercepts <24h · log qualitative feedback
       → **Three hand-run steps each week, recorded 2026-08-05 so none is dropped:** (1) **Sunday tagging pass** — works with stock GHL features; both halves tested 2026-08-04 with throwaway contacts. Step-by-step procedure in `glp1-tags.md`, including two easy-to-miss UI details (tag option only on the Verify screen; consent checkbox gates Start import every time) and a caution: bulk tag removal runs against whatever list is currently filtered, in an account holding 547 mostly real patient records — confirm the count before acting, never use "Remove all tags". (2) **Monday bulk text** to the `sms-ok` segment (see 4.3 — the Monday SMS is deliberately not automated). (3) **Stripe cancellation check** — a cancellation made in the Stripe customer portal (linked from the 4.5 pre-renewal emails) may not propagate back to GHL, so check Stripe directly rather than relying on GHL contact state.
