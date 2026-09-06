@@ -1,3 +1,4 @@
+import { branding } from "../branding";
 /**
  * Coaching Rules Evaluator
  *
@@ -271,7 +272,7 @@ function evaluateEscalationRules(flags: CoachingFlag[], ctx: CoachingContext): C
         id: "ESCALATE_TO_PHYSICIAN_REVIEW",
         severity: "escalate",
         category: "pattern",
-        message: "Sustained high carbs with low protein — Dr. Larson may want to review this at next check-in",
+        message: `Sustained high carbs with low protein — ${branding.clinicianShortName} may want to review this at next check-in`,
         data: { carbDays: consecutiveHighCarb, proteinPatternDays: flags.find(f => f.id === "PROTEIN_LOW_PATTERN")?.data?.consecutiveDays },
       });
     }

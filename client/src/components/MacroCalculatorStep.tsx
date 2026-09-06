@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -206,7 +207,7 @@ export default function MacroCalculatorStep({ onComplete, onSkip }: Props) {
             estimate — it won't match the body fat number from your scale, and neither is exact. No single
             body fat number should be treated as fact.
           </p>
-          <p className="text-xs text-muted-foreground">Dr. Larson reviews every target. He may adjust yours.</p>
+          <p className="text-xs text-muted-foreground">{branding.clinicianShortName} reviews every target and may adjust yours.</p>
         </CardContent>
         <CardFooter className="justify-end">
           <Button onClick={onComplete} data-testid="button-calculator-continue">

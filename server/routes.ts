@@ -1,3 +1,4 @@
+import { branding } from "./branding";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage, isBackfilledEntry } from "./storage";
@@ -465,7 +466,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid timezone" });
       }
 
-      const appBaseUrl = (process.env.APP_BASE_URL || "https://app.theadaptlab.com").replace(/\/$/, "");
+      const appBaseUrl = (process.env.APP_BASE_URL || branding.appBaseUrl).replace(/\/$/, "");
       const loginUrl = `${appBaseUrl}/login`;
 
       // Idempotency: GHL may retry. If the account already exists, don't reset
@@ -3551,7 +3552,7 @@ Respond with ONLY valid JSON (no markdown fences, no preamble) matching this sch
   // AI Report Assistant
   // ============================================================================
 
-  const AI_ASSISTANT_SYSTEM_PROMPT = `You are a clinical data assistant for a metabolic health tracking program called Metabolic OS. You help administrators and coaches understand participant health data.
+  const AI_ASSISTANT_SYSTEM_PROMPT = `You are a clinical data assistant for a metabolic health tracking program called ${branding.productName}. You help administrators and coaches understand participant health data.
 
 AVAILABLE DATA TYPES:
 - Participants: name, email, status, program start date, assigned coach

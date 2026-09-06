@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useData } from '@/lib/dataAdapter';
@@ -54,11 +55,11 @@ export default function Reports() {
       // Overlay gradient effect
       roundedRect(0, 36, W, 36, 0, primaryDark);
 
-      // Metabolic OS branding
+      // Product branding
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(255, 255, 255);
-      pdf.text('Metabolic OS', margin, 12);
+      pdf.text(branding.productName, margin, 12);
 
       // Period label
       pdf.setFontSize(10);

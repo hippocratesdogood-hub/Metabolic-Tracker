@@ -1,3 +1,4 @@
+import { branding } from "./branding";
 import pg from "pg";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
@@ -479,7 +480,7 @@ async function runIncrementalMigrations(pool: pg.Pool) {
     // Migration: Create production admin account (one-time)
     const adminCheck = await pool.query(
       `SELECT id FROM "users" WHERE "email" = $1`,
-      ["drchad@theadaptlab.com"]
+      [branding.bootstrapAdminEmail]
     );
     if (adminCheck.rows.length === 0) {
       // The generated password is NEVER logged. It previously went to stdout, which
@@ -494,10 +495,10 @@ async function runIncrementalMigrations(pool: pg.Pool) {
       const hashedPassword = await hashPassword(tempPassword);
       await pool.query(`
         INSERT INTO "users" ("id", "role", "name", "email", "password_hash", "status", "force_password_reset")
-        VALUES (gen_random_uuid(), 'admin', 'Dr. Chad Larson', $1, $2, 'active', true)
-      `, ["drchad@theadaptlab.com", hashedPassword]);
+        VALUES (gen_random_uuid(), 'admin', $3, $1, $2, 'active', true)
+      `, [branding.bootstrapAdminEmail, hashedPassword, branding.bootstrapAdminName]);
       console.log("[migrate] ========================================");
-      console.log("[migrate] ADMIN ACCOUNT CREATED — drchad@theadaptlab.com");
+      console.log(`[migrate] ADMIN ACCOUNT CREATED — ${branding.bootstrapAdminEmail}`);
       console.log(
         initialPassword
           ? "[migrate] Password: set from INITIAL_ADMIN_PASSWORD (not logged). Must be changed on first login."

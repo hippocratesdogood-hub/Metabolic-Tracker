@@ -1,6 +1,6 @@
-import { db } from "./storage";
-import { eq, and, gte, lte, desc, sql, count } from "drizzle-orm";
-import * as schema from "@shared/schema";
+// Data access goes through storage only — see ParticipantScope in storage.ts.
+// AnalyticsService computes; it never touches the database directly.
+import { storage } from "./storage";
 
 export interface AnalyticsOverview {
   totalParticipants: number;
@@ -116,12 +116,9 @@ export class AnalyticsService {
     const thirtyDaysAgo = getDateRange(30).start;
     const sevenDaysAgo = getDateRange(7).start;
 
-    let participantsQuery = db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const allParticipants = await participantsQuery;
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
     
-    const filteredParticipants = coachId 
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const filteredParticipants = allParticipants; // already scoped by storage
     
     const participantIds = filteredParticipants.map(p => p.id);
     
@@ -140,13 +137,9 @@ export class AnalyticsService {
 
     const activeSet = new Set<string>();
     
-    const metricEntries = await db.select()
-      .from(schema.metricEntries)
-      .where(gte(schema.metricEntries.timestamp, start));
+    const metricEntries = await storage.getMetricEntriesInScope({ coachId }, start);
     
-    const foodEntries = await db.select()
-      .from(schema.foodEntries)
-      .where(gte(schema.foodEntries.timestamp, start));
+    const foodEntries = await storage.getFoodEntriesInScope({ coachId }, start);
     
     metricEntries.forEach(e => {
       if (participantIds.includes(e.userId)) activeSet.add(e.userId);
@@ -230,26 +223,20 @@ export class AnalyticsService {
     const { start } = getDateRange(range);
     const threeDaysAgo = getDateRange(3).start;
     
-    const allParticipants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const coaches = await db.select().from(schema.users).where(eq(schema.users.role, "coach"));
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
+    const coaches = await storage.getCoaches();
     const coachMap = new Map(coaches.map(c => [c.id, c.name]));
     
-    const filteredParticipants = coachId 
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const filteredParticipants = allParticipants; // already scoped by storage
     
     const participantIds = filteredParticipants.map(p => p.id);
     const participantMap = new Map(filteredParticipants.map(p => [p.id, p]));
     
     const flags: HealthFlag[] = [];
     
-    const allMetrics = await db.select()
-      .from(schema.metricEntries)
-      .where(gte(schema.metricEntries.timestamp, start));
+    const allMetrics = await storage.getMetricEntriesInScope({ coachId }, start);
     
-    const allFood = await db.select()
-      .from(schema.foodEntries)
-      .where(gte(schema.foodEntries.timestamp, start));
+    const allFood = await storage.getFoodEntriesInScope({ coachId }, start);
 
     for (const userId of participantIds) {
       const participant = participantMap.get(userId)!;
@@ -388,19 +375,15 @@ export class AnalyticsService {
   async getMacros(range: number = 7, coachId?: string): Promise<MacroAnalytics> {
     const { start } = getDateRange(range);
     
-    const allParticipants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const filteredParticipants = coachId 
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
+    const filteredParticipants = allParticipants; // already scoped by storage
     
     const participantIds = filteredParticipants.map(p => p.id);
     
-    const targets = await db.select().from(schema.macroTargets);
+    const targets = await storage.getMacroTargetsForUsers(participantIds);
     const targetMap = new Map(targets.map(t => [t.userId, t]));
     
-    const foodEntries = await db.select()
-      .from(schema.foodEntries)
-      .where(gte(schema.foodEntries.timestamp, start));
+    const foodEntries = await storage.getFoodEntriesInScope({ coachId }, start);
 
     let meetingProtein = 0;
     let overCarbs = 0;
@@ -507,17 +490,13 @@ export class AnalyticsService {
   }
 
   async getOutcomes(range: number = 30, coachId?: string, compare: boolean = false): Promise<OutcomesAnalytics> {
-    const allParticipants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const filteredParticipants = coachId
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
+    const filteredParticipants = allParticipants; // already scoped by storage
     const participantIds = filteredParticipants.map(p => p.id);
 
     // Current period
     const { start } = getDateRange(range);
-    const currentEntries = await db.select()
-      .from(schema.metricEntries)
-      .where(gte(schema.metricEntries.timestamp, start));
+    const currentEntries = await storage.getMetricEntriesInScope({ coachId }, start);
 
     const current = this._calculateOutcomesFromEntries(currentEntries, participantIds);
 
@@ -532,12 +511,7 @@ export class AnalyticsService {
     prevStart.setDate(prevStart.getDate() - range);
     prevStart.setHours(0, 0, 0, 0);
 
-    const prevEntries = await db.select()
-      .from(schema.metricEntries)
-      .where(and(
-        gte(schema.metricEntries.timestamp, prevStart),
-        lte(schema.metricEntries.timestamp, prevEnd)
-      ));
+    const prevEntries = await storage.getMetricEntriesInScope({ coachId }, prevStart, prevEnd);
 
     const previous = this._calculateOutcomesFromEntries(prevEntries, participantIds);
 
@@ -547,19 +521,13 @@ export class AnalyticsService {
   async getTrends(range: number = 30, coachId?: string): Promise<TrendDataPoint[]> {
     const { start } = getDateRange(range);
 
-    const allParticipants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const filteredParticipants = coachId
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
+    const filteredParticipants = allParticipants; // already scoped by storage
     const participantIds = new Set(filteredParticipants.map(p => p.id));
 
-    const metricEntries = await db.select()
-      .from(schema.metricEntries)
-      .where(gte(schema.metricEntries.timestamp, start));
+    const metricEntries = await storage.getMetricEntriesInScope({ coachId }, start);
 
-    const foodEntries = await db.select()
-      .from(schema.foodEntries)
-      .where(gte(schema.foodEntries.timestamp, start));
+    const foodEntries = await storage.getFoodEntriesInScope({ coachId }, start);
 
     // Group by ISO week (Monday start)
     const getWeekStart = (date: Date): string => {
@@ -627,10 +595,8 @@ export class AnalyticsService {
   }
 
   async getDemographics(coachId?: string): Promise<DemographicsAnalytics> {
-    const allParticipants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const filteredParticipants = coachId
-      ? allParticipants.filter(p => p.coachId === coachId)
-      : allParticipants;
+    const allParticipants = await storage.getParticipantsInScope({ coachId });
+    const filteredParticipants = allParticipants; // already scoped by storage
     const participantIds = new Set(filteredParticipants.map(p => p.id));
 
     // Age distribution
@@ -664,9 +630,7 @@ export class AnalyticsService {
     }));
 
     // Weight distribution — latest WEIGHT entry per participant
-    const allWeightEntries = await db.select()
-      .from(schema.metricEntries)
-      .where(eq(schema.metricEntries.type, 'WEIGHT'));
+    const allWeightEntries = await storage.getMetricEntriesInScope({ coachId }, undefined, undefined, 'WEIGHT');
 
     const latestWeightByUser = new Map<string, { value: number; ts: number }>();
     for (const entry of allWeightEntries) {
@@ -707,10 +671,10 @@ export class AnalyticsService {
   }
 
   async getCoachWorkload(range: number = 7): Promise<CoachWorkload[]> {
-    const coaches = await db.select().from(schema.users).where(eq(schema.users.role, "coach"));
-    const participants = await db.select().from(schema.users).where(eq(schema.users.role, "participant"));
-    const conversations = await db.select().from(schema.conversations);
-    const messages = await db.select().from(schema.messages);
+    const coaches = await storage.getCoaches();
+    const participants = await storage.getParticipantsInScope({});
+    const conversations = await storage.getConversationsForCoaches(coaches.map(c => c.id));
+    const messages = await storage.getMessagesForConversations(conversations.map(c => c.id));
     
     const flagsData = await this.getFlags(range);
     const flagsByCoach = new Map<string, number>();
@@ -751,15 +715,8 @@ export class AnalyticsService {
   async getUserConsistencyMetrics(userId: string, weeksToAnalyze: number = 12): Promise<ConsistencyMetrics> {
     const { start } = getDateRange(weeksToAnalyze * 7);
 
-    const metricEntries = await db
-      .select()
-      .from(schema.metricEntries)
-      .where(and(eq(schema.metricEntries.userId, userId), gte(schema.metricEntries.timestamp, start)));
-
-    const foodEntries = await db
-      .select()
-      .from(schema.foodEntries)
-      .where(and(eq(schema.foodEntries.userId, userId), gte(schema.foodEntries.timestamp, start)));
+    const metricEntries = await storage.getMetricEntries(userId, undefined, start);
+    const foodEntries = await storage.getFoodEntries(userId, start);
 
     // Combine all log dates
     const allDates = [

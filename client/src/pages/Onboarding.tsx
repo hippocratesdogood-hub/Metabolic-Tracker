@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
@@ -184,7 +185,7 @@ export default function Onboarding() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-3 h-56 overflow-y-auto border border-border">
-                <p><strong>1. A wellness &amp; tracking tool — not medical advice:</strong> Metabolic-Tracker and your Optimization Partner help you track and optimize your habits. During setup, the app can calculate personalized daily nutrition targets from measurements you provide; every calculated target is reviewed by Dr. Larson. The app does not provide medical advice, diagnosis, or treatment, and does not replace your prescribing provider. Always consult your provider about your medication and any medical questions.</p>
+                <p><strong>1. A wellness &amp; tracking tool — not medical advice:</strong> Metabolic-Tracker and your Optimization Partner help you track and optimize your habits. During setup, the app can calculate personalized daily nutrition targets from measurements you provide; every calculated target is reviewed by {branding.clinicianShortName}. The app does not provide medical advice, diagnosis, or treatment, and does not replace your prescribing provider. Always consult your provider about your medication and any medical questions.</p>
                 <p><strong>2. Data Privacy &amp; AI Processing:</strong> Your data is encrypted. Food descriptions and photos you log may be sent to third-party nutrition analysis services (including automated and AI-assisted tools) to estimate nutritional content. No personal identifiers are included in these requests.</p>
                 <p><strong>3. Your Optimization Partner:</strong> An AI wellness guide that answers questions grounded in your own logged data. It will never advise on medication dosing or timing — those belong with your prescribing provider.</p>
                 <p><strong>4. Emergency:</strong> If you are experiencing a medical emergency, call 911 immediately. This app is not designed for emergency situations.</p>
@@ -258,7 +259,7 @@ export default function Onboarding() {
               <CardDescription>
                 {aiAvailable
                   ? 'Just describe something you ate recently — this teaches your Partner about your protein.'
-                  : 'Just describe something you ate recently — this gives Dr. Larson your starting point.'}
+                  : `Just describe something you ate recently — this gives ${branding.clinicianShortName} your starting point.`}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

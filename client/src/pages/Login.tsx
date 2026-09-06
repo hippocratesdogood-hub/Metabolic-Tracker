@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
@@ -42,8 +43,8 @@ export default function Login() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl -z-10 animate-pulse" style={{ animationDelay: '1s' }} />
 
       <div className="mb-8 text-center">
-        <img src="/Logo for Metabolic OS.png" alt="Metabolic OS" className="w-16 h-16 rounded-2xl mx-auto mb-4 shadow-xl object-contain" />
-        <h1 className="text-3xl font-heading font-bold text-foreground">Metabolic OS</h1>
+        <img src="/Logo for Metabolic OS.png" alt={branding.productName} className="w-16 h-16 rounded-2xl mx-auto mb-4 shadow-xl object-contain" />
+        <h1 className="text-3xl font-heading font-bold text-foreground">{branding.productName}</h1>
         <p className="text-muted-foreground mt-2">Your journey to metabolic flexibility starts here.</p>
       </div>
 

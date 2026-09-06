@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, inArray } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import { encryptPHI, decryptPHI } from "./utils/encryption";
 import { toISODateInTZ } from "./utils/timezone";
@@ -137,10 +137,29 @@ export interface IStorage {
   // Admin - Prompt Deliveries
   getPromptDeliveries(limit?: number): Promise<any[]>;
 
+  // Analytics reads — every cross-participant query takes a ParticipantScope.
+  // This is the multi-tenancy seam: adding organizationId to ParticipantScope
+  // scopes all population analytics without touching AnalyticsService.
+  getParticipantsInScope(scope?: ParticipantScope): Promise<User[]>;
+  getMetricEntriesInScope(scope: ParticipantScope, from?: Date, to?: Date, type?: string): Promise<MetricEntry[]>;
+  getFoodEntriesInScope(scope: ParticipantScope, from?: Date, to?: Date): Promise<FoodEntry[]>;
+  getMacroTargetsForUsers(userIds: string[]): Promise<MacroTarget[]>;
+  getConversationsForCoaches(coachIds: string[]): Promise<Conversation[]>;
+  getMessagesForConversations(conversationIds: string[]): Promise<Message[]>;
+
   // Audit Logs (read-only - no create/update/delete methods here; use auditLogger service)
   getAuditLogs(filters: AuditLogFilters): Promise<{ logs: AuditLog[]; total: number }>;
   getAuditLogById(id: string): Promise<AuditLog | undefined>;
   getAuditLogStats(days: number): Promise<AuditLogStats>;
+}
+
+/**
+ * Which participants a population-level read may see. Today the only axis is
+ * the assigned coach (undefined = every participant, i.e. the admin view).
+ * A future organizations table adds `organizationId` here and nowhere else.
+ */
+export interface ParticipantScope {
+  coachId?: string;
 }
 
 export interface AuditLogFilters {
@@ -1141,6 +1160,64 @@ export class PostgresStorage implements IStorage {
       uniqueUsers,
       uniqueIps,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Analytics reads (scoped). These return raw rows without PHI decryption —
+  // population analytics only aggregate numeric values and timestamps, never
+  // notes or food text. Empty scopes short-circuit to [] rather than issuing
+  // an `IN ()` query.
+  // ---------------------------------------------------------------------------
+  async getParticipantsInScope(scope: ParticipantScope = {}): Promise<User[]> {
+    const conditions = [eq(schema.users.role, "participant")];
+    if (scope.coachId) {
+      conditions.push(eq(schema.users.coachId, scope.coachId));
+    }
+    return db.select().from(schema.users).where(and(...conditions));
+  }
+
+  private async participantIdsInScope(scope: ParticipantScope): Promise<string[]> {
+    const participants = await this.getParticipantsInScope(scope);
+    return participants.map((p) => p.id);
+  }
+
+  async getMetricEntriesInScope(
+    scope: ParticipantScope,
+    from?: Date,
+    to?: Date,
+    type?: string,
+  ): Promise<MetricEntry[]> {
+    const ids = await this.participantIdsInScope(scope);
+    if (ids.length === 0) return [];
+    const conditions = [inArray(schema.metricEntries.userId, ids)];
+    if (from) conditions.push(gte(schema.metricEntries.timestamp, from));
+    if (to) conditions.push(lte(schema.metricEntries.timestamp, to));
+    if (type) conditions.push(eq(schema.metricEntries.type, type as any));
+    return db.select().from(schema.metricEntries).where(and(...conditions));
+  }
+
+  async getFoodEntriesInScope(scope: ParticipantScope, from?: Date, to?: Date): Promise<FoodEntry[]> {
+    const ids = await this.participantIdsInScope(scope);
+    if (ids.length === 0) return [];
+    const conditions = [inArray(schema.foodEntries.userId, ids)];
+    if (from) conditions.push(gte(schema.foodEntries.timestamp, from));
+    if (to) conditions.push(lte(schema.foodEntries.timestamp, to));
+    return db.select().from(schema.foodEntries).where(and(...conditions));
+  }
+
+  async getMacroTargetsForUsers(userIds: string[]): Promise<MacroTarget[]> {
+    if (userIds.length === 0) return [];
+    return db.select().from(schema.macroTargets).where(inArray(schema.macroTargets.userId, userIds));
+  }
+
+  async getConversationsForCoaches(coachIds: string[]): Promise<Conversation[]> {
+    if (coachIds.length === 0) return [];
+    return db.select().from(schema.conversations).where(inArray(schema.conversations.coachId, coachIds));
+  }
+
+  async getMessagesForConversations(conversationIds: string[]): Promise<Message[]> {
+    if (conversationIds.length === 0) return [];
+    return db.select().from(schema.messages).where(inArray(schema.messages.conversationId, conversationIds));
   }
 }
 

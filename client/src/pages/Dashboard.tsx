@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useData, MetricType } from '@/lib/dataAdapter';
@@ -368,7 +369,7 @@ export default function Dashboard() {
               <div className="flex-1">
                 <h3 className="font-heading font-semibold">Set your daily nutrition targets</h3>
                 <p className="text-sm text-muted-foreground">
-                  A few tape measurements are all it takes. Your targets go live immediately and Dr. Larson
+                  A few tape measurements are all it takes. Your targets go live immediately and {branding.clinicianShortName}
                   reviews every one.
                 </p>
               </div>
@@ -396,9 +397,9 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* How to reach Dr. Larson — replaces the retired in-app coach messenger */}
+      {/* How to reach the clinician — replaces the retired in-app coach messenger */}
       <p className="text-center text-sm text-muted-foreground" data-testid="text-contact-line">
-        Questions? Reply to any email from Dr. Larson — it comes to him directly.
+        Questions? Reply to any email from {branding.clinicianShortName} — it goes directly to the clinician.
       </p>
 
       <MetricEntryModal

@@ -1,3 +1,4 @@
+import { branding } from '@/lib/branding';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -1538,14 +1539,14 @@ export default function FoodLog() {
       {coachingMessage && (
         <Card className={cn(
           "border shadow-sm",
-          coachingMessage.includes("Dr. Larson")
+          coachingMessage.includes(branding.clinicianShortName)
             ? "border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/20"
             : "border-primary/20 bg-primary/5 dark:bg-primary/5"
         )}>
           <CardContent className="p-4 flex items-start gap-3">
             <div className={cn(
               "mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0",
-              coachingMessage.includes("Dr. Larson")
+              coachingMessage.includes(branding.clinicianShortName)
                 ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
                 : "bg-primary/10 text-primary"
             )}>

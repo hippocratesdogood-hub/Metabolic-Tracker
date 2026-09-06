@@ -1,3 +1,4 @@
+import { branding } from "../branding";
 /**
  * Biomarker scoring engine.
  *
@@ -167,7 +168,7 @@ export function summarizePanelForPrompt(scores: BiomarkerScore[]): PanelSummary 
     lines.push("");
   }
   if (optimalFindings.length > 0) {
-    lines.push("OPTIMAL (within Dr. Larson's target range):");
+    lines.push(`OPTIMAL (within ${branding.clinicianShortName}'s target range):`);
     optimalFindings.forEach((s) => lines.push(`  - ${s.name}: ${s.value} ${s.unit}`));
     lines.push("");
   }
