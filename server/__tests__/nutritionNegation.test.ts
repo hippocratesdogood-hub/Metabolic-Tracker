@@ -34,6 +34,13 @@ describe("negatedItemWord — canonical name, not a mention", () => {
     expect(negatedItemWord("bun", ["bun"])).toBe("bun");
   });
 
+  it("REGRESSION (live false positive): an item whose own name honors the negation is the corrected dish, not the excluded food", () => {
+    expect(negatedItemWord("greek salad without dressing", ["dressing"])).toBeNull();
+    expect(negatedItemWord("burger no bun", ["bun"])).toBeNull();
+    // …but an item that IS the excluded food still flags alongside such names
+    expect(negatedItemWord("dressing", ["dressing"])).toBe("dressing");
+  });
+
   it("does not flag a dish that merely contains the word", () => {
     // Nutritionix's canonical item for the In-N-Out upgrade is the burger,
     // so a suffix like "(Bun Replaced with Lettuce)" is never consulted.

@@ -135,8 +135,13 @@ export function negatedTerms(text: string): string[] {
  */
 export function negatedItemWord(canonicalName: string, terms: string[]): string | null {
   if (terms.length === 0) return null;
+  // When Nutritionix honored the negation itself, the item's own name encodes
+  // it ("greek salad without dressing", "burger no bun") — that item is the
+  // corrected dish, not the excluded food. Live false positive, Sept 2026.
+  const selfNegated = new Set(negatedTerms(canonicalName));
   const nameToks = canonicalName.toLowerCase().match(/[a-z]+/g) ?? [];
   for (const term of terms) {
+    if (selfNegated.has(term)) continue;
     if (nameToks.some((nt) => tokenMatches(term, nt))) return term;
   }
   return null;
