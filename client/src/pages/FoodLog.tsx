@@ -559,6 +559,9 @@ export default function FoodLog() {
   // 201 kcal). The failure is the DISH, not the ingredients that matched, so
   // the notice sits above the cards, names the original phrase, and re-checks
   // the whole phrase at once (replacing all items from that line).
+  // Display-only tidy for echoing the member's phrase inside quotes: drop
+  // trailing punctuation ("a chipotle chicken bowl." → "a chipotle chicken bowl").
+  const tidyPhrase = (s: string) => s.trim().replace(/[.!?,;:]+$/, '');
   const [dishRecheck, setDishRecheck] = useState<{ originalInput: string; text: string } | null>(null);
   const [dishRecheckLoading, setDishRecheckLoading] = useState(false);
 
@@ -1317,7 +1320,7 @@ export default function FoodLog() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium">This may not be the dish you meant.</p>
                       <p className="mt-0.5">
-                        “{n.originalInput}” came back as {n.matchedFrom.map((m) => `“${m}”`).join(' and ')} — {Math.round(n.kcal)} cal, which is low for a {n.containerWord}. If it was a restaurant dish or a mixed {n.containerWord}, re-check with the restaurant name or list what was in it.
+                        “{tidyPhrase(n.originalInput)}” came back as {n.matchedFrom.map((m) => `“${m}”`).join(' and ')} — {Math.round(n.kcal)} cal, which is low for a {n.containerWord}. If it was a restaurant dish or a mixed {n.containerWord}, re-check with the restaurant name or list what was in it.
                       </p>
                       {dishRecheck?.originalInput === n.originalInput ? (
                         <div className="mt-2 flex items-center gap-1.5">
@@ -1342,7 +1345,7 @@ export default function FoodLog() {
                           <button
                             type="button"
                             className="font-medium underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100"
-                            onClick={() => setDishRecheck({ originalInput: n.originalInput, text: n.originalInput })}
+                            onClick={() => setDishRecheck({ originalInput: n.originalInput, text: tidyPhrase(n.originalInput) })}
                             data-testid="button-dish-recheck"
                           >
                             Re-check
@@ -1395,7 +1398,7 @@ export default function FoodLog() {
                         ) : item.matchQuality === 'loose' && item.looseReason !== 'container_kcal' ? (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            title={`Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
+                            data-testid="chip-partial-match"
                           >
                             Partial match
                           </span>
@@ -1425,13 +1428,20 @@ export default function FoodLog() {
                         {item.quantityAssumed && (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            title="No quantity was stated, so 1 was assumed. Adjust the count below if you had more."
                             data-testid="chip-quantity-assumed"
                           >
                             Quantity assumed: 1
                           </span>
                         )}
                       </div>
+                      {/* Partial-match reason as visible text — a native title
+                          tooltip never shows on touch, and most pilot patients
+                          are on phones. */}
+                      {item.matchQuality === 'loose' && item.looseReason !== 'container_kcal' && (
+                        <p className="mb-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300" data-testid="text-partial-match-reason">
+                          Only {(item.matchedFrom || []).map((m: string) => `“${m}”`).join(' and ')} matched from “{tidyPhrase(item.originalInput || '')}”. The rest wasn't recognized, so these numbers are probably low. Re-check to describe it differently.
+                        </p>
+                      )}
                       {/* Quantity / serving row */}
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <button
@@ -1550,6 +1560,7 @@ export default function FoodLog() {
                         ))}
                       </div>
                       {/* P2: re-check / fix a wrong database match without hand-typing macros */}
+                      {item.looseReason !== 'container_kcal' && (
                       <div className="mt-2">
                         {reMatchId === item.id ? (
                           <div className="flex items-center gap-1.5">
@@ -1593,6 +1604,7 @@ export default function FoodLog() {
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
                   ))}
 
