@@ -516,6 +516,7 @@ export default function FoodLog() {
             originalInput: item.originalInput ?? null,
             quantityAssumed: item.quantityAssumed === true ? true : undefined,
             containerWord: item.containerWord ?? null,
+            negatedWord: item.negatedWord ?? null,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }).concat(unresolvedItems));
@@ -631,6 +632,7 @@ export default function FoodLog() {
           originalInput: f.originalInput ?? null,
           quantityAssumed: f.quantityAssumed === true ? true : undefined,
           containerWord: f.containerWord ?? null,
+          negatedWord: f.negatedWord ?? null,
           _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
         };
       });
@@ -688,6 +690,7 @@ export default function FoodLog() {
           originalInput: f.originalInput ?? null,
           quantityAssumed: f.quantityAssumed === true ? true : undefined,
           containerWord: f.containerWord ?? null,
+          negatedWord: f.negatedWord ?? null,
           _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
@@ -1400,7 +1403,7 @@ export default function FoodLog() {
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                             data-testid="chip-partial-match"
                           >
-                            Partial match
+                            {item.looseReason === 'negated_item' ? 'Check this' : 'Partial match'}
                           </span>
                         ) : item.source === 'manual' ? (
                           <span
@@ -1437,7 +1440,12 @@ export default function FoodLog() {
                       {/* Partial-match reason as visible text — a native title
                           tooltip never shows on touch, and most pilot patients
                           are on phones. */}
-                      {item.matchQuality === 'loose' && item.looseReason !== 'container_kcal' && (
+                      {item.matchQuality === 'loose' && item.looseReason === 'negated_item' && (
+                        <p className="mb-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300" data-testid="text-negated-item-reason">
+                          You said “no {item.negatedWord}”, but “{item.name}” was logged anyway. Remove it if it wasn't in the meal, or re-check.
+                        </p>
+                      )}
+                      {item.matchQuality === 'loose' && item.looseReason !== 'container_kcal' && item.looseReason !== 'negated_item' && (
                         <p className="mb-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300" data-testid="text-partial-match-reason">
                           Only {(item.matchedFrom || []).map((m: string) => `“${m}”`).join(' and ')} matched from “{tidyPhrase(item.originalInput || '')}”. The rest wasn't recognized, so these numbers are probably low. Re-check to describe it differently.
                         </p>
@@ -1549,6 +1557,7 @@ export default function FoodLog() {
                                   updated[idx].matchQuality = undefined;
                                   updated[idx].looseReason = undefined;
                                   updated[idx].containerWord = null;
+                                  updated[idx].negatedWord = null;
                                   updated[idx].matchedFrom = null;
                                 }
                                 setEditableItems(updated);

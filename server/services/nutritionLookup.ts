@@ -15,7 +15,7 @@ import {
   acceptableBrandedUpgrade,
   LOOSE_MATCH_THRESHOLD,
 } from './matchCoverage';
-import { containerImplausible, containerWordIn, CONTAINER_PLAUSIBILITY_MIN_KCAL } from './matchCoverage';
+import { containerImplausible, containerWordIn, CONTAINER_PLAUSIBILITY_MIN_KCAL, negatedTerms, negatedItemWord } from './matchCoverage';
 import { parseLeadingQuantity } from './quantityParse';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -74,9 +74,15 @@ export interface DetectedFoodItem {
    * matchCoverage.ts — every word matched but the total is implausibly low
    * for a bowl/plate/burrito). Drives the confirm-card copy.
    */
-  looseReason?: 'coverage' | 'container_kcal';
+  looseReason?: 'coverage' | 'container_kcal' | 'negated_item';
   /** With looseReason 'container_kcal': the container word the member used ("bowl"). */
   containerWord?: string;
+  /**
+   * With looseReason 'negated_item': the food the member excluded ("rice" in
+   * "teriyaki bowl no rice") that the parser logged anyway. See the negation
+   * guard in matchCoverage.ts.
+   */
+  negatedWord?: string;
   /** The food names the parser did match, for "matched only X" UI copy. */
   matchedFrom?: string[];
   /** The member's original phrase for this line, so Re-check can prefill it. */
@@ -856,6 +862,25 @@ class NutritionLookupService {
             `[Nutritionix] [heuristic:container_kcal] "${line}" resolved to ${Math.round(lineKcal)} kcal (< ${CONTAINER_PLAUSIBILITY_MIN_KCAL}) as ${JSON.stringify(matchedFrom)} — labeled loose`,
           );
         }
+      }
+
+      // HEURISTIC (see matchCoverage.ts): the member excluded a food ("no
+      // rice") and the parser logged it anyway. Flag that item — the most
+      // specific reason wins over coverage/container labels. mapNixFoods is
+      // 1:1 with raw, so tags.item (Nutritionix's canonical food) lines up.
+      const negated = negatedTerms(line);
+      if (negated.length > 0) {
+        mapped.forEach((m, i) => {
+          const canonical = String(raw[i]?.tags?.item || raw[i]?.food_name || m.name || '');
+          const word = negatedItemWord(canonical, negated);
+          if (word) {
+            m.matchQuality = 'loose';
+            m.looseReason = 'negated_item';
+            m.negatedWord = word;
+            m.originalInput = line;
+            console.warn(`[Nutritionix] [heuristic:negated_item] "${line}" said no ${word} but logged "${m.name}"`);
+          }
+        });
       }
       items.push(...mapped);
     }

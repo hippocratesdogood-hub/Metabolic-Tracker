@@ -223,8 +223,9 @@ class ApiClient {
         brand?: string | null;
         matchQuality?: 'loose';
         matchedFrom?: string[];
-        looseReason?: 'coverage' | 'container_kcal';
+        looseReason?: 'coverage' | 'container_kcal' | 'negated_item';
         containerWord?: string;
+        negatedWord?: string;
         quantityAssumed?: boolean;
         unresolved?: boolean;
       }[];

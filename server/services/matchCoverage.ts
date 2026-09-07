@@ -86,6 +86,62 @@ export function containerImplausible(text: string, totalKcal: number): boolean {
   return mentionsContainer(text) && totalKcal < CONTAINER_PLAUSIBILITY_MIN_KCAL;
 }
 
+// ---------------------------------------------------------------------------
+// HEURISTIC — negation guard (Sept 2026)
+//
+// Nutritionix's natural parser ignores negation: "teriyaki bowl no rice"
+// logs a bowl of rice (411 kcal), and the total is plausible enough that
+// nothing else flags it. Patients managing carbs type "no bun / no rice /
+// no cheese" constantly, so this is not an edge case. The guard is
+// deliberately crude — correctness is the LLM path's job (post-BAA); this
+// only makes sure the member SEES that an item they excluded was logged.
+//
+// An item is flagged when its canonical name (Nutritionix's tags.item, else
+// the food name) IS the negated food — not when it merely mentions it. That
+// is what keeps "double double no bun" → "Double-Double, Protein Style (Bun
+// Replaced with Lettuce)" from false-flagging: its canonical item is the
+// burger, and "bun" only appears in the descriptive suffix.
+// ---------------------------------------------------------------------------
+
+const NEGATION_CUE =
+  /\b(?:no|without|w\/o|sans|minus|hold the|skip the|skip|leave off the|leave off)\s+(?:the\s+|any\s+|extra\s+)?([a-z]+)(?:[\s-]+([a-z]+))?/g;
+const NEGATION_FOLLOWER_STOP = new Set('and or but with plus on in for please thanks thank instead extra side'.split(' '));
+
+/** Foods the member explicitly excluded: "burger no bun, side salad without dressing" → ["bun", "dressing"]. */
+export function negatedTerms(text: string): string[] {
+  const out: string[] = [];
+  const lower = text.toLowerCase();
+  // exec loop rather than matchAll: the project's TS target predates
+  // iterable RegExp results (see the existing Set-iteration error).
+  const re = new RegExp(NEGATION_CUE.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(lower)) !== null) {
+    const first = m[1];
+    const second = m[2];
+    // A cue followed by a connector ("no and …") is not a negation of anything.
+    if (!first || first.length < 2 || STOP.has(first) || NEGATION_FOLLOWER_STOP.has(first)) continue;
+    out.push(first);
+    // "no sour cream", "without brown rice" — keep a two-word food when the
+    // second word is not a connector; STOP words like "bowl" are dropped.
+    if (second && second.length >= 2 && !STOP.has(second) && !NEGATION_FOLLOWER_STOP.has(second)) out.push(second);
+  }
+  const seen = new Set<string>();
+  return out.filter((w) => (seen.has(w) ? false : (seen.add(w), true)));
+}
+
+/**
+ * If a resolved item's canonical name is one of the negated foods, return the
+ * negated word (for the UI copy); otherwise null.
+ */
+export function negatedItemWord(canonicalName: string, terms: string[]): string | null {
+  if (terms.length === 0) return null;
+  const nameToks = canonicalName.toLowerCase().match(/[a-z]+/g) ?? [];
+  for (const term of terms) {
+    if (nameToks.some((nt) => tokenMatches(term, nt))) return term;
+  }
+  return null;
+}
+
 /** Words in the member's text that identify food, after stripping amounts and filler. */
 export function contentTokens(text: string): string[] {
   const out: string[] = [];
