@@ -20,7 +20,7 @@ import { format, subDays, startOfDay, isAfter, isBefore, isToday } from 'date-fn
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
-import { useAiAvailable } from '@/hooks/use-ai-available';
+import { useFoodAiAvailable } from '@/hooks/use-ai-available';
 import { isContainerUnit, scaleByQuantity, scaleByGrams } from '@/lib/portionScaling';
 import { DialogFooter } from '@/components/ui/dialog';
 
@@ -102,7 +102,7 @@ function ServingPills({ value, onChange }: { value: number; onChange: (v: number
 export default function FoodLog() {
   const queryClient = useQueryClient();
   const { user, refreshUser } = useAuth();
-  const aiAvailable = useAiAvailable();
+  const foodAiAvailable = useFoodAiAvailable();
   const [input, setInput] = useState('');
   const [mealType, setMealType] = useState<MealType>(suggestMealType());
   const [entryDate, setEntryDate] = useState<Date>(new Date());
@@ -418,7 +418,7 @@ export default function FoodLog() {
 
   const handleAnalyze = async () => {
     if (!input.trim() && !selectedImage) {
-      toast.error(aiAvailable ? 'Please add a photo or describe your meal' : 'Please describe your meal');
+      toast.error(foodAiAvailable ? 'Please add a photo or describe your meal' : 'Please describe your meal');
       return;
     }
 
@@ -511,8 +511,10 @@ export default function FoodLog() {
             altMeasures: item.altMeasures ?? null,
             gramsEstimated: item.gramsEstimated === true ? true : undefined,
             matchQuality: item.matchQuality,
+            looseReason: item.looseReason,
             matchedFrom: item.matchedFrom ?? null,
             originalInput: item.originalInput ?? null,
+            quantityAssumed: item.quantityAssumed === true ? true : undefined,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }).concat(unresolvedItems));
@@ -583,8 +585,10 @@ export default function FoodLog() {
           servingWeightGrams: f.servingWeightGrams ?? null,
           altMeasures: f.altMeasures ?? null,
           matchQuality: f.matchQuality,
+          looseReason: f.looseReason,
           matchedFrom: f.matchedFrom ?? null,
           originalInput: f.originalInput ?? null,
+          quantityAssumed: f.quantityAssumed === true ? true : undefined,
           _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
@@ -635,6 +639,7 @@ export default function FoodLog() {
           altMeasures: item.altMeasures ?? null,
           gramsEstimated: item.gramsEstimated === true ? true : undefined,
           matchQuality: item.matchQuality,
+          looseReason: item.looseReason,
           matchedFrom: item.matchedFrom ?? null,
           // Still-unresolved cards save with zero macros and this marker —
           // visible in the meal rather than silently dropped.
@@ -757,7 +762,7 @@ export default function FoodLog() {
     <div className="space-y-6 pb-20">
       <div>
         <h1 className="text-2xl font-heading font-bold" data-testid="text-page-title">Food Log</h1>
-        <p className="text-muted-foreground">{aiAvailable ? 'Snap a photo or describe your meal.' : 'Describe your meal.'}</p>
+        <p className="text-muted-foreground">{foodAiAvailable ? 'Snap a photo or describe your meal.' : 'Describe your meal.'}</p>
       </div>
 
       {foodStreak && (
@@ -1035,7 +1040,7 @@ export default function FoodLog() {
                 {/* Photo analysis needs the vision endpoint — hidden while AI is
                     unavailable so a photo-only submit can't hit the 503. Barcode
                     scanning below uses the camera too but never touches AI. */}
-                {aiAvailable && (
+                {foodAiAvailable && (
                   <>
                     <input
                       type="file"
@@ -1235,9 +1240,11 @@ export default function FoodLog() {
                         ) : item.matchQuality === 'loose' ? (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            title={`Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
+                            title={item.looseReason === 'container_kcal'
+                              ? `This came back as ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(' + ')}, which is very low for a bowl, plate, or wrap. It may have matched an ingredient instead of the dish. Use Re-check to name the restaurant or describe what was in it.`
+                              : `Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
                           >
-                            Partial match
+                            {item.looseReason === 'container_kcal' ? 'Check this' : 'Partial match'}
                           </span>
                         ) : item.source === 'manual' ? (
                           <span
@@ -1262,6 +1269,15 @@ export default function FoodLog() {
                             AI estimate
                           </span>
                         )}
+                        {item.quantityAssumed && (
+                          <span
+                            className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            title="No quantity was stated, so 1 was assumed. Adjust the count below if you had more."
+                            data-testid="chip-quantity-assumed"
+                          >
+                            Quantity assumed: 1
+                          </span>
+                        )}
                       </div>
                       {/* Quantity / serving row */}
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -1271,7 +1287,8 @@ export default function FoodLog() {
                           onClick={() => {
                             const updated = [...editableItems];
                             const newQty = Math.max(0.5, (item.quantity || 1) - 0.5);
-                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty) };
+                            // A hand-set count supersedes the "quantity assumed" chip.
+                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty), quantityAssumed: undefined };
                             setEditableItems(updated);
                           }}
                         >
@@ -1286,7 +1303,8 @@ export default function FoodLog() {
                           onClick={() => {
                             const updated = [...editableItems];
                             const newQty = (item.quantity || 1) + 0.5;
-                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty) };
+                            // A hand-set count supersedes the "quantity assumed" chip.
+                            updated[idx] = { ...updated[idx], ...scaleByQuantity(item, newQty), quantityAssumed: undefined };
                             setEditableItems(updated);
                           }}
                         >

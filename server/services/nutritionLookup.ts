@@ -15,6 +15,8 @@ import {
   acceptableBrandedUpgrade,
   LOOSE_MATCH_THRESHOLD,
 } from './matchCoverage';
+import { containerImplausible, CONTAINER_PLAUSIBILITY_MIN_KCAL } from './matchCoverage';
+import { parseLeadingQuantity } from './quantityParse';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -66,10 +68,24 @@ export interface DetectedFoodItem {
    * signal only: absence does NOT mean the match was verified correct.
    */
   matchQuality?: 'loose';
+  /**
+   * Why the line was labeled loose: 'coverage' (words the parser never
+   * matched) or 'container_kcal' (the container-plausibility heuristic in
+   * matchCoverage.ts — every word matched but the total is implausibly low
+   * for a bowl/plate/burrito). Drives the confirm-card copy.
+   */
+  looseReason?: 'coverage' | 'container_kcal';
   /** The food names the parser did match, for "matched only X" UI copy. */
   matchedFrom?: string[];
   /** The member's original phrase for this line, so Re-check can prefill it. */
   originalInput?: string;
+  /**
+   * True when the branded or spell-corrected path found no leading quantity
+   * in the member's phrase and defaulted to 1. Nutritionix's own natural
+   * parser handles quantities itself and never sets this. The confirm UI
+   * shows a "quantity assumed" chip so a default is never silent.
+   */
+  quantityAssumed?: boolean;
 }
 
 // ── Skip patterns ──────────────────────────────────────────────────────────
@@ -812,12 +828,30 @@ class NutritionLookupService {
         const matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
         for (const m of mapped) {
           m.matchQuality = 'loose';
+          m.looseReason = 'coverage';
           m.matchedFrom = matchedFrom;
           m.originalInput = line;
         }
         console.warn(
           `[Nutritionix] loose match for "${line}": matched ${JSON.stringify(matchedFrom)}, unmatched tokens ${JSON.stringify(unmatched)}`,
         );
+      } else {
+        // HEURISTIC (see matchCoverage.ts): every word matched, but a named
+        // container resolved to an implausibly small total — the
+        // "chipotle chicken bowl = one pepper + 3 oz chicken" shape.
+        const lineKcal = mapped.reduce((sum, m) => sum + (m.calories || 0), 0);
+        if (containerImplausible(line, lineKcal)) {
+          const matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
+          for (const m of mapped) {
+            m.matchQuality = 'loose';
+            m.looseReason = 'container_kcal';
+            m.matchedFrom = matchedFrom;
+            m.originalInput = line;
+          }
+          console.warn(
+            `[Nutritionix] [heuristic:container_kcal] "${line}" resolved to ${Math.round(lineKcal)} kcal (< ${CONTAINER_PLAUSIBILITY_MIN_KCAL}) as ${JSON.stringify(matchedFrom)} — labeled loose`,
+          );
+        }
       }
       items.push(...mapped);
     }
@@ -889,11 +923,14 @@ class NutritionLookupService {
     const cleaned = (phrase || '').trim();
     if (cleaned.length < 2) return null;
 
-    // "2 RxBar" → search "RxBar", scale ×2. Only a leading bare count is
-    // treated as a multiplier; measured amounts ("40 g protein bar") search verbatim.
-    const qtyMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\D.*)$/);
-    const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
-    const searchTerm = (qtyMatch ? qtyMatch[2] : cleaned).trim();
+    // "2 RxBar" / "two RxBars" / "a couple of RxBars" → search "RxBar(s)",
+    // scale by the count. Only a leading count is a multiplier; measured
+    // amounts ("40 g protein bar") search verbatim. No count → assume 1 AND
+    // say so (quantityAssumed) rather than defaulting silently.
+    const parsed = parseLeadingQuantity(cleaned);
+    const quantity = parsed.quantity ?? 1;
+    const quantityAssumed = parsed.quantity == null;
+    const searchTerm = parsed.rest.trim();
     if (searchTerm.length < 2 || quantity <= 0 || quantity > 50) return null;
 
     const useCache = !opts?.accept;
@@ -965,6 +1002,7 @@ class NutritionLookupService {
         // Branded search matches on name similarity (first hit may be a
         // different flavor) — flag lower confidence than an exact NLP parse.
         confidence: 0.7,
+        ...(quantityAssumed ? { quantityAssumed: true } : {}),
       };
       if (useCache) cache.set(cacheKey, item, 60 * 60 * 1000);
       console.log(`[Nutritionix] branded "${searchTerm}" → ${item.name}`);
@@ -991,9 +1029,11 @@ class NutritionLookupService {
   ): Promise<any[]> {
     const cleaned = (phrase || '').trim();
     if (cleaned.length < 3) return [];
-    const qtyMatch = cleaned.match(/^(\d+(?:\.\d+)?)\s+(\D.*)$/);
-    const qtyPrefix = qtyMatch ? `${qtyMatch[1]} ` : '';
-    const searchTerm = (qtyMatch ? qtyMatch[2] : cleaned).trim();
+    // Numerals AND number words ("two scrambled egs") survive into the
+    // re-query; Nutritionix's natural parser then applies the count itself.
+    const parsed = parseLeadingQuantity(cleaned);
+    const qtyPrefix = parsed.quantity != null ? `${parsed.quantity} ` : '';
+    const searchTerm = parsed.rest.trim();
     if (searchTerm.length < 3) return [];
 
     try {

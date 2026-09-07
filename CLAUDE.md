@@ -80,6 +80,10 @@ Metabolic health tracking app used by Dr. Chad Larson with real patients. This i
 
 Anthropic is the sole LLM vendor. The migration from OpenAI happened in four staged commits; OpenAI SDK has been removed.
 
+**Two independently-keyed surfaces (Sept 2026).** `ANTHROPIC_API_KEY_FOOD` enables the FOOD surface (`/api/food/analyze` text parse, `/api/food/analyze-image` vision); `ANTHROPIC_API_KEY_PARTNER` enables the PARTNER surface (participant Optimization Partner, admin AI assistant, post-meal coaching, lab PDF extraction). Each falls back to `ANTHROPIC_API_KEY`, so setting only that one key enables everything (backward compatible — the demo environment relies on this). `GET /api/config` reports `foodAiAvailable` and `aiAvailable` separately. **Policy: food text logged inside a patient account is PHI regardless of payload contents — neither surface ships in production before the BAA.** The split exists so the two can be enabled independently once it's signed. All keys are unset in production.
+
+**No-LLM fallback quirks worth knowing** (`server/services/quantityParse.ts`, `matchCoverage.ts`): the branded and spell-corrected lookup paths parse their own leading quantity (numerals, one–twelve, a/an, a couple, half, dozen); when none is stated they assume 1 and set `quantityAssumed` so the confirm UI shows a chip. A container word (bowl/plate/burrito/wrap…) resolving under `CONTAINER_PLAUSIBILITY_MIN_KCAL` (300) is labeled `matchQuality: 'loose'` with `looseReason: 'container_kcal'` — a heuristic, tune the constant as real patients generate false positives.
+
 Per-call-site model selection:
 
 | Call site | Model | Rationale |
@@ -107,7 +111,7 @@ Pre-existing code paths that **will graceful-degrade** if `ANTHROPIC_API_KEY` is
 ## Testing / typecheck
 
 - `npm run check` — TypeScript. Three known error clusters listed above; anything else was likely introduced.
-- `npm test` — Vitest. Baseline **767 passing / 0 failures** as of Aug 17 2026 (calendar-drift tests fixed with a frozen clock the same day). Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
+- `npm test` — Vitest. Baseline **785 passing / 0 failures** as of Sept 7 2026 (18 tests added for quantity-word parsing and the container-plausibility heuristic; previous baseline 767 on Aug 17 2026). Re-state this baseline here whenever it moves — a stale figure hides drift (the previous "709" was seven tests stale before anyone noticed).
 - Tests live colocated as `*.test.ts` or in `tests/`, use Vitest, run via `npm test` — don't introduce custom assert-based test scripts.
 - No watch mode on `npm run dev` — restart the server after server-side edits.
 

@@ -61,7 +61,7 @@ vi.mock("@/lib/auth", () => ({
     refreshUser: vi.fn(),
   }),
 }));
-vi.mock("@/hooks/use-ai-available", () => ({ useAiAvailable: () => true }));
+vi.mock("@/hooks/use-ai-available", () => ({ useAiAvailable: () => true, useFoodAiAvailable: () => true }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 // Modals pull in heavy browser-only dependencies (camera/barcode); none are
 // open in this test, so stub them out.

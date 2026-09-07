@@ -22,6 +22,8 @@
  * the pepper scores 1.0).
  */
 
+import { QUANTITY_WORDS } from './quantityParse';
+
 const UNIT_STOP = new Set(
   `cup cups c tbsp tablespoon tablespoons tsp teaspoon teaspoons oz ounce ounces g gram grams
    lb lbs pound pounds slice slices can cans bar bars piece pieces serving servings bottle bottles
@@ -34,9 +36,50 @@ const FILLER_STOP = new Set(
    she he they made me for after gym one two three`.split(/\s+/).filter(Boolean),
 );
 const DESCRIPTOR_STOP = new Set('homemade home made leftover leftovers fresh baked'.split(' '));
+// Quantity words ("five Quest bars") are amounts, not food — without this,
+// "five" counted as an unmatched food token and dragged coverage down.
+const NUMBER_STOP = new Set(QUANTITY_WORDS);
 
 const STOP = new Set<string>();
-[UNIT_STOP, CONNECT_STOP, FILLER_STOP, DESCRIPTOR_STOP].forEach((set) => set.forEach((t) => STOP.add(t)));
+[UNIT_STOP, CONNECT_STOP, FILLER_STOP, DESCRIPTOR_STOP, NUMBER_STOP].forEach((set) => set.forEach((t) => STOP.add(t)));
+
+// ---------------------------------------------------------------------------
+// HEURISTIC — container plausibility (Sept 2026)
+//
+// Lexical coverage cannot catch a WRONG meaning: "a chipotle chicken bowl"
+// resolves to a 14-kcal chipotle pepper plus 3 oz of chicken (201 kcal) with
+// every word "matched" (coverage 1.0). The only cheap signal is arithmetic:
+// when the member named a container that implies a composed meal and the
+// resolved total is implausibly low, label the line a loose match so the
+// confirm UI asks them to check it. This is a heuristic, not a parse — it
+// will flag a genuine "bowl of berries" too. That is accepted: the label is a
+// nudge to verify, never a block. Tune the threshold as real patients
+// generate false positives.
+// ---------------------------------------------------------------------------
+
+/** Container words that imply a composed meal rather than a single ingredient. */
+export const CONTAINER_WORDS = new Set(
+  'bowl bowls plate plates platter burrito burritos wrap wraps sandwich sandwiches sub subs entree entrees combo'.split(' '),
+);
+
+/** Below this many kcal, a container line is flagged for the member to check. Tunable. */
+export const CONTAINER_PLAUSIBILITY_MIN_KCAL = 300;
+
+/** Does the member's text name a container from CONTAINER_WORDS? */
+export function mentionsContainer(text: string): boolean {
+  for (const t of (text.toLowerCase().match(/[a-z]+/g) ?? [])) {
+    if (CONTAINER_WORDS.has(t)) return true;
+  }
+  return false;
+}
+
+/**
+ * True when a container line resolved to fewer calories than a composed meal
+ * plausibly has — the "chipotle = one pepper" failure shape.
+ */
+export function containerImplausible(text: string, totalKcal: number): boolean {
+  return mentionsContainer(text) && totalKcal < CONTAINER_PLAUSIBILITY_MIN_KCAL;
+}
 
 /** Words in the member's text that identify food, after stripping amounts and filler. */
 export function contentTokens(text: string): string[] {

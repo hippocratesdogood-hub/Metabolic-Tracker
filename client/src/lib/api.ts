@@ -64,7 +64,7 @@ class ApiClient {
   }
 
   async getConfig() {
-    return this.request<{ pdfExtractionEnabled: boolean; aiAvailable: boolean }>("/config");
+    return this.request<{ pdfExtractionEnabled: boolean; aiAvailable: boolean; foodAiAvailable: boolean }>("/config");
   }
 
   async changePassword(newPassword: string) {
@@ -223,6 +223,8 @@ class ApiClient {
         brand?: string | null;
         matchQuality?: 'loose';
         matchedFrom?: string[];
+        looseReason?: 'coverage' | 'container_kcal';
+        quantityAssumed?: boolean;
         unresolved?: boolean;
       }[];
       rawText?: string;

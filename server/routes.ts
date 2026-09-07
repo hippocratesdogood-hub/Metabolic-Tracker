@@ -75,10 +75,31 @@ import { scoreBiomarker } from "./services/scoring";
 // Anthropic is the sole LLM vendor (consolidated from OpenAI for HIPAA BAA
 // purposes). Conditionally initialized — null-safe degradation if the API key
 // is missing. PHI flows to Anthropic, so a signed BAA is required before
-// enabling ANTHROPIC_API_KEY in the production environment. See CLAUDE.md.
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+// enabling any of these keys in the production environment. See CLAUDE.md.
+//
+// Two surfaces, enabled independently (Sept 2026):
+//   FOOD    — /api/food/analyze (text parse) and /api/food/analyze-image
+//             (vision). Input is the member's food description or photo.
+//   PARTNER — the participant Optimization Partner, the admin AI assistant,
+//             post-meal coaching messages, and lab PDF extraction. Input is
+//             patient health data.
+// Each surface reads its own key and falls back to ANTHROPIC_API_KEY, so an
+// environment that sets only ANTHROPIC_API_KEY behaves exactly as before
+// (everything on). Setting only ANTHROPIC_API_KEY_FOOD or only
+// ANTHROPIC_API_KEY_PARTNER enables that surface alone. There is no default-
+// off gate: no key on a surface = that surface degrades to 503 as today.
+// Policy note: food text logged inside a patient account is treated as PHI
+// regardless of payload contents — the split exists for independent
+// enablement once a BAA is signed, not to ship FOOD earlier.
+function makeAnthropicClient(...envKeys: string[]): Anthropic | null {
+  for (const k of envKeys) {
+    const v = process.env[k];
+    if (v && v.trim()) return new Anthropic({ apiKey: v.trim() });
+  }
+  return null;
+}
+const anthropicFood = makeAnthropicClient("ANTHROPIC_API_KEY_FOOD", "ANTHROPIC_API_KEY");
+const anthropicPartner = makeAnthropicClient("ANTHROPIC_API_KEY_PARTNER", "ANTHROPIC_API_KEY");
 
 // Claude (especially Haiku) sometimes wraps JSON output in markdown fences
 // despite explicit instructions otherwise. Strip them defensively before
@@ -575,11 +596,14 @@ export async function registerRoutes(
   app.get("/api/config", requireAuth, (_req, res) => {
     res.json({
       pdfExtractionEnabled: process.env.ENABLE_PDF_EXTRACTION === "true",
-      // Gates the AI surfaces client-side (Partner entry points, photo meal
-      // analysis, onboarding copy). Derived from key presence only — the key
-      // itself never reaches the client. Flips true on the restart after
-      // ANTHROPIC_API_KEY is set (post-BAA), with no code change.
-      aiAvailable: Boolean(process.env.ANTHROPIC_API_KEY),
+      // Gates the AI surfaces client-side. Derived from key presence only —
+      // keys never reach the client. Flip true on the restart after the
+      // matching key is set (post-BAA), with no code change.
+      //   aiAvailable     — Partner entry points, onboarding Partner copy,
+      //                     post-meal coaching (PARTNER surface)
+      //   foodAiAvailable — photo meal analysis / LLM text parse (FOOD surface)
+      aiAvailable: Boolean(anthropicPartner),
+      foodAiAvailable: Boolean(anthropicFood),
     });
   });
 
@@ -934,7 +958,7 @@ export async function registerRoutes(
       if (breakdown && legacyTarget) {
         try {
           const coachResult = await generateMealCoachMessage(
-            req.user!.id, anthropic, breakdown,
+            req.user!.id, anthropicPartner, breakdown,
             { proteinG: legacyMacros.protein || 0, netCarbsG: legacyMacros.netCarbs || legacyMacros.carbs || 0, fatG: legacyMacros.fat || 0 },
             { proteinTargetG: legacyTarget.proteinG || 0, netCarbTargetG: legacyTarget.carbsG || 0 },
             entry.id
@@ -1211,7 +1235,7 @@ export async function registerRoutes(
       if (scoreResult && macroTarget) {
         try {
           const coachResult = await generateMealCoachMessage(
-            userId, anthropic, scoreResult.scoreBreakdown,
+            userId, anthropicPartner, scoreResult.scoreBreakdown,
             { proteinG: aggregateMacros.protein, netCarbsG: aggregateMacros.netCarbs, fatG: aggregateMacros.fat },
             { proteinTargetG: macroTarget.proteinG || 0, netCarbTargetG: macroTarget.carbsG || 0 },
             parent.id
@@ -1966,7 +1990,7 @@ export async function registerRoutes(
       // prod), fall back to a Nutritionix-native analysis (see
       // buildNutritionixTextAnalysis). Only when Nutritionix is also
       // unconfigured do we 503.
-      if (!anthropic) {
+      if (!anthropicFood) {
         const fallback = await buildNutritionixTextAnalysis(rawText, mealTypeSuggestion);
         if (!fallback) {
           return res.status(503).json(aiUnavailableBody());
@@ -2012,7 +2036,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
 
       let parsed: z.infer<typeof parseSchema> = { items: [] };
       try {
-        const parseResponse = await anthropic.messages.create({
+        const parseResponse = await anthropicFood.messages.create({
           model: "claude-haiku-4-5",
           max_tokens: 400,
           system: [{ type: "text", text: parsePrompt }],
@@ -2101,7 +2125,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
         });
 
         try {
-          const fallbackResponse = await anthropic.messages.create({
+          const fallbackResponse = await anthropicFood.messages.create({
             model: "claude-haiku-4-5",
             max_tokens: 1200,
             system: [{ type: "text", text: fallbackPrompt }],
@@ -2189,7 +2213,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
         return res.status(403).json({ message: "AI consent required. Please accept the AI disclosure before using this feature." });
       }
 
-      if (!anthropic) {
+      if (!anthropicFood) {
         // Anthropic vision is unavailable (BAA-gated off in prod). Nutritionix
         // has no vision, but if the user typed a description alongside the photo
         // we can still parse THAT via the same text fallback /api/food/analyze
@@ -2302,7 +2326,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
         confidence: { low: 0.65, high: 0.85 },
       };
       try {
-        const response = await anthropic.messages.create({
+        const response = await anthropicFood.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 1200,
           system: [{ type: "text", text: systemPrompt }],
@@ -2859,7 +2883,7 @@ Respond with ONLY the JSON object — no markdown fences, no preamble, no commen
     pdfUpload.single("file"),
     async (req, res) => {
       try {
-        if (!anthropic) {
+        if (!anthropicPartner) {
           return res.status(503).json({
             message: "PDF extraction is not configured on this server.",
           });
@@ -2930,7 +2954,7 @@ Respond with ONLY valid JSON (no markdown fences, no preamble) matching this sch
 
         const pdfBase64 = req.file.buffer.toString("base64");
 
-        const response = await anthropic.messages.create({
+        const response = await anthropicPartner.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 8000,
           system: [
@@ -3717,7 +3741,7 @@ GUIDELINES:
 
   app.post("/api/admin/ai-assistant", requireAuth, requireCoachOrAdmin, aiLimiter, async (req, res) => {
     try {
-      if (!anthropic) {
+      if (!anthropicPartner) {
         return res.status(503).json({ message: "AI assistant is not configured. Add ANTHROPIC_API_KEY to .env." });
       }
 
@@ -3745,7 +3769,7 @@ GUIDELINES:
       const todayIso = new Date().toISOString().split('T')[0];
 
       for (let i = 0; i < MAX_ITERATIONS; i++) {
-        const response = await anthropic.messages.create({
+        const response = await anthropicPartner.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 2000,
           system: [
@@ -3813,7 +3837,7 @@ GUIDELINES:
   // ============================================================================
   app.post("/api/assistant/chat", requireAuth, aiLimiter, async (req, res) => {
     try {
-      if (!anthropic) {
+      if (!anthropicPartner) {
         return res.status(503).json({
           message:
             "Your Optimization Partner is temporarily unavailable. Please try again in a moment.",
@@ -3842,7 +3866,7 @@ GUIDELINES:
       const todayIso = new Date().toISOString().split("T")[0];
 
       for (let i = 0; i < MAX_ITERATIONS; i++) {
-        const response = await anthropic.messages.create({
+        const response = await anthropicPartner.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 1500,
           system: [

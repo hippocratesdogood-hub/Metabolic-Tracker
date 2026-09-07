@@ -17,3 +17,17 @@ export function useAiAvailable(): boolean {
   });
   return config?.aiAvailable ?? false;
 }
+
+/**
+ * Whether the FOOD AI surface (photo meal analysis, LLM text parse) is
+ * available — a separate key from the Partner surface, so the two can be
+ * enabled independently. Same loading semantics as useAiAvailable.
+ */
+export function useFoodAiAvailable(): boolean {
+  const { data: config } = useQuery({
+    queryKey: ['app-config'],
+    queryFn: () => api.getConfig(),
+    staleTime: 5 * 60 * 1000,
+  });
+  return config?.foodAiAvailable ?? false;
+}
