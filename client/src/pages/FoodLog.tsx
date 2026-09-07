@@ -515,6 +515,7 @@ export default function FoodLog() {
             matchedFrom: item.matchedFrom ?? null,
             originalInput: item.originalInput ?? null,
             quantityAssumed: item.quantityAssumed === true ? true : undefined,
+            containerWord: item.containerWord ?? null,
             _baseGrams: item.servingWeightGrams && qty ? item.servingWeightGrams / qty : null,
           };
         }).concat(unresolvedItems));
@@ -552,6 +553,100 @@ export default function FoodLog() {
   // (possibly refined) description and swaps in the result's macros + source,
   // so a wrong database match (e.g. "chicken patty" matching a breaded product)
   // can be corrected without hand-typing every macro. Reuses /api/food/analyze.
+  // ── Dish-level notice for the container-plausibility heuristic ──────────
+  // The server flags every item from a line whose total is implausibly low
+  // for the container named ("a chipotle chicken bowl" → pepper + chicken,
+  // 201 kcal). The failure is the DISH, not the ingredients that matched, so
+  // the notice sits above the cards, names the original phrase, and re-checks
+  // the whole phrase at once (replacing all items from that line).
+  const [dishRecheck, setDishRecheck] = useState<{ originalInput: string; text: string } | null>(null);
+  const [dishRecheckLoading, setDishRecheckLoading] = useState(false);
+
+  const containerNotices = (() => {
+    const groups = new Map<string, { items: any[]; kcal: number; containerWord: string; matchedFrom: string[] }>();
+    for (const it of editableItems) {
+      if (it.looseReason !== 'container_kcal' || !it.originalInput) continue;
+      const g = groups.get(it.originalInput) ?? { items: [] as any[], kcal: 0, containerWord: (it.containerWord || 'dish') as string, matchedFrom: (it.matchedFrom || []) as string[] };
+      g.items.push(it);
+      g.kcal += it.calories || 0;
+      groups.set(it.originalInput, g);
+    }
+    return Array.from(groups.entries()).map(([originalInput, g]) => ({ originalInput, ...g }));
+  })();
+
+  const dismissContainerNotice = (originalInput: string) => {
+    setEditableItems(prev => prev.map(it =>
+      it.looseReason === 'container_kcal' && it.originalInput === originalInput
+        ? { ...it, matchQuality: undefined, looseReason: undefined, containerWord: null, matchedFrom: null }
+        : it,
+    ));
+  };
+
+  const handleDishRecheck = async () => {
+    if (!dishRecheck) return;
+    const text = dishRecheck.text.trim();
+    if (!text) return;
+    setDishRecheckLoading(true);
+    try {
+      const result: any = await api.analyzeFoodEntry(text);
+      const foods: any[] = Array.isArray(result?.foods_detected) ? result.foods_detected : [];
+      if (foods.length === 0) {
+        toast.error('No match found — try naming the restaurant or listing the ingredients');
+        return;
+      }
+      const stamp = Date.now();
+      const replacements = foods.map((f: any, i: number) => {
+        const qty = f.quantity || 1;
+        const cals = f.calories || 0;
+        const pro = f.protein || 0;
+        const fat = f.fat || 0;
+        const tc = f.totalCarbs ?? f.carbs ?? 0;
+        const fib = f.fiber || 0;
+        const nc = f.netCarbs ?? f.carbs ?? 0;
+        return {
+          id: `item-${stamp}-dish-${i}`,
+          name: f.name || text,
+          quantity: qty,
+          unit: f.unit || 'serving',
+          calories: cals, protein: pro, fat, totalCarbs: tc, fiber: fib, netCarbs: nc,
+          _baseCal: Math.round(cals / qty),
+          _basePro: Math.round((pro / qty) * 10) / 10,
+          _baseFat: Math.round((fat / qty) * 10) / 10,
+          _baseTotalCarbs: Math.round((tc / qty) * 10) / 10,
+          _baseFiber: Math.round((fib / qty) * 10) / 10,
+          _baseNetCarbs: Math.round((nc / qty) * 10) / 10,
+          confidence: f.confidence || 0.8,
+          source: f.source || 'ai_estimate',
+          sourceName: f.sourceName || null,
+          brand: f.brand || null,
+          servingWeightGrams: f.servingWeightGrams ?? null,
+          altMeasures: f.altMeasures ?? null,
+          gramsEstimated: f.gramsEstimated === true ? true : undefined,
+          matchQuality: f.matchQuality,
+          looseReason: f.looseReason,
+          matchedFrom: f.matchedFrom ?? null,
+          originalInput: f.originalInput ?? null,
+          quantityAssumed: f.quantityAssumed === true ? true : undefined,
+          containerWord: f.containerWord ?? null,
+          _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
+        };
+      });
+      const key = dishRecheck.originalInput;
+      setEditableItems(prev => {
+        const firstIdx = prev.findIndex(it => it.looseReason === 'container_kcal' && it.originalInput === key);
+        const kept = prev.filter(it => !(it.looseReason === 'container_kcal' && it.originalInput === key));
+        const at = firstIdx < 0 ? kept.length : Math.min(firstIdx, kept.length);
+        return [...kept.slice(0, at), ...replacements, ...kept.slice(at)];
+      });
+      setDishRecheck(null);
+      toast.success('Dish updated');
+    } catch {
+      toast.error('Could not re-check this dish. Please try again.');
+    } finally {
+      setDishRecheckLoading(false);
+    }
+  };
+
   const handleReMatch = async (idx: number) => {
     const text = reMatchText.trim();
     if (!text) return;
@@ -589,6 +684,7 @@ export default function FoodLog() {
           matchedFrom: f.matchedFrom ?? null,
           originalInput: f.originalInput ?? null,
           quantityAssumed: f.quantityAssumed === true ? true : undefined,
+          containerWord: f.containerWord ?? null,
           _baseGrams: f.servingWeightGrams && qty ? f.servingWeightGrams / qty : null,
           _baseCal: Math.round(cals / qty),
           _basePro: Math.round((pro / qty) * 10) / 10,
@@ -1207,6 +1303,65 @@ export default function FoodLog() {
                 </div>
               )}
 
+              {/* Dish-level notice (container-plausibility heuristic): the line
+                  total is too low for the container the member named. Visible
+                  text, no tooltip — must read on touch. */}
+              {containerNotices.map((n) => (
+                <div
+                  key={n.originalInput}
+                  className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/20 dark:text-amber-200"
+                  data-testid="notice-container-kcal"
+                >
+                  <div className="flex items-start gap-2">
+                    <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">This may not be the dish you meant.</p>
+                      <p className="mt-0.5">
+                        “{n.originalInput}” came back as {n.matchedFrom.map((m) => `“${m}”`).join(' and ')} — {Math.round(n.kcal)} cal, which is low for a {n.containerWord}. If it was a restaurant dish or a mixed {n.containerWord}, re-check with the restaurant name or list what was in it.
+                      </p>
+                      {dishRecheck?.originalInput === n.originalInput ? (
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <Input
+                            value={dishRecheck.text}
+                            onChange={(e) => setDishRecheck({ originalInput: n.originalInput, text: e.target.value })}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDishRecheck(); } }}
+                            placeholder="Add the restaurant name or what was in it…"
+                            className="h-7 text-xs flex-1 bg-background"
+                            autoFocus
+                            disabled={dishRecheckLoading}
+                          />
+                          <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={handleDishRecheck} disabled={dishRecheckLoading || !dishRecheck.text.trim()}>
+                            {dishRecheckLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setDishRecheck(null)} disabled={dishRecheckLoading}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="mt-2 flex items-center gap-3">
+                          <button
+                            type="button"
+                            className="font-medium underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100"
+                            onClick={() => setDishRecheck({ originalInput: n.originalInput, text: n.originalInput })}
+                            data-testid="button-dish-recheck"
+                          >
+                            Re-check
+                          </button>
+                          <button
+                            type="button"
+                            className="underline underline-offset-2 opacity-80 hover:opacity-100"
+                            onClick={() => dismissContainerNotice(n.originalInput)}
+                            data-testid="button-dish-looks-right"
+                          >
+                            Looks right
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
               {/* Editable item cards */}
               {editableItems.length > 0 ? (
                 <div className="space-y-2 mb-3">
@@ -1237,14 +1392,12 @@ export default function FoodLog() {
                           >
                             Not found
                           </span>
-                        ) : item.matchQuality === 'loose' ? (
+                        ) : item.matchQuality === 'loose' && item.looseReason !== 'container_kcal' ? (
                           <span
                             className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                            title={item.looseReason === 'container_kcal'
-                              ? `This came back as ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(' + ')}, which is very low for a bowl, plate, or wrap. It may have matched an ingredient instead of the dish. Use Re-check to name the restaurant or describe what was in it.`
-                              : `Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
+                            title={`Only ${(item.matchedFrom || []).map((n: string) => `"${n}"`).join(', ')} matched what you typed. The rest wasn't recognized, so these numbers are probably low. Use Re-check to describe it differently.`}
                           >
-                            {item.looseReason === 'container_kcal' ? 'Check this' : 'Partial match'}
+                            Partial match
                           </span>
                         ) : item.source === 'manual' ? (
                           <span
@@ -1384,6 +1537,8 @@ export default function FoodLog() {
                                 // partial-match warning.
                                 if (updated[idx].matchQuality === 'loose') {
                                   updated[idx].matchQuality = undefined;
+                                  updated[idx].looseReason = undefined;
+                                  updated[idx].containerWord = null;
                                   updated[idx].matchedFrom = null;
                                 }
                                 setEditableItems(updated);

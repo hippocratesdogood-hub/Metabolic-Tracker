@@ -65,12 +65,17 @@ export const CONTAINER_WORDS = new Set(
 /** Below this many kcal, a container line is flagged for the member to check. Tunable. */
 export const CONTAINER_PLAUSIBILITY_MIN_KCAL = 300;
 
+/** The container word the member used ("bowl", "burrito"), or null. Drives the confirm-UI copy. */
+export function containerWordIn(text: string): string | null {
+  for (const t of (text.toLowerCase().match(/[a-z]+/g) ?? [])) {
+    if (CONTAINER_WORDS.has(t)) return t;
+  }
+  return null;
+}
+
 /** Does the member's text name a container from CONTAINER_WORDS? */
 export function mentionsContainer(text: string): boolean {
-  for (const t of (text.toLowerCase().match(/[a-z]+/g) ?? [])) {
-    if (CONTAINER_WORDS.has(t)) return true;
-  }
-  return false;
+  return containerWordIn(text) !== null;
 }
 
 /**

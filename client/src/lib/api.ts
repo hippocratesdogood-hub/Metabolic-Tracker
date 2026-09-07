@@ -224,6 +224,7 @@ class ApiClient {
         matchQuality?: 'loose';
         matchedFrom?: string[];
         looseReason?: 'coverage' | 'container_kcal';
+        containerWord?: string;
         quantityAssumed?: boolean;
         unresolved?: boolean;
       }[];

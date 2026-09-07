@@ -139,6 +139,7 @@ describe("container plausibility heuristic in the natural path", () => {
     for (const it of r!.items) {
       expect(it.matchQuality).toBe("loose");
       expect(it.looseReason).toBe("container_kcal");
+      expect(it.containerWord).toBe("bowl");
       expect(it.matchedFrom).toEqual(["chipotle", "chicken"]);
       expect(it.originalInput).toContain("a chipotle chicken bowl");
     }

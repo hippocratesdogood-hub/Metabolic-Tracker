@@ -15,7 +15,7 @@ import {
   acceptableBrandedUpgrade,
   LOOSE_MATCH_THRESHOLD,
 } from './matchCoverage';
-import { containerImplausible, CONTAINER_PLAUSIBILITY_MIN_KCAL } from './matchCoverage';
+import { containerImplausible, containerWordIn, CONTAINER_PLAUSIBILITY_MIN_KCAL } from './matchCoverage';
 import { parseLeadingQuantity } from './quantityParse';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -75,6 +75,8 @@ export interface DetectedFoodItem {
    * for a bowl/plate/burrito). Drives the confirm-card copy.
    */
   looseReason?: 'coverage' | 'container_kcal';
+  /** With looseReason 'container_kcal': the container word the member used ("bowl"). */
+  containerWord?: string;
   /** The food names the parser did match, for "matched only X" UI copy. */
   matchedFrom?: string[];
   /** The member's original phrase for this line, so Re-check can prefill it. */
@@ -842,9 +844,11 @@ class NutritionLookupService {
         const lineKcal = mapped.reduce((sum, m) => sum + (m.calories || 0), 0);
         if (containerImplausible(line, lineKcal)) {
           const matchedFrom = raw.map((f: any) => String(f?.food_name || 'food'));
+          const containerWord = containerWordIn(line) ?? 'dish';
           for (const m of mapped) {
             m.matchQuality = 'loose';
             m.looseReason = 'container_kcal';
+            m.containerWord = containerWord;
             m.matchedFrom = matchedFrom;
             m.originalInput = line;
           }
