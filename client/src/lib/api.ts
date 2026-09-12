@@ -21,6 +21,25 @@ export class ApiError extends Error {
   }
 }
 
+export interface AdminMacroCalcInput {
+  sex: "male" | "female";
+  activityLevel: "sedentary" | "light" | "moderate" | "very";
+  units: "US" | "Metric";
+  height: number;
+  weight: number;
+  waist: number;
+  neck: number;
+  hip?: number;
+}
+
+export interface AdminMacroCalcResult {
+  ok: true;
+  bodyFatPct: number;
+  lbmLb: number;
+  targets: { proteinG: number; netCarbsG: number; fatG: number; calories: number };
+  flags: string[];
+}
+
 class ApiClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`/api${endpoint}`, {
@@ -425,6 +444,31 @@ class ApiClient {
       calories: number;
       bodyFatPct: number;
     }>("/macro-calculator", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Admin macro calculator page — staff enter every measurement
+  async previewAdminMacroCalculation(data: AdminMacroCalcInput) {
+    return this.request<AdminMacroCalcResult>("/admin/macro-calculator/preview", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getMacroCalculatorInputs(userId: string) {
+    return this.request<{
+      sex: "male" | "female" | null;
+      heightIn: number | null;
+      weightLb: number | null;
+      waistIn: number | null;
+      currentTarget: { calories: number | null; proteinG: number | null; carbsG: number | null; fatG: number | null } | null;
+    }>(`/admin/participants/${userId}/macro-calculator-inputs`);
+  }
+
+  async applyAdminMacroCalculation(userId: string, data: AdminMacroCalcInput) {
+    return this.request<AdminMacroCalcResult>(`/admin/participants/${userId}/macro-calculator/apply`, {
       method: "POST",
       body: JSON.stringify(data),
     });

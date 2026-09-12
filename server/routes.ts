@@ -3403,6 +3403,148 @@ Respond with ONLY valid JSON (no markdown fences, no preamble) matching this sch
     }
   });
 
+  // Admin macro calculator (sidebar page). Staff enter every measurement,
+  // including weight and waist, in the staff member's preferred units. Preview
+  // computes only; apply recomputes server-side and makes it the participant's
+  // live target, recorded as already approved since a clinician ran it.
+  const adminMacroCalculatorBodySchema = macroCalculatorBodySchema.extend({
+    weight: z.number(),
+    waist: z.number(),
+  });
+
+  const runAdminMacroCalculation = (body: z.infer<typeof adminMacroCalculatorBodySchema>, defaultUnits: string) => {
+    const metric = (body.units ?? defaultUnits) === "Metric";
+    const lengthUnit: LengthUnit = metric ? "cm" : "inches";
+    const input = {
+      sex: body.sex,
+      heightIn: convertLength(body.height, lengthUnit, "inches"),
+      weightLb: convertWeight(body.weight, metric ? "kg" : "lbs", "lbs"),
+      waistIn: convertLength(body.waist, lengthUnit, "inches"),
+      neckIn: convertLength(body.neck, lengthUnit, "inches"),
+      hipIn: body.hip != null ? convertLength(body.hip, lengthUnit, "inches") : undefined,
+      activityLevel: body.activityLevel,
+    };
+    return { input, result: calculateMacroTargets(input) };
+  };
+
+  // Service keys are imperial-suffixed; the client fields aren't
+  const toClientFieldErrors = (fieldErrors: Record<string, string>) => {
+    const keyMap: Record<string, string> = {
+      heightIn: "height", weightLb: "weight", waistIn: "waist", neckIn: "neck", hipIn: "hip",
+    };
+    return Object.fromEntries(Object.entries(fieldErrors).map(([k, v]) => [keyMap[k] ?? k, v]));
+  };
+
+  const coachCanAccess = async (user: Express.User, participantId: string) => {
+    if (user.role !== "coach") return true;
+    const participant = await storage.getUser(participantId);
+    return !!participant && participant.coachId === user.id;
+  };
+
+  app.post("/api/admin/macro-calculator/preview", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const parsed = adminMacroCalculatorBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      const { result } = runAdminMacroCalculation(parsed.data, req.user!.unitsPreference);
+      if (!result.ok) {
+        return res.status(400).json({ message: "Those measurements don't compute", fieldErrors: toClientFieldErrors(result.fieldErrors) });
+      }
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Prefill for the admin calculator: profile sex/height plus latest logged
+  // weight and waist, all imperial
+  app.get("/api/admin/participants/:userId/macro-calculator-inputs", requireAuth, requireCoachOrAdmin, auditPhiRead("USER"), async (req, res) => {
+    try {
+      if (!(await coachCanAccess(req.user!, req.params.userId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const participant = await storage.getUser(req.params.userId);
+      if (!participant) return res.status(404).json({ message: "User not found" });
+      const [weightEntry, waistEntry, target] = await Promise.all([
+        storage.getLatestMetricEntry(participant.id, "WEIGHT"),
+        storage.getLatestMetricEntry(participant.id, "WAIST"),
+        storage.getMacroTarget(participant.id),
+      ]);
+      res.json({
+        sex: participant.sex ?? null,
+        heightIn: participant.height != null ? convertLength(participant.height, "cm", "inches") : null,
+        weightLb: metricToImperial(weightEntry, "weight"),
+        waistIn: metricToImperial(waistEntry, "length"),
+        currentTarget: target
+          ? { calories: target.calories, proteinG: target.proteinG, carbsG: target.carbsG, fatG: target.fatG }
+          : null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/participants/:userId/macro-calculator/apply", requireAuth, requireCoachOrAdmin, async (req, res) => {
+    try {
+      const parsed = adminMacroCalculatorBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+      if (!(await coachCanAccess(req.user!, req.params.userId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const participant = await storage.getUser(req.params.userId);
+      if (!participant || participant.role !== "participant") {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+
+      const { input, result } = runAdminMacroCalculation(parsed.data, req.user!.unitsPreference);
+      if (!result.ok) {
+        return res.status(400).json({ message: "Those measurements don't compute", fieldErrors: toClientFieldErrors(result.fieldErrors) });
+      }
+
+      const calculation = await storage.createMacroCalculation({
+        userId: participant.id,
+        sex: input.sex,
+        heightIn: input.heightIn,
+        weightLb: input.weightLb,
+        waistIn: input.waistIn,
+        neckIn: input.neckIn,
+        hipIn: input.hipIn ?? null,
+        activityLevel: input.activityLevel,
+        bodyFatPct: result.bodyFatPct,
+        lbmLb: result.lbmLb,
+        calculatedProteinG: result.targets.proteinG,
+        calculatedCarbsG: result.targets.netCarbsG,
+        calculatedFatG: result.targets.fatG,
+        calculatedCalories: result.targets.calories,
+        flags: result.flags,
+        // Clinician-run, so it skips the review queue
+        reviewStatus: "approved",
+        reviewedAt: new Date(),
+        reviewedBy: req.user!.id,
+      });
+
+      await storage.upsertMacroTarget(participant.id, {
+        calories: result.targets.calories,
+        proteinG: result.targets.proteinG,
+        carbsG: result.targets.netCarbsG,
+        fatG: result.targets.fatG,
+      });
+      await storage.updateUser(participant.id, {
+        sex: input.sex,
+        height: Math.round(toCm(input.heightIn, "inches")),
+      });
+
+      await auditRecordCreate(req.user!, req, "USER", calculation.id);
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Macro Progress API
   app.get("/api/macro-progress", requireAuth, async (req, res) => {
     try {

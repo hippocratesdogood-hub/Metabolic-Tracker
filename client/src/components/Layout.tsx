@@ -39,6 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
       { href: '/admin/participants', label: 'Participants', icon: User },
+      { href: '/admin/macro-calculator', label: 'Macro Calculator', icon: Calculator },
       { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
       { href: '/admin/prompts', label: 'Prompts', icon: Shield },
       { href: '/admin/ai-reports', label: 'AI Reports', icon: Sparkles },
